@@ -29,9 +29,9 @@ const Index = () => {
       {/* CTA Band */}
       {s.ctaBand && (
         <div className="py-6 md:py-8 bg-background">
-          <div className="container mx-auto px-4">
+          <div className="w-full">
             <div
-              className="relative overflow-hidden rounded-2xl md:rounded-3xl border border-[rgba(38,72,151,0.7)] shadow-[0_18px_50px_-30px_rgba(38,72,151,0.75)]"
+              className="relative overflow-hidden border-y border-[rgba(38,72,151,0.7)] shadow-[0_18px_50px_-30px_rgba(38,72,151,0.75)]"
               style={{ backgroundColor: "rgb(38,72,151)" }}
             >
               <div className="absolute inset-0 opacity-[0.05]" style={{

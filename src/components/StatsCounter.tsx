@@ -50,9 +50,9 @@ const StatsCounter = () => {
 
   return (
     <section ref={ref} className="py-4 md:py-6 bg-background">
-      <div className="container mx-auto px-4">
+      <div className="w-full">
         <div
-          className="relative overflow-hidden rounded-2xl md:rounded-3xl border border-white/10 shadow-[0_18px_45px_-28px_rgba(38,72,151,0.75)]"
+          className="relative overflow-hidden border-y border-white/10 shadow-[0_18px_45px_-28px_rgba(38,72,151,0.75)]"
           style={{ backgroundColor: "rgb(38,72,151)" }}
         >
           <div className="absolute inset-0 opacity-[0.04]" style={{

@@ -12,8 +12,8 @@ const announcements = [
 const AnnouncementBar = () => {
   return (
     <section className="bg-background py-1.5 md:py-2 overflow-x-clip">
-      <div className="container mx-auto px-4">
-        <div className="relative overflow-hidden rounded-xl border border-primary/15 bg-gradient-to-r from-primary/[0.08] via-background to-background shadow-sm">
+      <div className="w-full">
+        <div className="relative overflow-hidden border-y border-primary/15 bg-gradient-to-r from-primary/[0.08] via-background to-background shadow-sm">
           <div className="pointer-events-none absolute inset-y-0 left-0 w-20 sm:w-32 bg-gradient-to-r from-primary/15 to-transparent" />
 
           <div className="flex items-center h-10 md:h-11">

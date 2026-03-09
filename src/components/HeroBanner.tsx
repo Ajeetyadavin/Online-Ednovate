@@ -26,8 +26,8 @@ const HeroBanner = () => {
 
   return (
     <section className="relative overflow-hidden group bg-gradient-to-b from-muted/35 to-background">
-      <div className="container mx-auto px-4 py-1 md:py-2">
-        <div className="relative rounded-2xl md:rounded-3xl overflow-hidden border border-border/60 shadow-[0_24px_55px_-35px_hsl(var(--primary)/0.55)]">
+      <div className="w-full py-1 md:py-2">
+        <div className="relative overflow-hidden border-y border-border/60 shadow-[0_24px_55px_-35px_hsl(var(--primary)/0.55)]">
           <Link to="/packages" className="block">
             <div className="relative aspect-[16/7] sm:aspect-[16/6] md:aspect-[16/5.6]">
               {bannerSlides.map((slide, i) => (
