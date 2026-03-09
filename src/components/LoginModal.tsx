@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
@@ -29,12 +29,27 @@ const LoginModal = ({
   const [view, setView] = useState<View>("login");
   const [phone, setPhone] = useState("");
   const [email, setEmail] = useState("");
+  const [loginIdentifier, setLoginIdentifier] = useState("");
+  const [passwordInput, setPasswordInput] = useState("");
+  const [isIdentifierFocused, setIsIdentifierFocused] = useState(false);
+  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+
+  useEffect(() => {
+    if (view !== "login") {
+      setIsIdentifierFocused(false);
+      setIsPasswordFocused(false);
+    }
+  }, [view]);
 
   const handleReset = () => {
     setView("login");
     setPhone("");
     setEmail("");
+    setLoginIdentifier("");
+    setPasswordInput("");
+    setIsIdentifierFocused(false);
+    setIsPasswordFocused(false);
     setShowPassword(false);
   };
 
@@ -78,6 +93,18 @@ const LoginModal = ({
     </div>
   );
 
+  const pupilShift = isIdentifierFocused
+    ? Math.max(-1.5, Math.min(4, loginIdentifier.length * 0.4))
+    : 0;
+
+  const loginMood = isPasswordFocused
+    ? "Privacy mode on"
+    : isIdentifierFocused
+      ? "Email/mobile detect ho raha hai"
+      : isSignup
+        ? "Naya account banane ke liye ready"
+        : "Welcome back";
+
   const handleAuthSuccess = () => {
     login("Student");
     onOpenChange(false);
@@ -89,15 +116,63 @@ const LoginModal = ({
       <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-2xl border border-border shadow-xl bg-card gap-0">
         {/* Compact Header */}
         <div className="bg-[rgb(38,72,151)] px-6 py-5 text-center">
-          <div className="w-11 h-11 rounded-xl bg-primary-foreground/15 flex items-center justify-center mx-auto mb-2.5">
-            {view === "login" ? (
-              <GraduationCap className="w-5 h-5 text-primary-foreground" />
-            ) : view.startsWith("forgot") ? (
-              view === "forgot-success" ? <CheckCircle2 className="w-5 h-5 text-primary-foreground" /> : <KeyRound className="w-5 h-5 text-primary-foreground" />
-            ) : (
-              <Smartphone className="w-5 h-5 text-primary-foreground" />
-            )}
-          </div>
+          {view === "login" ? (
+            <div className="relative w-16 h-16 rounded-2xl bg-primary-foreground/15 border border-primary-foreground/20 flex items-center justify-center mx-auto mb-2.5 backdrop-blur-sm">
+              <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-primary-foreground/10 to-transparent" />
+
+              <div className="absolute top-4 left-4 w-4 h-4 rounded-full bg-primary-foreground flex items-center justify-center">
+                {isPasswordFocused ? (
+                  <span className="w-3 h-[2px] rounded-full bg-[rgb(38,72,151)]" />
+                ) : (
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-[rgb(38,72,151)] transition-transform duration-200"
+                    style={{ transform: `translateX(${pupilShift}px)` }}
+                  />
+                )}
+              </div>
+
+              <div className="absolute top-4 right-4 w-4 h-4 rounded-full bg-primary-foreground flex items-center justify-center">
+                {isPasswordFocused ? (
+                  <span className="w-3 h-[2px] rounded-full bg-[rgb(38,72,151)]" />
+                ) : (
+                  <span
+                    className="w-1.5 h-1.5 rounded-full bg-[rgb(38,72,151)] transition-transform duration-200"
+                    style={{ transform: `translateX(${pupilShift}px)` }}
+                  />
+                )}
+              </div>
+
+              <div
+                className={`absolute bottom-3 left-1/2 -translate-x-1/2 transition-all duration-200 ${
+                  isPasswordFocused
+                    ? "w-5 h-1 rounded-full bg-primary-foreground/85"
+                    : loginIdentifier.includes("@")
+                      ? "w-6 h-3 border-b-2 border-primary-foreground rounded-b-full"
+                      : "w-4 h-1.5 rounded-full bg-primary-foreground/75"
+                }`}
+              />
+
+              {isIdentifierFocused && !isPasswordFocused && (
+                <div className="absolute -right-1 -top-1 w-5 h-5 rounded-full bg-accent text-accent-foreground flex items-center justify-center shadow">
+                  <Mail className="w-3 h-3" />
+                </div>
+              )}
+
+              {isPasswordFocused && (
+                <div className="absolute -right-1 -top-1 w-5 h-5 rounded-full bg-primary-foreground text-primary flex items-center justify-center shadow">
+                  <Lock className="w-3 h-3" />
+                </div>
+              )}
+            </div>
+          ) : (
+            <div className="w-11 h-11 rounded-xl bg-primary-foreground/15 flex items-center justify-center mx-auto mb-2.5">
+              {view.startsWith("forgot") ? (
+                view === "forgot-success" ? <CheckCircle2 className="w-5 h-5 text-primary-foreground" /> : <KeyRound className="w-5 h-5 text-primary-foreground" />
+              ) : (
+                <Smartphone className="w-5 h-5 text-primary-foreground" />
+              )}
+            </div>
+          )}
           <DialogTitle className="text-lg font-bold text-primary-foreground">
             {view === "login" ? (isSignup ? "Create Account" : "Welcome Back") :
              view === "otp" ? "Login with OTP" :
@@ -118,6 +193,9 @@ const LoginModal = ({
              view === "forgot-otp-verify" ? `Sent to +91 ${phone}` :
              `Sent to ${email}`}
           </p>
+          {view === "login" && (
+            <p className="text-[10px] text-primary-foreground/80 mt-1.5">{loginMood}</p>
+          )}
         </div>
 
         {/* LOGIN */}
@@ -131,7 +209,14 @@ const LoginModal = ({
             )}
             <div className="space-y-1.5">
               <Label className="text-xs font-medium text-foreground">Email or Mobile</Label>
-              <InputWithIcon icon={Mail} placeholder="Enter email or mobile" />
+              <InputWithIcon
+                icon={Mail}
+                placeholder="Enter email or mobile"
+                value={loginIdentifier}
+                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLoginIdentifier(e.target.value)}
+                onFocus={() => setIsIdentifierFocused(true)}
+                onBlur={() => setIsIdentifierFocused(false)}
+              />
             </div>
             <div className="space-y-1.5">
               <div className="flex items-center justify-between">
@@ -144,7 +229,15 @@ const LoginModal = ({
               </div>
               <div className="relative">
                 <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input type={showPassword ? "text" : "password"} placeholder="Enter password" className="h-11 text-sm rounded-lg pl-10 pr-10 border-border bg-background" />
+                <Input
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Enter password"
+                  value={passwordInput}
+                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPasswordInput(e.target.value)}
+                  onFocus={() => setIsPasswordFocused(true)}
+                  onBlur={() => setIsPasswordFocused(false)}
+                  className="h-11 text-sm rounded-lg pl-10 pr-10 border-border bg-background"
+                />
                 <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
