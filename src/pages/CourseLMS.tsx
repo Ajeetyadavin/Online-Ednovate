@@ -11,6 +11,10 @@ import {
   Award, SkipForward, SkipBack
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuth } from "@/context/AuthContext";
+import { useCart } from "@/context/CartContext";
+import LoginModal from "@/components/LoginModal";
+import { downloadStudyMaterialPdf } from "@/lib/studyMaterial";
 
 interface Lesson {
   id: string;
@@ -72,7 +76,11 @@ const generateCurriculum = (courseName: string): Chapter[] => [
 const CourseLMS = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { isLoggedIn } = useAuth();
+  const { isPurchased } = useCart();
   const course = courses.find((c) => c.id === id);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [signupMode, setSignupMode] = useState(false);
 
   const [curriculum, setCurriculum] = useState<Chapter[]>(() =>
     generateCurriculum(course?.title || "Course")
@@ -84,6 +92,66 @@ const CourseLMS = () => {
     return (
       <div className="min-h-screen flex items-center justify-center">
         <p className="text-muted-foreground">Course not found</p>
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <h2 className="text-xl font-bold text-foreground">Login Required</h2>
+          <p className="text-sm text-muted-foreground mt-2 mb-5">
+            Please login or sign up to access course content.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setSignupMode(false);
+                setLoginOpen(true);
+              }}
+            >
+              Login
+            </Button>
+            <Button
+              className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
+              onClick={() => {
+                setSignupMode(true);
+                setLoginOpen(true);
+              }}
+            >
+              Sign Up
+            </Button>
+          </div>
+          <Button variant="ghost" className="mt-3" onClick={() => navigate(`/course/${course.id}`)}>
+            Back to Course
+          </Button>
+          <LoginModal
+            open={loginOpen}
+            onOpenChange={setLoginOpen}
+            isSignup={signupMode}
+            redirectPath={`/learn/${course.id}`}
+            onToggleMode={() => setSignupMode((prev) => !prev)}
+          />
+        </div>
+      </div>
+    );
+  }
+
+  if (!isPurchased(course.id)) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <h2 className="text-xl font-bold text-foreground">Course Not Purchased</h2>
+          <p className="text-sm text-muted-foreground mt-2 mb-5">
+            Purchase this course to unlock videos, PDFs, and study materials.
+          </p>
+          <Button className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => navigate(`/course/${course.id}`)}>
+            Buy This Course
+          </Button>
+        </div>
       </div>
     );
   }
@@ -332,7 +400,14 @@ const CourseLMS = () => {
                   <p className="text-white text-lg font-bold">{activeLesson.title}</p>
                   <p className="text-white/50 text-sm mt-1">{activeLesson.type === "pdf" ? "Download and study" : "Test your knowledge"}</p>
                 </div>
-                <Button className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-full px-6 h-10 font-semibold shadow-lg">
+                <Button
+                  className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-full px-6 h-10 font-semibold shadow-lg"
+                  onClick={() => {
+                    if (activeLesson.type === "pdf") {
+                      downloadStudyMaterialPdf(`${course.title}-${activeLesson.title}`);
+                    }
+                  }}
+                >
                   {activeLesson.type === "pdf" ? (
                     <><Download className="w-4 h-4 mr-2" /> Download PDF</>
                   ) : (
@@ -427,10 +502,20 @@ const CourseLMS = () => {
                   <div>
                     <h3 className="text-sm font-bold text-foreground mb-2">Resources</h3>
                     <div className="flex flex-wrap gap-2">
-                      <Button variant="outline" size="sm" className="rounded-full text-xs h-8 gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full text-xs h-8 gap-1.5"
+                        onClick={() => downloadStudyMaterialPdf(`${course.title}-lecture-notes`)}
+                      >
                         <Download className="w-3.5 h-3.5" /> Lecture Notes
                       </Button>
-                      <Button variant="outline" size="sm" className="rounded-full text-xs h-8 gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="rounded-full text-xs h-8 gap-1.5"
+                        onClick={() => downloadStudyMaterialPdf(`${course.title}-practice-sheet`)}
+                      >
                         <FileText className="w-3.5 h-3.5" /> Practice Sheet
                       </Button>
                     </div>

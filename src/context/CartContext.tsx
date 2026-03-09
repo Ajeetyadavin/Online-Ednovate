@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { Course } from "@/data/courses";
 
 interface OrderRecord {
@@ -28,12 +28,39 @@ interface CartContextType {
   updateProgress: (courseId: string, progress: number) => void;
 }
 
+const CART_STORAGE_KEY = "ednovate_cart_items";
+const PURCHASED_STORAGE_KEY = "ednovate_purchased_courses";
+const ORDERS_STORAGE_KEY = "ednovate_orders";
+
+const parseStored = <T,>(key: string, fallback: T): T => {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+};
+
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
-  const [items, setItems] = useState<Course[]>([]);
-  const [purchasedCourses, setPurchasedCourses] = useState<PurchasedCourse[]>([]);
-  const [orders, setOrders] = useState<OrderRecord[]>([]);
+  const [items, setItems] = useState<Course[]>(() => parseStored<Course[]>(CART_STORAGE_KEY, []));
+  const [purchasedCourses, setPurchasedCourses] = useState<PurchasedCourse[]>(() =>
+    parseStored<PurchasedCourse[]>(PURCHASED_STORAGE_KEY, [])
+  );
+  const [orders, setOrders] = useState<OrderRecord[]>(() => parseStored<OrderRecord[]>(ORDERS_STORAGE_KEY, []));
+
+  useEffect(() => {
+    localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
+  }, [items]);
+
+  useEffect(() => {
+    localStorage.setItem(PURCHASED_STORAGE_KEY, JSON.stringify(purchasedCourses));
+  }, [purchasedCourses]);
+
+  useEffect(() => {
+    localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(orders));
+  }, [orders]);
 
   const addToCart = (course: Course) => {
     setItems((prev) => {

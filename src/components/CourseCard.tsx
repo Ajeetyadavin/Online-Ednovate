@@ -16,8 +16,21 @@ const CourseCard = ({ course }: CourseCardProps) => {
   const inCart = isInCart(course.id);
   const [justAdded, setJustAdded] = useState(false);
 
+  const openDetails = () => navigate(`/course/${course.id}`);
+
   return (
-    <div className={`group bg-background rounded-xl border border-border overflow-hidden transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1 flex flex-col shine-sweep ${justAdded ? "ring-2 ring-accent/40 scale-[1.02]" : ""}`}>
+    <div
+      role="button"
+      tabIndex={0}
+      onClick={openDetails}
+      onKeyDown={(e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          openDetails();
+        }
+      }}
+      className={`group cursor-pointer bg-background rounded-xl border border-border overflow-hidden transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1 flex flex-col shine-sweep ${justAdded ? "ring-2 ring-accent/40 scale-[1.02]" : ""}`}
+    >
       {/* Thumbnail */}
       <div className="relative h-24 sm:h-40 overflow-hidden">
         <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-accent/70 flex items-center justify-center p-2 sm:p-4 group-hover:scale-105 transition-transform duration-500">
@@ -86,7 +99,10 @@ const CourseCard = ({ course }: CourseCardProps) => {
               variant="outline"
               size="sm"
               className="text-[10px] sm:text-[11px] h-7 sm:h-8 rounded-lg font-semibold w-full sm:flex-1 tap-bounce hover:scale-105 transition-transform"
-              onClick={() => navigate(`/course/${course.id}`)}
+              onClick={(e) => {
+                e.stopPropagation();
+                openDetails();
+              }}
             >
               Details
             </Button>
@@ -98,6 +114,7 @@ const CourseCard = ({ course }: CourseCardProps) => {
                   : "bg-accent hover:bg-accent/90 text-accent-foreground hover:scale-105"
               }`}
               onClick={(e) => {
+                e.stopPropagation();
                 if (inCart) {
                   removeFromCart(course.id);
                   setJustAdded(false);
@@ -105,7 +122,7 @@ const CourseCard = ({ course }: CourseCardProps) => {
                   addToCart(course);
                   setJustAdded(true);
                   setTimeout(() => setJustAdded(false), 1000);
-                  const rect = (e.target as HTMLElement).getBoundingClientRect();
+                  const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
                   confetti({
                     particleCount: 50,
                     spread: 60,

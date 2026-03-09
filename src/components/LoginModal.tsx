@@ -12,11 +12,18 @@ interface LoginModalProps {
   onOpenChange: (open: boolean) => void;
   isSignup: boolean;
   onToggleMode: () => void;
+  redirectPath?: string;
 }
 
 type View = "login" | "otp" | "otp-verify" | "forgot-choose" | "forgot-email" | "forgot-phone" | "forgot-otp-verify" | "forgot-success";
 
-const LoginModal = ({ open, onOpenChange, isSignup, onToggleMode }: LoginModalProps) => {
+const LoginModal = ({
+  open,
+  onOpenChange,
+  isSignup,
+  onToggleMode,
+  redirectPath = "/dashboard",
+}: LoginModalProps) => {
   const navigate = useNavigate();
   const { login } = useAuth();
   const [view, setView] = useState<View>("login");
@@ -71,6 +78,12 @@ const LoginModal = ({ open, onOpenChange, isSignup, onToggleMode }: LoginModalPr
     </div>
   );
 
+  const handleAuthSuccess = () => {
+    login("Student");
+    onOpenChange(false);
+    navigate(redirectPath);
+  };
+
   return (
     <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) handleReset(); }}>
       <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-2xl border border-border shadow-xl bg-card gap-0">
@@ -109,7 +122,7 @@ const LoginModal = ({ open, onOpenChange, isSignup, onToggleMode }: LoginModalPr
 
         {/* LOGIN */}
         {view === "login" && (
-          <form className="p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); login("Student"); onOpenChange(false); navigate("/dashboard"); }}>
+          <form className="p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); handleAuthSuccess(); }}>
             {isSignup && (
               <div className="space-y-1.5">
                 <Label className="text-xs font-medium text-foreground">Full Name</Label>
@@ -184,7 +197,7 @@ const LoginModal = ({ open, onOpenChange, isSignup, onToggleMode }: LoginModalPr
 
         {/* OTP - VERIFY */}
         {view === "otp-verify" && (
-          <form className="p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); login("Student"); onOpenChange(false); navigate("/dashboard"); }}>
+          <form className="p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); handleAuthSuccess(); }}>
             <BackButton onClick={() => setView("otp")} label="Change number" />
             <div className="space-y-3">
               <Label className="text-xs font-medium text-foreground">Enter 6-digit OTP</Label>

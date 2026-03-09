@@ -2,6 +2,8 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { courses } from "@/data/courses";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
+import LoginModal from "@/components/LoginModal";
 import confetti from "canvas-confetti";
 import {
   PlayCircle,
@@ -71,8 +73,11 @@ const CourseDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
   const { addToCart, removeFromCart, isInCart, isPurchased } = useCart();
+  const { isLoggedIn } = useAuth();
   const [activeTab, setActiveTab] = useState<"content" | "ratings" | "reviews">("content");
   const [openAccordion, setOpenAccordion] = useState<number | null>(0);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [signupMode, setSignupMode] = useState(false);
 
   const course = courses.find((c) => c.id === id);
 
@@ -117,6 +122,13 @@ const CourseDetails = () => {
   };
 
   const handleBuyNow = () => {
+    if (!isLoggedIn) {
+      if (!inCart) addToCart(course);
+      setSignupMode(false);
+      setLoginOpen(true);
+      return;
+    }
+
     if (!inCart) addToCart(course);
     navigate("/checkout");
   };
@@ -486,6 +498,14 @@ const CourseDetails = () => {
           </a>
         </div>
       </div>
+
+      <LoginModal
+        open={loginOpen}
+        onOpenChange={setLoginOpen}
+        isSignup={signupMode}
+        redirectPath="/checkout"
+        onToggleMode={() => setSignupMode((prev) => !prev)}
+      />
       
     </div>
   );

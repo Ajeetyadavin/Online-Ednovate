@@ -7,14 +7,19 @@ import { Label } from "@/components/ui/label";
 import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
+import LoginModal from "@/components/LoginModal";
 import { toast } from "@/hooks/use-toast";
 
 const Checkout = () => {
   const { items, cartCount, completePurchase } = useCart();
+  const { isLoggedIn } = useAuth();
   const navigate = useNavigate();
   const [paymentMethod, setPaymentMethod] = useState("upi");
   const [coupon, setCoupon] = useState("");
   const [couponApplied, setCouponApplied] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [signupMode, setSignupMode] = useState(false);
 
   const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
   const totalOriginal = items.reduce((sum, item) => sum + item.originalPrice, 0);
@@ -54,6 +59,50 @@ const Checkout = () => {
         <Link to="/">
           <Button variant="outline" size="sm">Go to Home</Button>
         </Link>
+      </div>
+    );
+  }
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <h2 className="text-xl font-bold text-foreground">Login Required</h2>
+          <p className="text-sm text-muted-foreground mt-2 mb-5">
+            Please login or create an account to continue checkout.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setSignupMode(false);
+                setLoginOpen(true);
+              }}
+            >
+              Login
+            </Button>
+            <Button
+              className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
+              onClick={() => {
+                setSignupMode(true);
+                setLoginOpen(true);
+              }}
+            >
+              Sign Up
+            </Button>
+          </div>
+          <Button variant="ghost" className="mt-3" onClick={() => navigate("/packages")}>
+            Back to Courses
+          </Button>
+          <LoginModal
+            open={loginOpen}
+            onOpenChange={setLoginOpen}
+            isSignup={signupMode}
+            redirectPath="/checkout"
+            onToggleMode={() => setSignupMode((prev) => !prev)}
+          />
+        </div>
       </div>
     );
   }

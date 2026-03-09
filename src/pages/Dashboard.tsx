@@ -15,6 +15,8 @@ import {
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
+import LoginModal from "@/components/LoginModal";
+import { downloadStudyMaterialPdf } from "@/lib/studyMaterial";
 
 const mockUser = {
   name: "Rahul Sharma",
@@ -32,9 +34,11 @@ const quickActions = [
 const Dashboard = () => {
   const navigate = useNavigate();
   const { purchasedCourses, orders } = useCart();
-  const { logout } = useAuth();
+  const { isLoggedIn, logout } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
   const [profile, setProfile] = useState(mockUser);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [signupMode, setSignupMode] = useState(false);
 
   const totalHours = purchasedCourses.reduce((sum, c) => sum + (c.hours || 0), 0);
   const completedCount = purchasedCourses.filter(c => c.progress === 100).length;
@@ -46,6 +50,49 @@ const Dashboard = () => {
     logout();
     navigate("/");
   };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <h2 className="text-xl font-bold text-foreground">Login Required</h2>
+          <p className="text-sm text-muted-foreground mt-2 mb-5">
+            Please login or sign up to view your dashboard.
+          </p>
+          <div className="flex gap-2">
+            <Button
+              variant="outline"
+              className="flex-1"
+              onClick={() => {
+                setSignupMode(false);
+                setLoginOpen(true);
+              }}
+            >
+              Login
+            </Button>
+            <Button
+              className="flex-1 bg-accent hover:bg-accent/90 text-accent-foreground"
+              onClick={() => {
+                setSignupMode(true);
+                setLoginOpen(true);
+              }}
+            >
+              Sign Up
+            </Button>
+          </div>
+          <Button variant="ghost" className="mt-3" onClick={() => navigate("/")}>
+            Back to Home
+          </Button>
+          <LoginModal
+            open={loginOpen}
+            onOpenChange={setLoginOpen}
+            isSignup={signupMode}
+            onToggleMode={() => setSignupMode((prev) => !prev)}
+          />
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-muted/30 pb-20 md:pb-8">
@@ -178,15 +225,24 @@ const Dashboard = () => {
                             <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" /> {course.hours}h</span>
                           </div>
                           <Progress value={course.progress} className="h-1.5 bg-muted" />
-                          <Button
-                            size="sm"
-                            className="mt-2.5 w-full bg-accent hover:bg-accent/90 text-accent-foreground text-xs h-8 rounded-lg font-semibold group/btn"
-                            onClick={() => navigate(`/learn/${course.id}`)}
-                          >
-                            <PlayCircle className="w-3.5 h-3.5 mr-1 group-hover/btn:scale-110 transition-transform" />
-                            {course.progress === 100 ? "Review" : course.progress > 0 ? "Continue" : "Start"}
-                            <ChevronRight className="w-3 h-3 ml-auto" />
-                          </Button>
+                          <div className="mt-2.5 grid grid-cols-2 gap-2">
+                            <Button
+                              size="sm"
+                              className="bg-accent hover:bg-accent/90 text-accent-foreground text-xs h-8 rounded-lg font-semibold group/btn"
+                              onClick={() => navigate(`/learn/${course.id}`)}
+                            >
+                              <PlayCircle className="w-3.5 h-3.5 mr-1 group-hover/btn:scale-110 transition-transform" />
+                              {course.progress === 100 ? "Review" : course.progress > 0 ? "Continue" : "Start"}
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs h-8 rounded-lg font-semibold"
+                              onClick={() => downloadStudyMaterialPdf(course.title)}
+                            >
+                              Study PDF
+                            </Button>
+                          </div>
                         </div>
                       </CardContent>
                     </div>

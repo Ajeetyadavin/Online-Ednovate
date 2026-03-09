@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import CourseCard from "@/components/CourseCard";
 import { courses, categories, courseGroups } from "@/data/courses";
@@ -99,9 +99,9 @@ const Packages = () => {
   const [selectedProfessors, setSelectedProfessors] = useState<string[]>([]);
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    courses: true,
-    levels: true,
-    types: true,
+    courses: false,
+    levels: false,
+    types: false,
     language: false,
     professor: false,
   });
@@ -198,30 +198,20 @@ const Packages = () => {
     }));
   }, [coursePoolAfterCategory]);
 
-  // ── When course selection changes, auto-open dependent sections ───
-  // Also clean up stale filters when course changes
-  useMemo(() => {
-    if (selectedCourses.length > 0) {
-      // Auto-open levels & types when a course is selected
-      setOpenSections((prev) => ({ ...prev, levels: true, types: true, language: true }));
+  // Keep filter selections valid as course groups change.
+  useEffect(() => {
+    const validLevelIds = dynamicLevels.map((l) => l.id);
+    setSelectedLevels((prev) => prev.filter((l) => validLevelIds.includes(l)));
 
-      // Remove levels that no longer exist
-      const validLevelIds = dynamicLevels.map((l) => l.id);
-      setSelectedLevels((prev) => prev.filter((l) => validLevelIds.includes(l)));
+    const validTypeIds = dynamicTypes.map((t) => t.id);
+    setSelectedTypes((prev) => prev.filter((t) => validTypeIds.includes(t)));
 
-      // Remove types that no longer exist
-      const validTypeIds = dynamicTypes.map((t) => t.id);
-      setSelectedTypes((prev) => prev.filter((t) => validTypeIds.includes(t)));
+    const validLangs = dynamicLanguages.map((l) => l.label);
+    setSelectedLanguages((prev) => prev.filter((l) => validLangs.includes(l)));
 
-      // Remove languages that no longer exist
-      const validLangs = dynamicLanguages.map((l) => l.label);
-      setSelectedLanguages((prev) => prev.filter((l) => validLangs.includes(l)));
-
-      // Remove professors that no longer exist
-      const validProfs = dynamicProfessors.map((p) => p.label);
-      setSelectedProfessors((prev) => prev.filter((p) => validProfs.includes(p)));
-    }
-  }, [selectedCourses]);
+    const validProfs = dynamicProfessors.map((p) => p.label);
+    setSelectedProfessors((prev) => prev.filter((p) => validProfs.includes(p)));
+  }, [dynamicLevels, dynamicTypes, dynamicLanguages, dynamicProfessors]);
 
   // ── Final filtered results ────────────────────────────────────────
   const filtered = useMemo(() => {

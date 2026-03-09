@@ -10,18 +10,30 @@ import {
   SheetTrigger,
 } from "@/components/ui/sheet";
 import { useCart } from "@/context/CartContext";
+import { useAuth } from "@/context/AuthContext";
 import { Separator } from "@/components/ui/separator";
+import LoginModal from "./LoginModal";
 
 const CartDrawer = () => {
   const { items, removeFromCart, cartCount, clearCart } = useCart();
+  const { isLoggedIn } = useAuth();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
+  const [loginOpen, setLoginOpen] = useState(false);
+  const [signupMode, setSignupMode] = useState(false);
 
   const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
   const totalOriginal = items.reduce((sum, item) => sum + item.originalPrice, 0);
   const totalSavings = totalOriginal - totalPrice;
 
   const handleCheckout = () => {
+    if (!isLoggedIn) {
+      setOpen(false);
+      setSignupMode(false);
+      setLoginOpen(true);
+      return;
+    }
+
     setOpen(false);
     setTimeout(() => navigate("/checkout"), 200);
   };
@@ -120,6 +132,14 @@ const CartDrawer = () => {
           </>
         )}
       </SheetContent>
+
+      <LoginModal
+        open={loginOpen}
+        onOpenChange={setLoginOpen}
+        isSignup={signupMode}
+        redirectPath="/checkout"
+        onToggleMode={() => setSignupMode((prev) => !prev)}
+      />
     </Sheet>
   );
 };

@@ -29,7 +29,7 @@ const HeroBanner = () => {
       <div className="w-full py-1 md:py-2">
         <div className="relative overflow-hidden border-y border-border/60 shadow-[0_24px_55px_-35px_hsl(var(--primary)/0.55)]">
           <Link to="/packages" className="block">
-            <div className="relative aspect-[16/7] sm:aspect-[16/6] md:aspect-[16/5.6]">
+            <div className="relative aspect-[16/6.3] sm:aspect-[16/5.5] md:aspect-[16/4.7] xl:aspect-[16/4.4]">
               {bannerSlides.map((slide, i) => (
                 <div
                   key={slide.id}
@@ -43,8 +43,8 @@ const HeroBanner = () => {
                     className="w-full h-full object-cover"
                     loading={i === 0 ? "eager" : "lazy"}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/35 via-black/5 to-transparent" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/10 via-transparent to-black/20" />
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
+                  <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/35" />
                 </div>
               ))}
 
