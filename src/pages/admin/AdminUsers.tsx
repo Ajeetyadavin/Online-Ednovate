@@ -1,9 +1,9 @@
 import { useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Button } from "@/components/ui/button";
+import { Card, CardContent } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Search, Mail, Phone, BookOpen } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
+import { useCart } from "@/context/CartContext";
 
 interface Student {
   id: string;
@@ -16,25 +16,55 @@ interface Student {
   joinedDate: string;
 }
 
-const mockStudents: Student[] = [
-  { id: "1", name: "Rahul Kumar", email: "rahul@gmail.com", phone: "+91 98765 43210", status: "active", enrolledCourses: ["CA Foundation", "Tax Planning"], totalSpent: 6998, joinedDate: "2024-01-15" },
-  { id: "2", name: "Priya Sharma", email: "priya@gmail.com", phone: "+91 87654 32109", status: "active", enrolledCourses: ["CS Executive Combo"], totalSpent: 7999, joinedDate: "2024-02-20" },
-  { id: "3", name: "Aman Gupta", email: "aman@gmail.com", phone: "+91 76543 21098", status: "inactive", enrolledCourses: ["CMA Inter Law"], totalSpent: 2499, joinedDate: "2024-03-10" },
-  { id: "4", name: "Sneha Patel", email: "sneha@gmail.com", phone: "+91 65432 10987", status: "active", enrolledCourses: ["CA Inter Accounts", "CA Foundation", "Tax Planning"], totalSpent: 10997, joinedDate: "2023-11-05" },
-  { id: "5", name: "Vikash Singh", email: "vikash@gmail.com", phone: "+91 54321 09876", status: "active", enrolledCourses: ["Tax Masterclass"], totalSpent: 1999, joinedDate: "2024-04-01" },
-];
-
 const AdminUsers = () => {
+  const { orders } = useCart();
   const [search, setSearch] = useState("");
-  const filtered = mockStudents.filter(
-    (s) => s.name.toLowerCase().includes(search.toLowerCase()) || s.email.toLowerCase().includes(search.toLowerCase())
+
+  const students = orders.reduce<Student[]>((acc, order, index) => {
+    const identity = order.email || order.phone || order.studentName || `student-${index + 1}`;
+    const existing = acc.find(
+      (student) =>
+        student.email === order.email ||
+        (student.phone && order.phone && student.phone === order.phone) ||
+        student.name === order.studentName,
+    );
+
+    if (existing) {
+      existing.totalSpent += order.total;
+      existing.joinedDate = existing.joinedDate || order.date;
+      order.items.forEach((item) => {
+        if (!existing.enrolledCourses.includes(item.title)) {
+          existing.enrolledCourses.push(item.title);
+        }
+      });
+      return acc;
+    }
+
+    acc.push({
+      id: identity,
+      name: order.studentName || "Student",
+      email: order.email || "",
+      phone: order.phone || "",
+      status: order.status === "Completed" ? "active" : "inactive",
+      enrolledCourses: order.items.map((item) => item.title),
+      totalSpent: order.total,
+      joinedDate: order.date,
+    });
+
+    return acc;
+  }, []);
+
+  const filtered = students.filter(
+    (student) =>
+      student.name.toLowerCase().includes(search.toLowerCase()) ||
+      student.email.toLowerCase().includes(search.toLowerCase()),
   );
 
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Users & Enrollments</h1>
-        <p className="text-sm text-muted-foreground">{mockStudents.length} registered students</p>
+        <p className="text-sm text-muted-foreground">{students.length} registered students</p>
       </div>
 
       <div className="relative max-w-md">
@@ -43,6 +73,14 @@ const AdminUsers = () => {
       </div>
 
       <div className="grid gap-3">
+        {filtered.length === 0 && (
+          <Card>
+            <CardContent className="p-6 text-sm text-muted-foreground">
+              No users found. Users will appear after successful checkouts.
+            </CardContent>
+          </Card>
+        )}
+
         {filtered.map((student) => (
           <Card key={student.id}>
             <CardContent className="p-4">
@@ -59,7 +97,7 @@ const AdminUsers = () => {
                   </div>
                   <div className="flex flex-wrap items-center gap-3 mt-1 text-sm text-muted-foreground">
                     <span className="flex items-center gap-1"><Mail className="w-3 h-3" />{student.email}</span>
-                    <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{student.phone}</span>
+                    <span className="flex items-center gap-1"><Phone className="w-3 h-3" />{student.phone || "N/A"}</span>
                   </div>
                   <div className="flex flex-wrap gap-1.5 mt-2">
                     {student.enrolledCourses.map((course) => (

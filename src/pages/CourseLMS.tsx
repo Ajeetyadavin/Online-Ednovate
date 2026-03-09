@@ -1,6 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { courses } from "@/data/courses";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
@@ -15,78 +14,44 @@ import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
 import LoginModal from "@/components/LoginModal";
 import { downloadStudyMaterialPdf } from "@/lib/studyMaterial";
-
-interface Lesson {
-  id: string;
-  title: string;
-  duration: string;
-  type: "video" | "pdf" | "quiz";
-  completed: boolean;
-  locked: boolean;
-  videoUrl?: string;
-}
-
-interface Chapter {
-  id: string;
-  title: string;
-  lessons: Lesson[];
-}
-
-const generateCurriculum = (courseName: string): Chapter[] => [
-  {
-    id: "ch1",
-    title: "Introduction & Basics",
-    lessons: [
-      { id: "l1", title: `Welcome to ${courseName}`, duration: "5:30", type: "video", completed: true, locked: false, videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4" },
-      { id: "l2", title: "Course Overview & Study Plan", duration: "12:45", type: "video", completed: true, locked: false, videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4" },
-      { id: "l3", title: "Study Material PDF", duration: "PDF", type: "pdf", completed: false, locked: false },
-      { id: "l4", title: "Chapter 1 Quiz", duration: "10 Qs", type: "quiz", completed: false, locked: false },
-    ],
-  },
-  {
-    id: "ch2",
-    title: "Core Concepts - Part 1",
-    lessons: [
-      { id: "l5", title: "Fundamental Principles", duration: "25:10", type: "video", completed: false, locked: false, videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4" },
-      { id: "l6", title: "Key Definitions & Terms", duration: "18:30", type: "video", completed: false, locked: false, videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4" },
-      { id: "l7", title: "Practice Problems Set 1", duration: "PDF", type: "pdf", completed: false, locked: false },
-      { id: "l8", title: "Solved Examples", duration: "32:00", type: "video", completed: false, locked: false, videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4" },
-    ],
-  },
-  {
-    id: "ch3",
-    title: "Core Concepts - Part 2",
-    lessons: [
-      { id: "l9", title: "Advanced Theory", duration: "28:15", type: "video", completed: false, locked: false, videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4" },
-      { id: "l10", title: "Case Studies", duration: "35:00", type: "video", completed: false, locked: false, videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4" },
-      { id: "l11", title: "Notes & Summary", duration: "PDF", type: "pdf", completed: false, locked: false },
-    ],
-  },
-  {
-    id: "ch4",
-    title: "Practice & Revision",
-    lessons: [
-      { id: "l12", title: "Revision Lecture", duration: "45:00", type: "video", completed: false, locked: true, videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4" },
-      { id: "l13", title: "Mock Test", duration: "30 Qs", type: "quiz", completed: false, locked: true },
-      { id: "l14", title: "Final Summary Notes", duration: "PDF", type: "pdf", completed: false, locked: true },
-    ],
-  },
-];
+import {
+  usePlatformData,
+  type Chapter,
+  type Lesson,
+} from "@/context/PlatformDataContext";
 
 const CourseLMS = () => {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { courses, getCurriculumForCourse, setCurriculumForCourse } = usePlatformData();
   const { isLoggedIn } = useAuth();
   const { isPurchased } = useCart();
   const course = courses.find((c) => c.id === id);
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
 
-  const [curriculum, setCurriculum] = useState<Chapter[]>(() =>
-    generateCurriculum(course?.title || "Course")
-  );
-  const [activeLesson, setActiveLesson] = useState<Lesson>(curriculum[0].lessons[0]);
+  const [curriculum, setCurriculum] = useState<Chapter[]>([]);
+  const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+
+  useEffect(() => {
+    if (!course) {
+      setCurriculum([]);
+      setActiveLesson(null);
+      return;
+    }
+
+    const nextCurriculum = getCurriculumForCourse(course.id, course.title);
+    setCurriculum(nextCurriculum);
+
+    setActiveLesson((prev) => {
+      if (!prev) return nextCurriculum[0]?.lessons[0] || null;
+      const stillExists = nextCurriculum
+        .flatMap((chapter) => chapter.lessons)
+        .find((lesson) => lesson.id === prev.id);
+      return stillExists || nextCurriculum[0]?.lessons[0] || null;
+    });
+  }, [course, getCurriculumForCourse]);
 
   if (!course) {
     return (
@@ -160,10 +125,11 @@ const CourseLMS = () => {
   const completedLessons = curriculum.reduce(
     (sum, ch) => sum + ch.lessons.filter((l) => l.completed).length, 0
   );
-  const progressPercent = Math.round((completedLessons / totalLessons) * 100);
+  const progressPercent = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
 
   const allLessons = curriculum.flatMap((ch) => ch.lessons);
-  const currentIndex = allLessons.findIndex((l) => l.id === activeLesson.id);
+  const currentLessonId = activeLesson?.id || allLessons[0]?.id || "";
+  const currentIndex = allLessons.findIndex((l) => l.id === currentLessonId);
 
   const handleLessonClick = (lesson: Lesson) => {
     if (lesson.locked) return;
@@ -185,15 +151,18 @@ const CourseLMS = () => {
   };
 
   const markComplete = () => {
-    setCurriculum((prev) =>
-      prev.map((ch) => ({
+    if (!activeLesson || !course) return;
+    setCurriculum((prev) => {
+      const next = prev.map((ch) => ({
         ...ch,
         lessons: ch.lessons.map((l) =>
-          l.id === activeLesson.id ? { ...l, completed: true } : l
+          l.id === activeLesson.id ? { ...l, completed: true } : l,
         ),
-      }))
-    );
-    setActiveLesson((prev) => ({ ...prev, completed: true }));
+      }));
+      setCurriculumForCourse(course.id, next);
+      return next;
+    });
+    setActiveLesson((prev) => (prev ? { ...prev, completed: true } : prev));
   };
 
   const getLessonIcon = (lesson: Lesson) => {
@@ -204,7 +173,15 @@ const CourseLMS = () => {
     return <BarChart3 className="w-4 h-4 text-accent shrink-0" />;
   };
 
-  const currentChapter = curriculum.find((ch) => ch.lessons.some((l) => l.id === activeLesson.id));
+  const currentChapter = curriculum.find((ch) => ch.lessons.some((l) => l.id === currentLessonId));
+
+  if (!activeLesson) {
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <p className="text-muted-foreground">Loading lesson content...</p>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-background flex flex-col">

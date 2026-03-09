@@ -1,28 +1,43 @@
 import { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
-import { bannerSlides } from "@/data/courses";
 import { Link } from "react-router-dom";
+import { usePlatformData } from "@/context/PlatformDataContext";
 
 const HeroBanner = () => {
+  const { banners } = usePlatformData();
   const [current, setCurrent] = useState(0);
   const [isTransitioning, setIsTransitioning] = useState(false);
 
+  const visibleBanners = banners
+    .filter((banner) => banner.isVisible)
+    .sort((a, b) => a.sortOrder - b.sortOrder);
+
+  useEffect(() => {
+    if (current >= visibleBanners.length) {
+      setCurrent(0);
+    }
+  }, [current, visibleBanners.length]);
+
   const goTo = useCallback((index: number) => {
+    if (visibleBanners.length === 0) return;
     if (isTransitioning) return;
     setIsTransitioning(true);
     setCurrent(index);
     setTimeout(() => setIsTransitioning(false), 700);
-  }, [isTransitioning]);
+  }, [isTransitioning, visibleBanners.length]);
 
   useEffect(() => {
+    if (visibleBanners.length <= 1) return;
     const timer = setInterval(() => {
-      goTo((current + 1) % bannerSlides.length);
+      goTo((current + 1) % visibleBanners.length);
     }, 5000);
     return () => clearInterval(timer);
-  }, [current, goTo]);
+  }, [current, goTo, visibleBanners.length]);
 
-  const prev = () => goTo((current - 1 + bannerSlides.length) % bannerSlides.length);
-  const next = () => goTo((current + 1) % bannerSlides.length);
+  if (visibleBanners.length === 0) return null;
+
+  const prev = () => goTo((current - 1 + visibleBanners.length) % visibleBanners.length);
+  const next = () => goTo((current + 1) % visibleBanners.length);
 
   return (
     <section className="relative overflow-hidden group bg-gradient-to-b from-muted/35 to-background">
@@ -30,7 +45,7 @@ const HeroBanner = () => {
         <div className="relative overflow-hidden border-y border-border/60 shadow-[0_24px_55px_-35px_hsl(var(--primary)/0.55)]">
           <Link to="/packages" className="block">
             <div className="relative aspect-[16/6.3] sm:aspect-[16/5.5] md:aspect-[16/4.7] xl:aspect-[16/4.4]">
-              {bannerSlides.map((slide, i) => (
+              {visibleBanners.map((slide, i) => (
                 <div
                   key={slide.id}
                   className={`absolute inset-0 transition-all duration-700 ease-in-out ${
@@ -38,8 +53,8 @@ const HeroBanner = () => {
                   }`}
                 >
                   <img
-                    src={slide.image}
-                    alt={`Banner ${slide.id}`}
+                    src={slide.imageUrl}
+                    alt={slide.title}
                     className="w-full h-full object-cover"
                     loading={i === 0 ? "eager" : "lazy"}
                   />
@@ -77,7 +92,7 @@ const HeroBanner = () => {
           </button>
 
           <div className="absolute bottom-2.5 md:bottom-3.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-background/35 backdrop-blur-md border border-primary-foreground/15">
-            {bannerSlides.map((_, i) => (
+            {visibleBanners.map((_, i) => (
               <button
                 key={i}
                 onClick={() => goTo(i)}

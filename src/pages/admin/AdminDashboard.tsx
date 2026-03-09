@@ -1,29 +1,90 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { BookOpen, Users, ShoppingCart, IndianRupee, TrendingUp, Eye } from "lucide-react";
-
-const stats = [
-  { label: "Total Courses", value: "24", icon: BookOpen, change: "+3 this month", color: "text-blue-600 bg-blue-100" },
-  { label: "Total Students", value: "1,248", icon: Users, change: "+89 this week", color: "text-green-600 bg-green-100" },
-  { label: "Total Orders", value: "856", icon: ShoppingCart, change: "+12 today", color: "text-purple-600 bg-purple-100" },
-  { label: "Revenue", value: "₹12,45,000", icon: IndianRupee, change: "+18% vs last month", color: "text-orange-600 bg-orange-100" },
-  { label: "Active Enrollments", value: "934", icon: TrendingUp, change: "92% completion", color: "text-teal-600 bg-teal-100" },
-  { label: "Page Views", value: "15.2K", icon: Eye, change: "Last 30 days", color: "text-pink-600 bg-pink-100" },
-];
-
-const recentOrders = [
-  { id: "ORD-001", name: "Rahul Kumar", course: "CA Foundation Complete", amount: "₹4,999", status: "Paid", date: "Today" },
-  { id: "ORD-002", name: "Priya Sharma", course: "CS Executive Combo", amount: "₹7,999", status: "Pending", date: "Yesterday" },
-  { id: "ORD-003", name: "Aman Gupta", course: "CMA Inter Law", amount: "₹2,499", status: "Paid", date: "2 days ago" },
-  { id: "ORD-004", name: "Sneha Patel", course: "CA Inter Accounts", amount: "₹3,999", status: "Failed", date: "3 days ago" },
-  { id: "ORD-005", name: "Vikash Singh", course: "Tax Masterclass", amount: "₹1,999", status: "Paid", date: "4 days ago" },
-];
+import { useMemo } from "react";
+import { usePlatformData } from "@/context/PlatformDataContext";
+import { useCart } from "@/context/CartContext";
 
 const AdminDashboard = () => {
+  const { courses, categories, banners, announcements, testimonials, curricula } = usePlatformData();
+  const { orders, purchasedCourses } = useCart();
+
+  const totalRevenue = useMemo(
+    () => orders.reduce((sum, order) => sum + order.total, 0),
+    [orders],
+  );
+
+  const visibleCourses = courses.filter((course) => course.isVisible).length;
+  const visibleCategories = categories.filter((category) => category.isVisible).length;
+  const totalLessons = Object.values(curricula).reduce(
+    (sum, chapters) => sum + chapters.reduce((chapterSum, chapter) => chapterSum + chapter.lessons.length, 0),
+    0,
+  );
+
+  const stats = [
+    {
+      label: "Total Courses",
+      value: String(courses.length),
+      icon: BookOpen,
+      change: `${visibleCourses} visible on website`,
+      color: "text-blue-600 bg-blue-100",
+    },
+    {
+      label: "Categories",
+      value: String(categories.length),
+      icon: Users,
+      change: `${visibleCategories} visible categories`,
+      color: "text-green-600 bg-green-100",
+    },
+    {
+      label: "Total Orders",
+      value: String(orders.length),
+      icon: ShoppingCart,
+      change: `${purchasedCourses.length} purchased courses`,
+      color: "text-purple-600 bg-purple-100",
+    },
+    {
+      label: "Revenue",
+      value: `₹${totalRevenue.toLocaleString()}`,
+      icon: IndianRupee,
+      change: "All completed checkouts",
+      color: "text-orange-600 bg-orange-100",
+    },
+    {
+      label: "LMS Lessons",
+      value: String(totalLessons),
+      icon: TrendingUp,
+      change: `${Object.keys(curricula).length} courses with curriculum`,
+      color: "text-teal-600 bg-teal-100",
+    },
+    {
+      label: "Frontend Content",
+      value: String(
+        banners.filter((banner) => banner.isVisible).length +
+          announcements.filter((announcement) => announcement.isVisible).length +
+          testimonials.filter((testimonial) => testimonial.isVisible).length,
+      ),
+      icon: Eye,
+      change: "Visible banners + announcements + testimonials",
+      color: "text-pink-600 bg-pink-100",
+    },
+  ];
+
+  const recentOrders = orders.slice(0, 8).map((order) => ({
+    id: order.id,
+    name: "Student",
+    course: order.items.map((item) => item.title).join(", "),
+    amount: `₹${order.total.toLocaleString()}`,
+    status: order.status === "Completed" ? "Paid" : "Pending",
+    date: order.date,
+  }));
+
   return (
     <div className="space-y-6">
       <div>
         <h1 className="text-2xl font-bold text-foreground">Dashboard</h1>
-        <p className="text-muted-foreground text-sm">Welcome back! Here's your platform overview.</p>
+        <p className="text-muted-foreground text-sm">
+          Platform overview: courses, frontend visibility, LMS content, and orders.
+        </p>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -50,6 +111,9 @@ const AdminDashboard = () => {
           <CardTitle className="text-lg">Recent Orders</CardTitle>
         </CardHeader>
         <CardContent>
+          {recentOrders.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No orders yet. New checkouts will appear here.</p>
+          ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
@@ -84,6 +148,7 @@ const AdminDashboard = () => {
               </tbody>
             </table>
           </div>
+          )}
         </CardContent>
       </Card>
     </div>

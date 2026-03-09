@@ -1,5 +1,4 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
-import { courses } from "@/data/courses";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
@@ -27,34 +26,8 @@ import {
   Phone,
   MessageCircle,
 } from "lucide-react";
-import { useState } from "react";
-
-const courseContentData: Record<string, { title: string; lectures: number }[]> = {
-  "1": [
-    { title: "Accounting Principles & Standards", lectures: 45 },
-    { title: "Business Mathematics & Statistics", lectures: 38 },
-    { title: "Business Law & Ethics", lectures: 52 },
-    { title: "Economics for Finance", lectures: 35 },
-    { title: "Mock Tests & Practice Papers", lectures: 150 },
-  ],
-  "4": [
-    { title: "Advanced Accounting", lectures: 65 },
-    { title: "Corporate & Other Laws", lectures: 55 },
-    { title: "Cost & Management Accounting", lectures: 70 },
-    { title: "Taxation (Direct & Indirect)", lectures: 80 },
-    { title: "Auditing & Assurance", lectures: 60 },
-    { title: "Practice Papers & Mock Tests", lectures: 120 },
-  ],
-  "7": [
-    { title: "Financial Reporting", lectures: 85 },
-    { title: "Strategic Financial Management", lectures: 70 },
-    { title: "Advanced Auditing", lectures: 65 },
-    { title: "Corporate & Economic Laws", lectures: 60 },
-    { title: "Strategic Cost Management", lectures: 55 },
-    { title: "Elective Paper", lectures: 45 },
-    { title: "Mock Tests & Revision", lectures: 140 },
-  ],
-};
+import { useMemo, useState } from "react";
+import { usePlatformData } from "@/context/PlatformDataContext";
 
 const defaultContent = [
   { title: "Module 1 - Core Concepts", lectures: 25 },
@@ -72,6 +45,7 @@ const reviews = [
 const CourseDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { courses, getCurriculumForCourse } = usePlatformData();
   const { addToCart, removeFromCart, isInCart, isPurchased } = useCart();
   const { isLoggedIn } = useAuth();
   const [activeTab, setActiveTab] = useState<"content" | "ratings" | "reviews">("content");
@@ -95,7 +69,17 @@ const CourseDetails = () => {
 
   const inCart = isInCart(course.id);
   const purchased = isPurchased(course.id);
-  const content = courseContentData[course.id] || defaultContent;
+  const content = useMemo(() => {
+    const curriculum = getCurriculumForCourse(course.id, course.title);
+    if (!curriculum || curriculum.length === 0) {
+      return defaultContent;
+    }
+
+    return curriculum.map((chapter) => ({
+      title: chapter.title,
+      lectures: chapter.lessons.length,
+    }));
+  }, [course.id, course.title, getCurriculumForCourse]);
   const totalLectures = content.reduce((sum, c) => sum + c.lectures, 0);
   const validityMonths = course.hours > 400 ? 18 : 12;
   const perHourCost = course.hours > 0 ? (course.price / course.hours).toFixed(2) : "0";

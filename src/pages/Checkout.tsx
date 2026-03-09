@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, ShieldCheck, CreditCard, Smartphone, Building2, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -13,13 +13,23 @@ import { toast } from "@/hooks/use-toast";
 
 const Checkout = () => {
   const { items, cartCount, completePurchase } = useCart();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, user } = useAuth();
   const navigate = useNavigate();
   const [paymentMethod, setPaymentMethod] = useState("upi");
   const [coupon, setCoupon] = useState("");
   const [couponApplied, setCouponApplied] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
+  const [fullName, setFullName] = useState(user?.name || "");
+  const [email, setEmail] = useState(user?.email || "");
+  const [phone, setPhone] = useState(user?.mobile || "");
+
+  useEffect(() => {
+    if (!user) return;
+    setFullName((prev) => prev || user.name || "");
+    setEmail((prev) => prev || user.email || "");
+    setPhone((prev) => prev || user.mobile || "");
+  }, [user]);
 
   const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
   const totalOriginal = items.reduce((sum, item) => sum + item.originalPrice, 0);
@@ -37,16 +47,28 @@ const Checkout = () => {
   };
 
   const handlePlaceOrder = () => {
+    if (!fullName.trim() || !email.trim()) {
+      toast({ title: "Missing Details", description: "Please enter your full name and email." });
+      return;
+    }
+
     const orderId = "EDN" + Math.random().toString(36).substring(2, 10).toUpperCase();
     const orderItems = items.map((item) => ({ title: item.title, price: item.price }));
-    completePurchase({ orderId, total: finalTotal, paymentMethod });
+    completePurchase({
+      orderId,
+      total: finalTotal,
+      paymentMethod,
+      studentName: fullName.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+    });
     navigate("/order-confirmation", {
       state: {
         items: orderItems,
         total: finalTotal,
         orderId,
-        email: "student@example.com",
-        name: "Student",
+        email: email.trim(),
+        name: fullName.trim(),
         paymentMethod,
       },
     });
@@ -134,15 +156,32 @@ const Checkout = () => {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-1.5">
                   <Label className="text-xs">Full Name</Label>
-                  <Input placeholder="Enter your name" className="h-9 text-sm bg-secondary/50 border-border" />
+                  <Input
+                    placeholder="Enter your name"
+                    className="h-9 text-sm bg-secondary/50 border-border"
+                    value={fullName}
+                    onChange={(e) => setFullName(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs">Email</Label>
-                  <Input type="email" placeholder="your@email.com" className="h-9 text-sm bg-secondary/50 border-border" />
+                  <Input
+                    type="email"
+                    placeholder="your@email.com"
+                    className="h-9 text-sm bg-secondary/50 border-border"
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1.5 sm:col-span-2">
                   <Label className="text-xs">Phone Number</Label>
-                  <Input type="tel" placeholder="+91 98765 43210" className="h-9 text-sm bg-secondary/50 border-border" />
+                  <Input
+                    type="tel"
+                    placeholder="+91 98765 43210"
+                    className="h-9 text-sm bg-secondary/50 border-border"
+                    value={phone}
+                    onChange={(e) => setPhone(e.target.value)}
+                  />
                 </div>
               </div>
             </div>

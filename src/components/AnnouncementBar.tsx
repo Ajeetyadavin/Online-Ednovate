@@ -1,15 +1,15 @@
 import { Megaphone } from "lucide-react";
 import { Link } from "react-router-dom";
-
-const announcements = [
-  { text: "CA Foundation Nov 2025 batch: early bird 20% off", link: "/packages?category=ca" },
-  { text: "Free demo classes are live for all courses", link: "/packages" },
-  { text: "CA Inter May 2025: 95% pass rate by Ednovate students", link: "/#why-choose" },
-  { text: "CS Executive new batch starts 1 April: limited seats", link: "/packages?category=cs" },
-  { text: "Use code EDU5 for an extra 5% checkout discount", link: "/packages" },
-];
+import { usePlatformData } from "@/context/PlatformDataContext";
 
 const AnnouncementBar = () => {
+  const { announcements } = usePlatformData();
+  const visibleAnnouncements = announcements.filter((announcement) => announcement.isVisible);
+
+  if (visibleAnnouncements.length === 0) {
+    return null;
+  }
+
   return (
     <section className="bg-background py-1.5 md:py-2 overflow-x-clip">
       <div className="w-full">
@@ -25,14 +25,14 @@ const AnnouncementBar = () => {
 
             <div className="flex-1 overflow-hidden relative">
               <div className="flex animate-marquee whitespace-nowrap gap-6 sm:gap-10 py-2 px-3 sm:px-4 [animation-duration:30s] sm:[animation-duration:25s]">
-                {[...announcements, ...announcements].map((item, i) => (
+                {[...visibleAnnouncements, ...visibleAnnouncements].map((item, i) => (
                   <Link
                     key={i}
                     to={item.link}
                     className="inline-flex items-center gap-1.5 sm:gap-2 text-[11px] sm:text-xs font-semibold text-foreground/70 hover:text-primary transition-colors"
                   >
                     <span className="w-1.5 h-1.5 rounded-full bg-accent/90 shrink-0" />
-                    {item.text}
+                    {item.title}: {item.content}
                   </Link>
                 ))}
               </div>

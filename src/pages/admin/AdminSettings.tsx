@@ -7,10 +7,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Switch } from "@/components/ui/switch";
 import { Palette, Type, Layout, Eye, Save, Image, RotateCcw, Upload } from "lucide-react";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
+import { usePlatformData } from "@/context/PlatformDataContext";
 import { toast } from "sonner";
 
 const AdminSettings = () => {
   const { settings, updateColors, updateFonts, updateSections, updateLogo, resetSettings } = useSiteSettings();
+  const { resetPlatformData } = usePlatformData();
   const [saved, setSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -23,6 +25,11 @@ const AdminSettings = () => {
   const handleReset = () => {
     resetSettings();
     toast.success("Settings reset to defaults!");
+  };
+
+  const handleResetPlatformData = () => {
+    resetPlatformData();
+    toast.success("Platform content reset to defaults.");
   };
 
   const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -75,6 +82,9 @@ const AdminSettings = () => {
           <p className="text-sm text-muted-foreground">Colors, fonts, logo & section visibility — changes apply live!</p>
         </div>
         <div className="flex gap-2">
+          <Button variant="outline" onClick={handleResetPlatformData} className="gap-2">
+            <RotateCcw className="w-4 h-4" /> Reset CMS Data
+          </Button>
           <Button variant="outline" onClick={handleReset} className="gap-2">
             <RotateCcw className="w-4 h-4" /> Reset
           </Button>

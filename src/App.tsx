@@ -19,6 +19,7 @@ import { CartProvider } from "./context/CartContext";
 import { AuthProvider } from "./context/AuthContext";
 import { AdminAuthProvider } from "./context/AdminAuthContext";
 import { SiteSettingsProvider } from "./context/SiteSettingsContext";
+import { PlatformDataProvider } from "./context/PlatformDataContext";
 import ScrollToTop from "./components/ScrollToTop";
 
 import AdminLogin from "./pages/admin/AdminLogin";
@@ -30,12 +31,14 @@ import AdminUsers from "./pages/admin/AdminUsers";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminContent from "./pages/admin/AdminContent";
 import AdminSettings from "./pages/admin/AdminSettings";
+import AdminCourseContent from "./pages/admin/AdminCourseContent";
 
 const queryClient = new QueryClient();
 
 const App = () => (
   <QueryClientProvider client={queryClient}>
     <SiteSettingsProvider>
+    <PlatformDataProvider>
     <AuthProvider>
     <CartProvider>
       <TooltipProvider>
@@ -66,6 +69,7 @@ const App = () => (
               <Route path="users" element={<AdminUsers />} />
               <Route path="orders" element={<AdminOrders />} />
               <Route path="content" element={<AdminContent />} />
+              <Route path="lms" element={<AdminCourseContent />} />
               <Route path="settings" element={<AdminSettings />} />
             </Route>
 
@@ -75,6 +79,7 @@ const App = () => (
       </TooltipProvider>
     </CartProvider>
     </AuthProvider>
+    </PlatformDataProvider>
     </SiteSettingsProvider>
   </QueryClientProvider>
 );

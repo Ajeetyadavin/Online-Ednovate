@@ -1,19 +1,62 @@
-import { useState } from "react";
-import { courses, courseTabs } from "@/data/courses";
+import { useEffect, useMemo, useState } from "react";
 import CourseCard from "./CourseCard";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { useScrollReveal } from "@/hooks/use-scroll-reveal";
+import { usePlatformData } from "@/context/PlatformDataContext";
 
 const PopularCourses = () => {
-  const [activeTab, setActiveTab] = useState("combo");
+  const { courses, categories } = usePlatformData();
+  const [activeTab, setActiveTab] = useState("all");
   const { ref: titleRef, isVisible: titleVisible } = useScrollReveal();
   const { ref: gridRef, isVisible: gridVisible } = useScrollReveal({ threshold: 0.05 });
 
-  const filtered = activeTab === "all"
-    ? courses
-    : courses.filter((c) => c.subcategory === activeTab);
+  const visibleCategoryIds = useMemo(
+    () => new Set(categories.filter((category) => category.isVisible).map((category) => category.id)),
+    [categories],
+  );
+
+  const visibleCourses = useMemo(
+    () =>
+      courses.filter(
+        (course) =>
+          course.isVisible &&
+          (visibleCategoryIds.size === 0 || visibleCategoryIds.has(course.category)),
+      ),
+    [courses, visibleCategoryIds],
+  );
+
+  const tabs = useMemo(() => {
+    const categoryTabs = categories
+      .filter((category) => category.isVisible)
+      .filter((category) => visibleCourses.some((course) => course.category === category.id || course.subcategory === category.id))
+      .sort((a, b) => a.sortOrder - b.sortOrder)
+      .slice(0, 5)
+      .map((category) => ({ id: category.id, label: category.name }));
+
+    return [
+      { id: "all", label: "All Courses" },
+      { id: "combo", label: "Combo Packs" },
+      { id: "materials", label: "Study Materials" },
+      ...categoryTabs,
+    ];
+  }, [categories, visibleCourses]);
+
+  useEffect(() => {
+    if (!tabs.some((tab) => tab.id === activeTab)) {
+      setActiveTab("all");
+    }
+  }, [activeTab, tabs]);
+
+  const filtered = useMemo(() => {
+    if (activeTab === "all") return visibleCourses;
+    if (activeTab === "combo") return visibleCourses.filter((course) => course.isCombo);
+    if (activeTab === "materials") return visibleCourses.filter((course) => course.isMaterial);
+    return visibleCourses.filter(
+      (course) => course.category === activeTab || course.subcategory === activeTab,
+    );
+  }, [activeTab, visibleCourses]);
 
   return (
     <section id="courses" className="py-8 md:py-10 bg-muted/30">
@@ -26,7 +69,7 @@ const PopularCourses = () => {
 
         <div className={`flex justify-center mb-6 reveal-up ${titleVisible ? "visible" : ""}`}>
           <div className="inline-flex gap-1 p-1 bg-card rounded-xl border border-border shadow-sm overflow-x-auto max-w-full scrollbar-hide">
-            {courseTabs.map((tab) => (
+            {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}

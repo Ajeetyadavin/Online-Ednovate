@@ -1,8 +1,17 @@
 import { useAdminAuth } from "@/context/AdminAuthContext";
 import { Navigate, Outlet, NavLink } from "react-router-dom";
 import {
-  LayoutDashboard, BookOpen, Users, ShoppingCart, FileText, Settings,
-  FolderTree, LogOut, Menu, X, ChevronLeft
+  LayoutDashboard,
+  BookOpen,
+  Users,
+  ShoppingCart,
+  FileText,
+  Settings,
+  FolderTree,
+  LogOut,
+  Menu,
+  ChevronLeft,
+  Clapperboard,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -14,6 +23,7 @@ const navItems = [
   { to: "/admin/users", icon: Users, label: "Users" },
   { to: "/admin/orders", icon: ShoppingCart, label: "Orders" },
   { to: "/admin/content", icon: FileText, label: "Content" },
+  { to: "/admin/lms", icon: Clapperboard, label: "LMS Content" },
   { to: "/admin/settings", icon: Settings, label: "Settings" },
 ];
 

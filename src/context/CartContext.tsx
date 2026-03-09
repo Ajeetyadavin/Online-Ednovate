@@ -7,6 +7,10 @@ interface OrderRecord {
   items: { title: string; price: number }[];
   total: number;
   status: "Completed" | "Processing";
+  paymentMethod?: string;
+  studentName?: string;
+  email?: string;
+  phone?: string;
 }
 
 interface PurchasedCourse extends Course {
@@ -24,8 +28,16 @@ interface CartContextType {
   purchasedCourses: PurchasedCourse[];
   orders: OrderRecord[];
   isPurchased: (courseId: string) => boolean;
-  completePurchase: (orderData: { orderId: string; total: number; paymentMethod: string }) => void;
+  completePurchase: (orderData: {
+    orderId: string;
+    total: number;
+    paymentMethod: string;
+    studentName?: string;
+    email?: string;
+    phone?: string;
+  }) => void;
   updateProgress: (courseId: string, progress: number) => void;
+  updateOrderStatus: (orderId: string, status: OrderRecord["status"]) => void;
 }
 
 const CART_STORAGE_KEY = "ednovate_cart_items";
@@ -76,7 +88,14 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const isInCart = (courseId: string) => items.some((c) => c.id === courseId);
   const isPurchased = (courseId: string) => purchasedCourses.some((c) => c.id === courseId);
 
-  const completePurchase = (orderData: { orderId: string; total: number; paymentMethod: string }) => {
+  const completePurchase = (orderData: {
+    orderId: string;
+    total: number;
+    paymentMethod: string;
+    studentName?: string;
+    email?: string;
+    phone?: string;
+  }) => {
     const now = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
 
     // Add to purchased courses (skip duplicates)
@@ -95,6 +114,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         items: items.map((i) => ({ title: i.title, price: i.price })),
         total: orderData.total,
         status: "Completed",
+        paymentMethod: orderData.paymentMethod,
+        studentName: orderData.studentName || "Student",
+        email: orderData.email || "",
+        phone: orderData.phone || "",
       },
       ...prev,
     ]);
@@ -109,11 +132,17 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     );
   };
 
+  const updateOrderStatus = (orderId: string, status: OrderRecord["status"]) => {
+    setOrders((prev) =>
+      prev.map((order) => (order.id === orderId ? { ...order, status } : order)),
+    );
+  };
+
   return (
     <CartContext.Provider
       value={{
         items, addToCart, removeFromCart, isInCart, cartCount: items.length, clearCart: () => setItems([]),
-        purchasedCourses, orders, isPurchased, completePurchase, updateProgress,
+        purchasedCourses, orders, isPurchased, completePurchase, updateProgress, updateOrderStatus,
       }}
     >
       {children}

@@ -6,77 +6,59 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Plus, Edit, Trash2, Eye, EyeOff, Star, Image, MessageSquare, Bell } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-
-interface Banner {
-  id: string;
-  title: string;
-  imageUrl: string;
-  isVisible: boolean;
-  sortOrder: number;
-}
-
-interface Testimonial {
-  id: string;
-  authorName: string;
-  authorRole: string;
-  content: string;
-  rating: number;
-  isVisible: boolean;
-}
-
-interface Announcement {
-  id: string;
-  title: string;
-  content: string;
-  isVisible: boolean;
-}
-
-const initialBanners: Banner[] = [
-  { id: "1", title: "New Year Sale - 50% Off", imageUrl: "/banners/banner1.jpg", isVisible: true, sortOrder: 1 },
-  { id: "2", title: "CA Foundation Batch Starting", imageUrl: "/banners/banner2.jpg", isVisible: true, sortOrder: 2 },
-  { id: "3", title: "Free Demo Classes", imageUrl: "/banners/banner3.jpg", isVisible: false, sortOrder: 3 },
-];
-
-const initialTestimonials: Testimonial[] = [
-  { id: "1", authorName: "Rahul Kumar", authorRole: "CA Student", content: "Excellent teaching methodology! Cleared my foundation in first attempt.", rating: 5, isVisible: true },
-  { id: "2", authorName: "Priya Sharma", authorRole: "CS Executive", content: "Best online classes for CS preparation. Highly recommended!", rating: 5, isVisible: true },
-  { id: "3", authorName: "Aman Gupta", authorRole: "CMA Student", content: "Very detailed notes and great faculty support.", rating: 4, isVisible: true },
-];
-
-const initialAnnouncements: Announcement[] = [
-  { id: "1", title: "🎉 Flash Sale Live!", content: "Get 60% off on all combo packs. Limited time offer!", isVisible: true },
-  { id: "2", title: "📚 New Batch Starting", content: "CA Foundation Jan 2025 batch registrations open.", isVisible: false },
-];
+import {
+  usePlatformData,
+  type ManagedAnnouncement,
+  type ManagedBanner,
+  type ManagedTestimonial,
+} from "@/context/PlatformDataContext";
 
 const AdminContent = () => {
-  const [banners, setBanners] = useState(initialBanners);
-  const [testimonials, setTestimonials] = useState(initialTestimonials);
-  const [announcements, setAnnouncements] = useState(initialAnnouncements);
+  const {
+    banners,
+    testimonials,
+    announcements,
+    setBanners,
+    setTestimonials,
+    setAnnouncements,
+  } = usePlatformData();
 
   const [bannerDialog, setBannerDialog] = useState(false);
-  const [bannerForm, setBannerForm] = useState<Banner>({ id: "", title: "", imageUrl: "", isVisible: true, sortOrder: 0 });
-  const [editingBanner, setEditingBanner] = useState<Banner | null>(null);
+  const [bannerForm, setBannerForm] = useState<ManagedBanner>({ id: "", title: "", imageUrl: "", isVisible: true, sortOrder: 0 });
+  const [editingBanner, setEditingBanner] = useState<ManagedBanner | null>(null);
 
   const [testimonialDialog, setTestimonialDialog] = useState(false);
-  const [testimonialForm, setTestimonialForm] = useState<Testimonial>({ id: "", authorName: "", authorRole: "", content: "", rating: 5, isVisible: true });
-  const [editingTestimonial, setEditingTestimonial] = useState<Testimonial | null>(null);
+  const [testimonialForm, setTestimonialForm] = useState<ManagedTestimonial>({ id: "", authorName: "", authorRole: "", content: "", rating: 5, isVisible: true });
+  const [editingTestimonial, setEditingTestimonial] = useState<ManagedTestimonial | null>(null);
 
   const [announcementDialog, setAnnouncementDialog] = useState(false);
-  const [announcementForm, setAnnouncementForm] = useState<Announcement>({ id: "", title: "", content: "", isVisible: true });
-  const [editingAnnouncement, setEditingAnnouncement] = useState<Announcement | null>(null);
+  const [announcementForm, setAnnouncementForm] = useState<ManagedAnnouncement>({ id: "", title: "", content: "", link: "/packages", isVisible: true });
+  const [editingAnnouncement, setEditingAnnouncement] = useState<ManagedAnnouncement | null>(null);
 
   // Banner CRUD
   const saveBanner = () => {
+    if (!bannerForm.title.trim() || !bannerForm.imageUrl.trim()) return;
+
     if (editingBanner) {
-      setBanners(banners.map((b) => (b.id === bannerForm.id ? bannerForm : b)));
+      setBanners(banners.map((b) => (b.id === bannerForm.id ? { ...bannerForm, title: bannerForm.title.trim() } : b)));
     } else {
-      setBanners([...banners, { ...bannerForm, id: Date.now().toString(), sortOrder: banners.length + 1 }]);
+      setBanners([
+        ...banners,
+        {
+          ...bannerForm,
+          id: Date.now().toString(),
+          title: bannerForm.title.trim(),
+          sortOrder: banners.length + 1,
+        },
+      ]);
     }
     setBannerDialog(false);
   };
 
   // Testimonial CRUD
   const saveTestimonial = () => {
+    if (!testimonialForm.authorName.trim() || !testimonialForm.content.trim()) return;
+
     if (editingTestimonial) {
       setTestimonials(testimonials.map((t) => (t.id === testimonialForm.id ? testimonialForm : t)));
     } else {
@@ -87,6 +69,8 @@ const AdminContent = () => {
 
   // Announcement CRUD
   const saveAnnouncement = () => {
+    if (!announcementForm.title.trim() || !announcementForm.content.trim()) return;
+
     if (editingAnnouncement) {
       setAnnouncements(announcements.map((a) => (a.id === announcementForm.id ? announcementForm : a)));
     } else {
@@ -116,7 +100,7 @@ const AdminContent = () => {
               <Plus className="w-4 h-4 mr-2" />Add Banner
             </Button>
           </div>
-          {banners.map((banner) => (
+          {[...banners].sort((a, b) => a.sortOrder - b.sortOrder).map((banner) => (
             <Card key={banner.id} className={!banner.isVisible ? "opacity-60" : ""}>
               <CardContent className="p-4 flex items-center gap-4">
                 <img src={banner.imageUrl} alt={banner.title} className="w-24 h-14 rounded-lg object-cover bg-muted" />
@@ -144,6 +128,7 @@ const AdminContent = () => {
               <div className="space-y-4 mt-4">
                 <div><label className="text-sm font-medium">Title</label><Input value={bannerForm.title} onChange={(e) => setBannerForm({ ...bannerForm, title: e.target.value })} /></div>
                 <div><label className="text-sm font-medium">Image URL</label><Input value={bannerForm.imageUrl} onChange={(e) => setBannerForm({ ...bannerForm, imageUrl: e.target.value })} /></div>
+                <div><label className="text-sm font-medium">Sort Order</label><Input type="number" value={bannerForm.sortOrder} onChange={(e) => setBannerForm({ ...bannerForm, sortOrder: Number(e.target.value) || 1 })} /></div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={bannerForm.isVisible} onChange={(e) => setBannerForm({ ...bannerForm, isVisible: e.target.checked })} />
                   <label className="text-sm">Visible</label>
@@ -210,7 +195,7 @@ const AdminContent = () => {
         {/* ANNOUNCEMENTS */}
         <TabsContent value="announcements" className="space-y-4">
           <div className="flex justify-end">
-            <Button onClick={() => { setEditingAnnouncement(null); setAnnouncementForm({ id: "", title: "", content: "", isVisible: true }); setAnnouncementDialog(true); }}>
+            <Button onClick={() => { setEditingAnnouncement(null); setAnnouncementForm({ id: "", title: "", content: "", link: "/packages", isVisible: true }); setAnnouncementDialog(true); }}>
               <Plus className="w-4 h-4 mr-2" />Add Announcement
             </Button>
           </div>
@@ -221,6 +206,7 @@ const AdminContent = () => {
                 <div className="flex-1">
                   <h3 className="font-semibold text-foreground">{a.title}</h3>
                   <p className="text-sm text-muted-foreground">{a.content}</p>
+                  <p className="text-xs text-muted-foreground mt-1">Link: {a.link}</p>
                 </div>
                 <div className="flex gap-1">
                   <Button variant="ghost" size="icon" onClick={() => setAnnouncements(announcements.map((x) => x.id === a.id ? { ...x, isVisible: !x.isVisible } : x))}>
@@ -242,6 +228,7 @@ const AdminContent = () => {
               <div className="space-y-4 mt-4">
                 <div><label className="text-sm font-medium">Title</label><Input value={announcementForm.title} onChange={(e) => setAnnouncementForm({ ...announcementForm, title: e.target.value })} /></div>
                 <div><label className="text-sm font-medium">Content</label><Textarea value={announcementForm.content} onChange={(e) => setAnnouncementForm({ ...announcementForm, content: e.target.value })} /></div>
+                <div><label className="text-sm font-medium">Link</label><Input value={announcementForm.link} onChange={(e) => setAnnouncementForm({ ...announcementForm, link: e.target.value || "/packages" })} /></div>
                 <div className="flex items-center gap-2">
                   <input type="checkbox" checked={announcementForm.isVisible} onChange={(e) => setAnnouncementForm({ ...announcementForm, isVisible: e.target.checked })} />
                   <label className="text-sm">Visible</label>

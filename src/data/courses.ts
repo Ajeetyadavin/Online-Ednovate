@@ -13,6 +13,7 @@ export interface Course {
   professor: string;
   isCombo?: boolean;
   isMaterial?: boolean;
+  isVisible?: boolean;
 }
 
 export const categories = [

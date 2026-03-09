@@ -1,13 +1,22 @@
 import { useState, useEffect } from "react";
 import { ChevronLeft, ChevronRight, Star, Quote } from "lucide-react";
-import { testimonials } from "@/data/courses";
 import { useScrollReveal } from "@/hooks/use-scroll-reveal";
+import { usePlatformData } from "@/context/PlatformDataContext";
 
 const Testimonials = () => {
+  const { testimonials } = usePlatformData();
   const [current, setCurrent] = useState(0);
   const [animating, setAnimating] = useState(false);
   const [visibleCount, setVisibleCount] = useState(1);
   const { ref, isVisible } = useScrollReveal();
+
+  const visibleTestimonials = testimonials.filter((testimonial) => testimonial.isVisible);
+
+  useEffect(() => {
+    if (current >= visibleTestimonials.length) {
+      setCurrent(0);
+    }
+  }, [current, visibleTestimonials.length]);
 
   useEffect(() => {
     const updateVisibleCount = () => {
@@ -20,13 +29,19 @@ const Testimonials = () => {
   }, []);
 
   useEffect(() => {
+    if (visibleTestimonials.length <= 1) return;
     const timer = setInterval(() => {
-      changeTo((current + 1) % testimonials.length);
+      changeTo((current + 1) % visibleTestimonials.length);
     }, 6000);
     return () => clearInterval(timer);
-  }, [current]);
+  }, [current, visibleTestimonials.length]);
+
+  if (visibleTestimonials.length === 0) {
+    return null;
+  }
 
   const changeTo = (index: number) => {
+    if (visibleTestimonials.length === 0) return;
     setAnimating(true);
     setTimeout(() => {
       setCurrent(index);
@@ -34,13 +49,13 @@ const Testimonials = () => {
     }, 200);
   };
 
-  const prev = () => changeTo((current - 1 + testimonials.length) % testimonials.length);
-  const next = () => changeTo((current + 1) % testimonials.length);
+  const prev = () => changeTo((current - 1 + visibleTestimonials.length) % visibleTestimonials.length);
+  const next = () => changeTo((current + 1) % visibleTestimonials.length);
 
   const getVisibleTestimonials = () => {
     const items = [];
     for (let i = 0; i < visibleCount; i++) {
-      items.push(testimonials[(current + i) % testimonials.length]);
+      items.push(visibleTestimonials[(current + i) % visibleTestimonials.length]);
     }
     return items;
   };
@@ -66,7 +81,7 @@ const Testimonials = () => {
                 <Quote className="w-6 h-6 text-primary/15 mb-3" />
                 
                 <p className="text-foreground text-sm leading-relaxed mb-4 line-clamp-4">
-                  {t.feedback}
+                  {t.content}
                 </p>
 
                 <div className="flex items-center gap-1 mb-3">
@@ -81,12 +96,12 @@ const Testimonials = () => {
                 <div className="flex items-center gap-3 pt-3 border-t border-border/50">
                   <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
                     <span className="text-primary-foreground font-bold text-xs">
-                      {t.name.charAt(0)}
+                      {t.authorName.charAt(0)}
                     </span>
                   </div>
                   <div>
-                    <h4 className="font-bold text-xs text-foreground">{t.name}</h4>
-                    <p className="text-[11px] text-muted-foreground">{t.course} Student</p>
+                    <h4 className="font-bold text-xs text-foreground">{t.authorName}</h4>
+                    <p className="text-[11px] text-muted-foreground">{t.authorRole}</p>
                   </div>
                 </div>
               </div>
@@ -99,7 +114,7 @@ const Testimonials = () => {
             </button>
 
             <div className="flex gap-1.5">
-              {testimonials.map((_, i) => (
+              {visibleTestimonials.map((_, i) => (
                 <button
                   key={i}
                   onClick={() => changeTo(i)}

@@ -1,9 +1,10 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import CourseCard from "@/components/CourseCard";
-import { courses, categories, courseGroups } from "@/data/courses";
+import { courseGroups } from "@/data/courses";
 import { Search, X, ChevronDown, ChevronUp, Filter, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { usePlatformData } from "@/context/PlatformDataContext";
 
 const sortOptions = [
   { id: "default", label: "Relevance" },
@@ -86,10 +87,37 @@ const CheckItem = ({ label, checked, onChange, count, indent }: CheckItemProps) 
 // ── Main component ──────────────────────────────────────────────────
 
 const Packages = () => {
-  const [searchParams, setSearchParams] = useSearchParams();
+  const { courses: managedCourses, categories: managedCategories } = usePlatformData();
+  const [searchParams] = useSearchParams();
   const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("default");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
+
+  const visibleCategoryIds = useMemo(
+    () => new Set(managedCategories.filter((category) => category.isVisible).map((category) => category.id)),
+    [managedCategories],
+  );
+
+  const courses = useMemo(
+    () =>
+      managedCourses.filter(
+        (course) =>
+          course.isVisible &&
+          (visibleCategoryIds.size === 0 || visibleCategoryIds.has(course.category)),
+      ),
+    [managedCourses, visibleCategoryIds],
+  );
+
+  const categories = useMemo(
+    () => [
+      { id: "all", label: "All Courses" },
+      ...managedCategories
+        .filter((category) => category.isVisible)
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+        .map((category) => ({ id: category.id, label: category.name })),
+    ],
+    [managedCategories],
+  );
 
   // Filter states
   const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
@@ -117,6 +145,14 @@ const Packages = () => {
     setList((prev) =>
       prev.includes(value) ? prev.filter((v) => v !== value) : [...prev, value]
     );
+
+  useEffect(() => {
+    const category = searchParams.get("category");
+    if (category && !selectedCourses.includes(category)) {
+      setSelectedCourses([category]);
+      setOpenSections((prev) => ({ ...prev, courses: true }));
+    }
+  }, [searchParams, selectedCourses]);
 
   const activeFilterCount =
     selectedCourses.length +
