@@ -100,10 +100,6 @@
 }
 
 @layer components {
-  .container {
-    max-width: 100% !important;
-  }
-
   .section-title {
     @apply text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-foreground;
   }
