@@ -33,6 +33,7 @@ const LoginModal = ({
   const [passwordInput, setPasswordInput] = useState("");
   const [isIdentifierFocused, setIsIdentifierFocused] = useState(false);
   const [isPasswordFocused, setIsPasswordFocused] = useState(false);
+  const [isBlinking, setIsBlinking] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
 
   useEffect(() => {
@@ -42,6 +43,26 @@ const LoginModal = ({
     }
   }, [view]);
 
+  useEffect(() => {
+    if (view !== "login" || isPasswordFocused) {
+      setIsBlinking(false);
+      return;
+    }
+
+    let blinkTimeout: number | null = null;
+    const blinkInterval = window.setInterval(() => {
+      setIsBlinking(true);
+      blinkTimeout = window.setTimeout(() => setIsBlinking(false), 160);
+    }, 2800);
+
+    return () => {
+      window.clearInterval(blinkInterval);
+      if (blinkTimeout) {
+        window.clearTimeout(blinkTimeout);
+      }
+    };
+  }, [view, isPasswordFocused]);
+
   const handleReset = () => {
     setView("login");
     setPhone("");
@@ -50,6 +71,7 @@ const LoginModal = ({
     setPasswordInput("");
     setIsIdentifierFocused(false);
     setIsPasswordFocused(false);
+    setIsBlinking(false);
     setShowPassword(false);
   };
 
@@ -97,10 +119,13 @@ const LoginModal = ({
     ? Math.max(-1.5, Math.min(4, loginIdentifier.length * 0.4))
     : 0;
 
+  const eyesClosed = isPasswordFocused || isBlinking;
+  const mouthSmile = loginIdentifier.includes("@") || isIdentifierFocused;
+
   const loginMood = isPasswordFocused
-    ? "Privacy mode on"
+    ? "Password type karte waqt eyes secure mode mein hain"
     : isIdentifierFocused
-      ? "Email/mobile detect ho raha hai"
+      ? "Email/mobile dekh raha hoon"
       : isSignup
         ? "Naya account banane ke liye ready"
         : "Welcome back";
@@ -117,12 +142,15 @@ const LoginModal = ({
         {/* Compact Header */}
         <div className="bg-[rgb(38,72,151)] px-6 py-5 text-center">
           {view === "login" ? (
-            <div className="relative w-16 h-16 rounded-2xl bg-primary-foreground/15 border border-primary-foreground/20 flex items-center justify-center mx-auto mb-2.5 backdrop-blur-sm">
+            <div className="relative w-20 h-20 rounded-[24px] bg-primary-foreground/15 border border-primary-foreground/20 flex items-center justify-center mx-auto mb-2.5 backdrop-blur-sm animate-float">
               <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-primary-foreground/10 to-transparent" />
+              <div className="absolute left-2 top-2 w-3 h-3 rounded-full bg-primary-foreground/20" />
 
-              <div className="absolute top-4 left-4 w-4 h-4 rounded-full bg-primary-foreground flex items-center justify-center">
-                {isPasswordFocused ? (
-                  <span className="w-3 h-[2px] rounded-full bg-[rgb(38,72,151)]" />
+              <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-14 h-14 rounded-[18px] bg-primary-foreground/95 shadow-inner shadow-primary-foreground/30" />
+
+              <div className="absolute top-[28px] left-[26px] w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm">
+                {eyesClosed ? (
+                  <span className="w-3.5 h-[2px] rounded-full bg-[rgb(38,72,151)]" />
                 ) : (
                   <span
                     className="w-1.5 h-1.5 rounded-full bg-[rgb(38,72,151)] transition-transform duration-200"
@@ -131,9 +159,9 @@ const LoginModal = ({
                 )}
               </div>
 
-              <div className="absolute top-4 right-4 w-4 h-4 rounded-full bg-primary-foreground flex items-center justify-center">
-                {isPasswordFocused ? (
-                  <span className="w-3 h-[2px] rounded-full bg-[rgb(38,72,151)]" />
+              <div className="absolute top-[28px] right-[26px] w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm">
+                {eyesClosed ? (
+                  <span className="w-3.5 h-[2px] rounded-full bg-[rgb(38,72,151)]" />
                 ) : (
                   <span
                     className="w-1.5 h-1.5 rounded-full bg-[rgb(38,72,151)] transition-transform duration-200"
@@ -145,10 +173,26 @@ const LoginModal = ({
               <div
                 className={`absolute bottom-3 left-1/2 -translate-x-1/2 transition-all duration-200 ${
                   isPasswordFocused
-                    ? "w-5 h-1 rounded-full bg-primary-foreground/85"
-                    : loginIdentifier.includes("@")
-                      ? "w-6 h-3 border-b-2 border-primary-foreground rounded-b-full"
-                      : "w-4 h-1.5 rounded-full bg-primary-foreground/75"
+                    ? "w-5 h-[2px] rounded-full bg-[rgb(38,72,151)]"
+                    : mouthSmile
+                      ? "w-7 h-3 border-b-2 border-[rgb(38,72,151)] rounded-b-full"
+                      : "w-4 h-[2px] rounded-full bg-[rgb(38,72,151)]"
+                }`}
+              />
+
+              <div
+                className={`absolute top-[34px] -left-1.5 w-6 h-6 rounded-full bg-primary-foreground border border-primary-foreground/70 shadow-sm transition-all duration-300 ${
+                  isPasswordFocused
+                    ? "opacity-100 translate-y-0 rotate-[14deg]"
+                    : "opacity-0 translate-y-4 -rotate-[10deg]"
+                }`}
+              />
+
+              <div
+                className={`absolute top-[34px] -right-1.5 w-6 h-6 rounded-full bg-primary-foreground border border-primary-foreground/70 shadow-sm transition-all duration-300 ${
+                  isPasswordFocused
+                    ? "opacity-100 translate-y-0 -rotate-[14deg]"
+                    : "opacity-0 translate-y-4 rotate-[10deg]"
                 }`}
               />
 
@@ -159,7 +203,7 @@ const LoginModal = ({
               )}
 
               {isPasswordFocused && (
-                <div className="absolute -right-1 -top-1 w-5 h-5 rounded-full bg-primary-foreground text-primary flex items-center justify-center shadow">
+                <div className="absolute -right-1 -top-1 w-5 h-5 rounded-full bg-primary-foreground text-primary flex items-center justify-center shadow animate-pulse">
                   <Lock className="w-3 h-3" />
                 </div>
               )}
@@ -238,7 +282,12 @@ const LoginModal = ({
                   onBlur={() => setIsPasswordFocused(false)}
                   className="h-11 text-sm rounded-lg pl-10 pr-10 border-border bg-background"
                 />
-                <button type="button" onClick={() => setShowPassword(!showPassword)} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+                <button
+                  type="button"
+                  onMouseDown={(e) => e.preventDefault()}
+                  onClick={() => setShowPassword(!showPassword)}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                >
                   {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
                 </button>
               </div>
