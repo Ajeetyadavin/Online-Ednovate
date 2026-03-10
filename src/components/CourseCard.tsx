@@ -33,12 +33,27 @@ const CourseCard = ({ course }: CourseCardProps) => {
     >
       {/* Thumbnail */}
       <div className="relative h-24 sm:h-40 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-primary via-primary/90 to-accent/70 flex items-center justify-center p-2 sm:p-4 group-hover:scale-105 transition-transform duration-500">
-          <div className="text-center">
-            <div className="w-7 h-7 sm:w-10 sm:h-10 mx-auto mb-1 sm:mb-2 rounded-lg bg-primary-foreground/15 flex items-center justify-center group-hover:rotate-6 transition-transform duration-300">
-              <PlayCircle className="w-4 h-4 sm:w-5 sm:h-5 text-primary-foreground" />
+        <img
+          src={course.image || "/placeholder.svg"}
+          alt={course.title}
+          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          loading="lazy"
+          onError={(e) => {
+            const target = e.currentTarget;
+            if (target.src.endsWith("/placeholder.svg")) return;
+            target.src = "/placeholder.svg";
+          }}
+        />
+
+        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
+        <div className="absolute inset-x-0 bottom-0 p-2 sm:p-3">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-primary-foreground/20 backdrop-blur-sm flex items-center justify-center shrink-0">
+              <PlayCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary-foreground" />
             </div>
-            <span className="text-primary-foreground/90 font-semibold text-[10px] sm:text-xs text-center line-clamp-2 leading-tight">{course.title}</span>
+            <span className="text-primary-foreground/95 font-semibold text-[10px] sm:text-xs line-clamp-2 leading-tight">
+              {course.title}
+            </span>
           </div>
         </div>
         

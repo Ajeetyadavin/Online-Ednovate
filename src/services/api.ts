@@ -1,10 +1,28 @@
 type ApiMethod = "GET" | "POST";
 type ApiParams = Record<string, string | number | boolean | null | undefined>;
 
-const API_BASES = [
+const REMOTE_API_BASES = [
   "https://letsednovate.com/Portal/apiweb",
   "http://letsednovate.com/Portal/apiweb",
 ];
+
+const DEV_PROXY_BASE = "/portal-api";
+
+const isLocalhostEnv = () => {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  return window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+};
+
+const getApiBases = () => {
+  if (isLocalhostEnv()) {
+    return [DEV_PROXY_BASE, ...REMOTE_API_BASES];
+  }
+
+  return REMOTE_API_BASES;
+};
 
 const toQueryString = (params: ApiParams = {}) => {
   const searchParams = new URLSearchParams();
@@ -20,7 +38,7 @@ async function callApi(endpoint: string, method: ApiMethod = "POST", params: Api
   let lastError = "Unknown error";
 
   // Keep the same fallback behavior used by the old edge function.
-  for (const base of API_BASES) {
+  for (const base of getApiBases()) {
     try {
       const url = `${base}/${endpoint}`;
       const query = toQueryString(params);

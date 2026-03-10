@@ -6,9 +6,21 @@ import {
   testimonials as seedTestimonials,
   type Course,
 } from "@/data/courses";
+import {
+  decodeVideoUrl,
+  detectVideoSource,
+  encodeVideoUrl,
+  type LessonVideoSource,
+} from "@/lib/video-utils";
 
 export interface ManagedCourse extends Course {
   isVisible: boolean;
+  demoVideoVisible?: boolean;
+  demoVideoTitle?: string;
+  demoVideoDescription?: string;
+  demoVideoSource?: LessonVideoSource;
+  demoVideoUrl?: string;
+  demoVideoThumbnailUrl?: string;
 }
 
 export interface ManagedCategory {
@@ -49,16 +61,23 @@ export interface ManagedAnnouncement {
 export interface Lesson {
   id: string;
   title: string;
+  description?: string;
   duration: string;
   type: "video" | "pdf" | "quiz";
   completed: boolean;
   locked: boolean;
+  isPreview?: boolean;
+  isHomepageDemo?: boolean;
+  videoSource?: LessonVideoSource;
   videoUrl?: string;
+  resourceUrl?: string;
+  thumbnailUrl?: string;
 }
 
 export interface Chapter {
   id: string;
   title: string;
+  description?: string;
   lessons: Lesson[];
 }
 
@@ -73,6 +92,20 @@ interface PlatformDataState {
 
 interface PlatformDataContextType extends PlatformDataState {
   upsertCourse: (course: ManagedCourse) => void;
+  updateCourseDemoVideo: (
+    courseId: string,
+    demoUpdates: Partial<
+      Pick<
+        ManagedCourse,
+        | "demoVideoVisible"
+        | "demoVideoTitle"
+        | "demoVideoDescription"
+        | "demoVideoSource"
+        | "demoVideoUrl"
+        | "demoVideoThumbnailUrl"
+      >
+    >,
+  ) => void;
   deleteCourse: (courseId: string) => void;
   toggleCourseVisibility: (courseId: string) => void;
   upsertCategory: (category: ManagedCategory) => void;
@@ -83,6 +116,7 @@ interface PlatformDataContextType extends PlatformDataState {
   setAnnouncements: (announcements: ManagedAnnouncement[]) => void;
   getCurriculumForCourse: (courseId: string, courseTitle?: string) => Chapter[];
   setCurriculumForCourse: (courseId: string, curriculum: Chapter[]) => void;
+  setCourseDemoLesson: (courseId: string, lessonId?: string) => void;
   resetPlatformData: () => void;
 }
 
@@ -135,7 +169,10 @@ const createFallbackCurriculum = (courseName: string): Chapter[] => [
         type: "video",
         completed: false,
         locked: false,
-        videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
+        isPreview: true,
+        isHomepageDemo: true,
+        videoSource: "direct",
+        videoUrl: encodeVideoUrl("https://www.w3schools.com/html/mov_bbb.mp4"),
       },
       {
         id: "l2",
@@ -144,7 +181,9 @@ const createFallbackCurriculum = (courseName: string): Chapter[] => [
         type: "video",
         completed: false,
         locked: false,
-        videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
+        isHomepageDemo: false,
+        videoSource: "direct",
+        videoUrl: encodeVideoUrl("https://www.w3schools.com/html/mov_bbb.mp4"),
       },
       {
         id: "l3",
@@ -167,7 +206,9 @@ const createFallbackCurriculum = (courseName: string): Chapter[] => [
         type: "video",
         completed: false,
         locked: false,
-        videoUrl: "https://www.w3schools.com/html/mov_bbb.mp4",
+        isHomepageDemo: false,
+        videoSource: "direct",
+        videoUrl: encodeVideoUrl("https://www.w3schools.com/html/mov_bbb.mp4"),
       },
       {
         id: "l5",
@@ -190,6 +231,26 @@ const createFallbackCurriculum = (courseName: string): Chapter[] => [
 ];
 
 const normalizeCourse = (course: Partial<ManagedCourse>, index: number): ManagedCourse => ({
+  // Keep demo URL obfuscated in local storage while rendering decodes it.
+  ...(function () {
+    const rawDemoUrl = String(course.demoVideoUrl || "").trim();
+    const normalizedDemoUrl = rawDemoUrl ? encodeVideoUrl(decodeVideoUrl(rawDemoUrl)) : "";
+    const normalizedDemoSource: LessonVideoSource =
+      course.demoVideoSource === "youtube" ||
+      course.demoVideoSource === "upload" ||
+      course.demoVideoSource === "direct"
+        ? course.demoVideoSource
+        : detectVideoSource(normalizedDemoUrl);
+
+    return {
+      demoVideoVisible: Boolean(course.demoVideoVisible),
+      demoVideoTitle: String(course.demoVideoTitle || "").trim(),
+      demoVideoDescription: String(course.demoVideoDescription || "").trim(),
+      demoVideoSource: normalizedDemoSource,
+      demoVideoUrl: normalizedDemoUrl,
+      demoVideoThumbnailUrl: String(course.demoVideoThumbnailUrl || "").trim(),
+    };
+  })(),
   id: String(course.id || `course-${index + 1}`),
   title: course.title || "Untitled Course",
   category: course.category || "general",
@@ -260,15 +321,29 @@ const normalizeCurriculum = (curriculum: unknown): Chapter[] => {
         ? ch.lessons.map((lesson, lessonIndex) => {
             const l = lesson as Partial<Lesson>;
             const lessonType = l.type === "pdf" || l.type === "quiz" ? l.type : "video";
+            const rawVideoUrl = String(l.videoUrl || "").trim();
+            const normalizedVideoUrl = rawVideoUrl
+              ? encodeVideoUrl(decodeVideoUrl(rawVideoUrl))
+              : "";
+            const normalizedVideoSource: LessonVideoSource =
+              l.videoSource === "youtube" || l.videoSource === "upload" || l.videoSource === "direct"
+                ? l.videoSource
+                : detectVideoSource(normalizedVideoUrl);
 
             return {
               id: String(l.id || `l-${chapterIndex + 1}-${lessonIndex + 1}`),
               title: l.title || `Lesson ${lessonIndex + 1}`,
+              description: l.description || "",
               duration: l.duration || (lessonType === "video" ? "10:00" : lessonType === "pdf" ? "PDF" : "10 Qs"),
               type: lessonType,
               completed: Boolean(l.completed),
               locked: Boolean(l.locked),
-              videoUrl: l.videoUrl || "",
+              isPreview: Boolean(l.isPreview),
+              isHomepageDemo: Boolean(l.isHomepageDemo),
+              videoSource: lessonType === "video" ? normalizedVideoSource : "direct",
+              videoUrl: lessonType === "video" ? normalizedVideoUrl : "",
+              resourceUrl: l.resourceUrl || "",
+              thumbnailUrl: l.thumbnailUrl || "",
             } satisfies Lesson;
           })
         : [];
@@ -276,10 +351,42 @@ const normalizeCurriculum = (curriculum: unknown): Chapter[] => {
       return {
         id: String(ch.id || `ch-${chapterIndex + 1}`),
         title: ch.title || `Chapter ${chapterIndex + 1}`,
+        description: ch.description || "",
         lessons,
       } satisfies Chapter;
     })
     .filter((chapter) => chapter.lessons.length > 0);
+};
+
+const pickCourseDemoLessonId = (chapters: Chapter[], preferredLessonId?: string): string | null => {
+  const videoLessons = chapters.flatMap((chapter) => chapter.lessons).filter((lesson) => lesson.type === "video");
+  if (videoLessons.length === 0) return null;
+
+  if (preferredLessonId && videoLessons.some((lesson) => lesson.id === preferredLessonId)) {
+    return preferredLessonId;
+  }
+
+  const marked = videoLessons.find((lesson) => lesson.isHomepageDemo);
+  return marked?.id || videoLessons[0].id;
+};
+
+const withCourseDemoSelection = (chapters: Chapter[], preferredLessonId?: string): Chapter[] => {
+  const selectedId = pickCourseDemoLessonId(chapters, preferredLessonId);
+  if (!selectedId) return chapters;
+
+  return chapters.map((chapter) => ({
+    ...chapter,
+    lessons: chapter.lessons.map((lesson) => ({
+      ...lesson,
+      isHomepageDemo: lesson.type === "video" && lesson.id === selectedId,
+    })),
+  }));
+};
+
+const ensureCourseScopedDemos = (curricula: Record<string, Chapter[]>): Record<string, Chapter[]> => {
+  return Object.fromEntries(
+    Object.entries(curricula).map(([courseId, chapters]) => [courseId, withCourseDemoSelection(chapters)]),
+  );
 };
 
 const createDefaultState = (): PlatformDataState => {
@@ -340,7 +447,7 @@ const createDefaultState = (): PlatformDataState => {
     banners,
     testimonials,
     announcements: defaultAnnouncements,
-    curricula,
+    curricula: ensureCourseScopedDemos(curricula),
   };
 };
 
@@ -387,7 +494,7 @@ const loadInitialState = (): PlatformDataState => {
       banners,
       testimonials,
       announcements,
-      curricula,
+      curricula: ensureCourseScopedDemos(curricula),
     };
   } catch {
     return fallback;
@@ -420,19 +527,62 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
         return {
           ...prev,
           courses: nextCourses,
-          curricula: nextCurricula,
+          curricula: ensureCourseScopedDemos(nextCurricula),
         };
       });
+    };
+
+    const updateCourseDemoVideo = (
+      courseId: string,
+      demoUpdates: Partial<
+        Pick<
+          ManagedCourse,
+          | "demoVideoVisible"
+          | "demoVideoTitle"
+          | "demoVideoDescription"
+          | "demoVideoSource"
+          | "demoVideoUrl"
+          | "demoVideoThumbnailUrl"
+        >
+      >,
+    ) => {
+      setState((prev) => ({
+        ...prev,
+        courses: prev.courses.map((course, index) =>
+          course.id === courseId
+            ? (() => {
+                const hasDemoUrlUpdate = typeof demoUpdates.demoVideoUrl === "string";
+                const nextDemoUrl = hasDemoUrlUpdate ? demoUpdates.demoVideoUrl : course.demoVideoUrl || "";
+                const nextDemoVisible =
+                  typeof demoUpdates.demoVideoVisible === "boolean"
+                    ? demoUpdates.demoVideoVisible
+                    : hasDemoUrlUpdate
+                      ? Boolean(String(nextDemoUrl || "").trim())
+                      : course.demoVideoVisible;
+
+                return normalizeCourse(
+                  {
+                    ...course,
+                    ...demoUpdates,
+                    demoVideoVisible: nextDemoVisible,
+                  },
+                  index,
+                );
+              })()
+            : course,
+        ),
+      }));
     };
 
     const deleteCourse = (courseId: string) => {
       setState((prev) => {
         const nextCurricula = { ...prev.curricula };
         delete nextCurricula[courseId];
+        const nextCourses = prev.courses.filter((course) => course.id !== courseId);
         return {
           ...prev,
-          courses: prev.courses.filter((course) => course.id !== courseId),
-          curricula: nextCurricula,
+          courses: nextCourses,
+          curricula: ensureCourseScopedDemos(nextCurricula),
         };
       });
     };
@@ -509,9 +659,26 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
         ...prev,
         curricula: {
           ...prev.curricula,
-          [courseId]: normalizeCurriculum(curriculum),
+          [courseId]: withCourseDemoSelection(normalizeCurriculum(curriculum)),
         },
       }));
+    };
+
+    const setCourseDemoLesson = (courseId: string, lessonId?: string) => {
+      setState((prev) => {
+        const existing = prev.curricula[courseId];
+        if (!existing || existing.length === 0) {
+          return prev;
+        }
+
+        return {
+          ...prev,
+          curricula: {
+            ...prev.curricula,
+            [courseId]: withCourseDemoSelection(existing, lessonId),
+          },
+        };
+      });
     };
 
     const resetPlatformData = () => {
@@ -522,6 +689,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
     return {
       ...state,
       upsertCourse,
+      updateCourseDemoVideo,
       deleteCourse,
       toggleCourseVisibility,
       upsertCategory,
@@ -532,6 +700,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
       setAnnouncements,
       getCurriculumForCourse,
       setCurriculumForCourse,
+      setCourseDemoLesson,
       resetPlatformData,
     };
   }, [state]);

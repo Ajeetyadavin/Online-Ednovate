@@ -5,13 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Palette, Type, Layout, Eye, Save, Image, RotateCcw, Upload } from "lucide-react";
+import { Palette, Type, Layout, Eye, Save, Image, RotateCcw, Upload, PanelTop, Smartphone, Plus, Trash2 } from "lucide-react";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { toast } from "sonner";
 
 const AdminSettings = () => {
-  const { settings, updateColors, updateFonts, updateSections, updateLogo, resetSettings } = useSiteSettings();
+  const { settings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateLogo, resetSettings } = useSiteSettings();
   const { resetPlatformData } = usePlatformData();
   const [saved, setSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -74,6 +74,118 @@ const AdminSettings = () => {
     ctaBand: "CTA Band (Bottom)",
   };
 
+  const headerStyleOptions = [
+    { value: "solid", label: "Solid" },
+    { value: "outline", label: "Outline" },
+    { value: "ghost", label: "Ghost" },
+  ];
+
+  const mobileActionOptions = [
+    { value: "link", label: "Open Link" },
+    { value: "tel", label: "Call Number" },
+    { value: "login", label: "Login / Profile" },
+    { value: "dashboard", label: "Open Dashboard" },
+  ];
+
+  const mobileIconOptions = [
+    { value: "home", label: "Home" },
+    { value: "courses", label: "Courses" },
+    { value: "phone", label: "Phone" },
+    { value: "profile", label: "Profile" },
+    { value: "login", label: "Login" },
+    { value: "support", label: "Support" },
+    { value: "settings", label: "Settings" },
+  ];
+
+  const addHeaderButton = () => {
+    updateHeader({
+      customButtons: [
+        ...settings.header.customButtons,
+        {
+          id: `header-btn-${Date.now()}`,
+          label: "New Button",
+          href: "/packages",
+          style: "outline",
+          visible: true,
+          newTab: false,
+        },
+      ],
+    });
+  };
+
+  const updateHeaderButton = (id: string, updates: Record<string, unknown>) => {
+    updateHeader({
+      customButtons: settings.header.customButtons.map((button) =>
+        button.id === id ? { ...button, ...updates } : button,
+      ),
+    });
+  };
+
+  const removeHeaderButton = (id: string) => {
+    updateHeader({
+      customButtons: settings.header.customButtons.filter((button) => button.id !== id),
+    });
+  };
+
+  const addHeaderNavLink = () => {
+    updateHeader({
+      navLinks: [
+        ...settings.header.navLinks,
+        {
+          id: `nav-link-${Date.now()}`,
+          label: "New Menu",
+          href: "/",
+          hasDropdown: false,
+          visible: true,
+        },
+      ],
+    });
+  };
+
+  const updateHeaderNavLink = (id: string, updates: Record<string, unknown>) => {
+    updateHeader({
+      navLinks: settings.header.navLinks.map((link) =>
+        link.id === id ? { ...link, ...updates } : link,
+      ),
+    });
+  };
+
+  const removeHeaderNavLink = (id: string) => {
+    updateHeader({
+      navLinks: settings.header.navLinks.filter((link) => link.id !== id),
+    });
+  };
+
+  const addMobileFooterButton = () => {
+    updateMobileFooter({
+      buttons: [
+        ...settings.mobileFooter.buttons,
+        {
+          id: `mobile-btn-${Date.now()}`,
+          label: "New Footer Button",
+          href: "/",
+          action: "link",
+          icon: "home",
+          visible: true,
+        },
+      ],
+    });
+  };
+
+  const updateMobileButton = (id: string, updates: Record<string, unknown>) => {
+    updateMobileFooter({
+      buttons: settings.mobileFooter.buttons.map((button) =>
+        button.id === id ? { ...button, ...updates } : button,
+      ),
+    });
+  };
+
+  const removeMobileButton = (id: string) => {
+    updateMobileFooter({
+      buttons: settings.mobileFooter.buttons.filter((button) => button.id !== id),
+    });
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -101,6 +213,7 @@ const AdminSettings = () => {
           <TabsTrigger value="fonts" className="gap-2"><Type className="w-4 h-4" />Fonts</TabsTrigger>
           <TabsTrigger value="logo" className="gap-2"><Image className="w-4 h-4" />Logo</TabsTrigger>
           <TabsTrigger value="sections" className="gap-2"><Layout className="w-4 h-4" />Sections</TabsTrigger>
+          <TabsTrigger value="navigation" className="gap-2"><PanelTop className="w-4 h-4" />Navigation</TabsTrigger>
         </TabsList>
 
         {/* COLORS */}
@@ -266,6 +379,228 @@ const AdminSettings = () => {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* NAVIGATION */}
+        <TabsContent value="navigation" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Header Controls</CardTitle>
+              <CardDescription>Top bar, auth labels, search toggle, and custom header buttons.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="flex items-center justify-between border border-border rounded-lg p-3">
+                  <div>
+                    <p className="font-medium text-sm">Show Top Bar</p>
+                    <p className="text-xs text-muted-foreground">Phone/email strip above header</p>
+                  </div>
+                  <Switch checked={settings.header.topBarVisible} onCheckedChange={(checked) => updateHeader({ topBarVisible: checked })} />
+                </div>
+                <div className="flex items-center justify-between border border-border rounded-lg p-3">
+                  <div>
+                    <p className="font-medium text-sm">Show Search</p>
+                    <p className="text-xs text-muted-foreground">Desktop search input toggle</p>
+                  </div>
+                  <Switch checked={settings.header.showSearch} onCheckedChange={(checked) => updateHeader({ showSearch: checked })} />
+                </div>
+                <div className="flex items-center justify-between border border-border rounded-lg p-3 md:col-span-2">
+                  <div>
+                    <p className="font-medium text-sm">Show Login/Signup Buttons</p>
+                    <p className="text-xs text-muted-foreground">Desktop + mobile auth button visibility</p>
+                  </div>
+                  <Switch checked={settings.header.showAuthButtons} onCheckedChange={(checked) => updateHeader({ showAuthButtons: checked })} />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="text-sm font-medium">Top Bar Phone</label>
+                  <Input value={settings.header.topBarPhone} onChange={(e) => updateHeader({ topBarPhone: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Top Bar Email</label>
+                  <Input value={settings.header.topBarEmail} onChange={(e) => updateHeader({ topBarEmail: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Top Bar Right Text 1</label>
+                  <Input value={settings.header.topBarPrimaryText} onChange={(e) => updateHeader({ topBarPrimaryText: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Top Bar Right Text 2</label>
+                  <Input value={settings.header.topBarSecondaryText} onChange={(e) => updateHeader({ topBarSecondaryText: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Login Button Label</label>
+                  <Input value={settings.header.loginLabel} onChange={(e) => updateHeader({ loginLabel: e.target.value })} />
+                </div>
+                <div>
+                  <label className="text-sm font-medium">Signup Button Label</label>
+                  <Input value={settings.header.signupLabel} onChange={(e) => updateHeader({ signupLabel: e.target.value })} />
+                </div>
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium text-sm">Header Navigation Links</p>
+                  <Button size="sm" variant="outline" onClick={addHeaderNavLink} className="gap-1.5">
+                    <Plus className="w-3.5 h-3.5" /> Add Link
+                  </Button>
+                </div>
+
+                {settings.header.navLinks.map((link) => (
+                  <div key={link.id} className="border border-border rounded-lg p-3 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Menu Label</label>
+                        <Input value={link.label} onChange={(e) => updateHeaderNavLink(link.id, { label: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Menu Link</label>
+                        <Input value={link.href} onChange={(e) => updateHeaderNavLink(link.id, { href: e.target.value })} />
+                      </div>
+                      <div className="flex items-end gap-4 md:col-span-2 pb-1">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" checked={link.visible} onChange={(e) => updateHeaderNavLink(link.id, { visible: e.target.checked })} className="rounded" />
+                          Visible
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" checked={link.hasDropdown} onChange={(e) => updateHeaderNavLink(link.id, { hasDropdown: e.target.checked })} className="rounded" />
+                          Show Dropdown Arrow
+                        </label>
+                        <Button size="icon" variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => removeHeaderNavLink(link.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <div className="space-y-3">
+                <div className="flex items-center justify-between">
+                  <p className="font-medium text-sm">Custom Header Buttons</p>
+                  <Button size="sm" variant="outline" onClick={addHeaderButton} className="gap-1.5">
+                    <Plus className="w-3.5 h-3.5" /> Add Button
+                  </Button>
+                </div>
+
+                {settings.header.customButtons.map((button) => (
+                  <div key={button.id} className="border border-border rounded-lg p-3 space-y-3">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Label</label>
+                        <Input value={button.label} onChange={(e) => updateHeaderButton(button.id, { label: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Link</label>
+                        <Input value={button.href} onChange={(e) => updateHeaderButton(button.id, { href: e.target.value })} />
+                      </div>
+                      <div>
+                        <label className="text-xs font-medium text-muted-foreground">Style</label>
+                        <select
+                          value={button.style}
+                          onChange={(e) => updateHeaderButton(button.id, { style: e.target.value as "solid" | "outline" | "ghost" })}
+                          className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                        >
+                          {headerStyleOptions.map((option) => (
+                            <option key={option.value} value={option.value}>{option.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      <div className="flex items-end gap-4 pb-1">
+                        <label className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" checked={button.visible} onChange={(e) => updateHeaderButton(button.id, { visible: e.target.checked })} className="rounded" />
+                          Visible
+                        </label>
+                        <label className="flex items-center gap-2 text-sm">
+                          <input type="checkbox" checked={button.newTab} onChange={(e) => updateHeaderButton(button.id, { newTab: e.target.checked })} className="rounded" />
+                          Open in New Tab
+                        </label>
+                        <Button size="icon" variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => removeHeaderButton(button.id)}>
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Mobile Footer Controls</CardTitle>
+              <CardDescription>Phone view bottom sticky buttons manage karein.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between border border-border rounded-lg p-3">
+                <div className="flex items-center gap-2">
+                  <Smartphone className="w-4 h-4 text-muted-foreground" />
+                  <div>
+                    <p className="font-medium text-sm">Show Mobile Footer</p>
+                    <p className="text-xs text-muted-foreground">Sticky button bar on phone screens</p>
+                  </div>
+                </div>
+                <Switch checked={settings.mobileFooter.visible} onCheckedChange={(checked) => updateMobileFooter({ visible: checked })} />
+              </div>
+
+              <div className="flex items-center justify-between">
+                <p className="font-medium text-sm">Mobile Footer Buttons</p>
+                <Button size="sm" variant="outline" onClick={addMobileFooterButton} className="gap-1.5">
+                  <Plus className="w-3.5 h-3.5" /> Add Footer Button
+                </Button>
+              </div>
+
+              {settings.mobileFooter.buttons.map((button) => (
+                <div key={button.id} className="border border-border rounded-lg p-3 space-y-3">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Label</label>
+                      <Input value={button.label} onChange={(e) => updateMobileButton(button.id, { label: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Link / Value</label>
+                      <Input value={button.href} onChange={(e) => updateMobileButton(button.id, { href: e.target.value })} />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Action</label>
+                      <select
+                        value={button.action}
+                        onChange={(e) => updateMobileButton(button.id, { action: e.target.value as "link" | "tel" | "login" | "dashboard" })}
+                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {mobileActionOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-muted-foreground">Icon</label>
+                      <select
+                        value={button.icon}
+                        onChange={(e) => updateMobileButton(button.id, { icon: e.target.value as "home" | "courses" | "phone" | "profile" | "login" | "support" | "settings" })}
+                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
+                      >
+                        {mobileIconOptions.map((option) => (
+                          <option key={option.value} value={option.value}>{option.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="flex items-end gap-4 md:col-span-2">
+                      <label className="flex items-center gap-2 text-sm">
+                        <input type="checkbox" checked={button.visible} onChange={(e) => updateMobileButton(button.id, { visible: e.target.checked })} className="rounded" />
+                        Visible
+                      </label>
+                      <Button size="icon" variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => removeMobileButton(button.id)}>
+                        <Trash2 className="w-4 h-4" />
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </CardContent>
           </Card>
         </TabsContent>

@@ -5,6 +5,7 @@ import { Input } from "@/components/ui/input";
 import { Plus, Search, Edit, Trash2, Eye, EyeOff } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { usePlatformData, type ManagedCourse } from "@/context/PlatformDataContext";
+import { toast } from "sonner";
 
 const AdminCourses = () => {
   const { courses, categories, upsertCourse, deleteCourse, toggleCourseVisibility } = usePlatformData();
@@ -81,6 +82,35 @@ const AdminCourses = () => {
     });
 
     setDialogOpen(false);
+  };
+
+  const handleCourseImageUpload = (file: File | null) => {
+    if (!file) return;
+
+    if (!file.type.startsWith("image/")) {
+      toast.error("Please upload a valid image file.");
+      return;
+    }
+
+    const maxSizeMb = 2;
+    if (file.size > maxSizeMb * 1024 * 1024) {
+      toast.error("Image is too large. Keep it up to 2MB.");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const dataUrl = typeof event.target?.result === "string" ? event.target.result : "";
+      if (!dataUrl) {
+        toast.error("Image upload failed.");
+        return;
+      }
+
+      setForm((prev) => ({ ...prev, image: dataUrl }));
+      toast.success("Thumbnail image uploaded.");
+    };
+
+    reader.readAsDataURL(file);
   };
 
   const categoryLabel = (categoryId: string) =>
@@ -164,6 +194,23 @@ const AdminCourses = () => {
               <div>
                 <label className="text-sm font-medium">Image URL</label>
                 <Input value={form.image} onChange={(e) => setForm({ ...form, image: e.target.value })} />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Upload Thumbnail Image</label>
+                <Input
+                  type="file"
+                  accept="image/*"
+                  onChange={(e) => handleCourseImageUpload(e.target.files?.[0] || null)}
+                  className="cursor-pointer"
+                />
+                <p className="text-xs text-muted-foreground">Recommended: JPG/PNG, up to 2MB.</p>
+                {form.image && (
+                  <img
+                    src={form.image}
+                    alt="Course thumbnail preview"
+                    className="h-24 w-full max-w-xs rounded-md border border-border object-cover"
+                  />
+                )}
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <label className="flex items-center gap-2 text-sm">

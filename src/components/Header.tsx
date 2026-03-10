@@ -9,14 +9,6 @@ import CartDrawer from "./CartDrawer";
 import { useAuth } from "@/context/AuthContext";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 
-const navLinks = [
-  { label: "Courses", href: "/packages", hasDropdown: true },
-  { label: "New Releases", href: "/#courses" },
-  { label: "Most Popular", href: "/#courses" },
-  { label: "About Us", href: "/#why-choose" },
-  { label: "Contact Us", href: "/#footer" },
-];
-
 const Header = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -27,12 +19,50 @@ const Header = () => {
   const navigate = useNavigate();
   const { isLoggedIn, userName, logout } = useAuth();
   const { settings } = useSiteSettings();
+  const headerSettings = settings.header;
+  const navLinks = headerSettings.navLinks.filter((link) => link.visible);
+  const customHeaderButtons = headerSettings.customButtons.filter((button) => button.visible);
+
+  const isExternalHref = (href: string) => /^(https?:\/\/|mailto:|tel:)/i.test(href);
+
+  const renderCustomButton = (button: typeof customHeaderButtons[number], mobile = false) => {
+    const variant = button.style === "outline" ? "outline" : button.style === "ghost" ? "ghost" : "default";
+    const className = mobile
+      ? `w-full justify-center h-9 rounded-xl text-xs font-semibold ${
+          button.style === "solid" ? "bg-accent hover:bg-accent/90 text-accent-foreground" : ""
+        }`
+      : `hidden sm:flex h-9 px-3.5 rounded-xl text-xs font-semibold ${
+          button.style === "solid" ? "bg-accent hover:bg-accent/90 text-accent-foreground shadow-sm" : ""
+        }`;
+
+    if (isExternalHref(button.href)) {
+      return (
+        <Button key={button.id} size="sm" variant={variant} className={className} asChild>
+          <a href={button.href} target={button.newTab ? "_blank" : undefined} rel={button.newTab ? "noreferrer" : undefined}>
+            {button.label}
+          </a>
+        </Button>
+      );
+    }
+
+    return (
+      <Button key={button.id} size="sm" variant={variant} className={className} asChild>
+        <Link to={button.href}>{button.label}</Link>
+      </Button>
+    );
+  };
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 10);
     window.addEventListener("scroll", onScroll);
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
+
+  useEffect(() => {
+    if (!headerSettings.showSearch && searchOpen) {
+      setSearchOpen(false);
+    }
+  }, [headerSettings.showSearch, searchOpen]);
 
   const handleLogout = () => {
     logout();
@@ -42,20 +72,22 @@ const Header = () => {
   return (
     <>
       {/* Top info bar */}
+      {headerSettings.topBarVisible && (
       <div className="hidden md:block bg-[rgb(38,72,151)] text-primary-foreground text-[11px] border-b border-primary-foreground/10">
         <div className="container mx-auto px-4 h-8 flex justify-between items-center">
           <div className="flex items-center gap-4">
-            <span className="text-primary-foreground/85">+91 98765 43210</span>
+            <span className="text-primary-foreground/85">{headerSettings.topBarPhone}</span>
             <span className="w-px h-3 bg-primary-foreground/25" />
-            <span className="text-primary-foreground/85">info@ednovate.in</span>
+            <span className="text-primary-foreground/85">{headerSettings.topBarEmail}</span>
           </div>
           <div className="flex items-center gap-3 text-primary-foreground/75">
-            <span>Download App</span>
-            <span className="w-px h-3 bg-primary-foreground/30" />
-            <span>Demo Classes Available</span>
+            {headerSettings.topBarPrimaryText && <span>{headerSettings.topBarPrimaryText}</span>}
+            {headerSettings.topBarPrimaryText && headerSettings.topBarSecondaryText && <span className="w-px h-3 bg-primary-foreground/30" />}
+            {headerSettings.topBarSecondaryText && <span>{headerSettings.topBarSecondaryText}</span>}
           </div>
         </div>
       </div>
+      )}
 
       <header
         className={`sticky top-0 z-50 transition-all duration-300 ${
@@ -87,7 +119,7 @@ const Header = () => {
           </nav>
 
           <div className="flex items-center gap-1.5 sm:gap-2">
-            {searchOpen ? (
+            {headerSettings.showSearch && searchOpen ? (
               <div className="hidden md:flex items-center gap-1.5 animate-scale-in">
                 <div className="relative">
                   <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
@@ -101,16 +133,18 @@ const Header = () => {
                   <X className="w-3.5 h-3.5 text-muted-foreground" />
                 </button>
               </div>
-            ) : (
+            ) : headerSettings.showSearch ? (
               <button
                 onClick={() => setSearchOpen(true)}
                 className="hidden md:flex p-2.5 hover:bg-muted rounded-xl transition-colors border border-transparent hover:border-border"
               >
                 <Search className="w-[18px] h-[18px] text-foreground/60" />
               </button>
-            )}
+            ) : null}
 
             <CartDrawer />
+
+            {customHeaderButtons.map((button) => renderCustomButton(button))}
 
             {isLoggedIn ? (
               <DropdownMenu>
@@ -135,21 +169,25 @@ const Header = () => {
               </DropdownMenu>
             ) : (
               <>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="hidden sm:flex text-xs font-semibold h-9 px-3.5 rounded-xl text-foreground/80 hover:text-foreground hover:bg-muted"
-                  onClick={() => { setLoginOpen(true); setSignupMode(false); }}
-                >
-                  Login
-                </Button>
-                <Button
-                  size="sm"
-                  className="hidden sm:flex bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold h-9 px-4 rounded-xl shadow-sm"
-                  onClick={() => { setLoginOpen(true); setSignupMode(true); }}
-                >
-                  Sign Up Free
-                </Button>
+                {headerSettings.showAuthButtons && (
+                  <>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="hidden sm:flex text-xs font-semibold h-9 px-3.5 rounded-xl text-foreground/80 hover:text-foreground hover:bg-muted"
+                      onClick={() => { setLoginOpen(true); setSignupMode(false); }}
+                    >
+                      {headerSettings.loginLabel}
+                    </Button>
+                    <Button
+                      size="sm"
+                      className="hidden sm:flex bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold h-9 px-4 rounded-xl shadow-sm"
+                      onClick={() => { setLoginOpen(true); setSignupMode(true); }}
+                    >
+                      {headerSettings.signupLabel}
+                    </Button>
+                  </>
+                )}
               </>
             )}
 
@@ -176,6 +214,11 @@ const Header = () => {
                   {link.label}
                 </Link>
               ))}
+              {customHeaderButtons.length > 0 && (
+                <div className="grid grid-cols-1 gap-2 pt-2">
+                  {customHeaderButtons.map((button) => renderCustomButton(button, true))}
+                </div>
+              )}
               <div className="flex gap-2 pt-3 pb-1">
                 {isLoggedIn ? (
                   <>
@@ -188,12 +231,16 @@ const Header = () => {
                   </>
                 ) : (
                   <>
-                    <Button variant="outline" size="sm" className="flex-1 h-9 text-xs font-semibold rounded-xl" onClick={() => { setLoginOpen(true); setSignupMode(false); setMobileOpen(false); }}>
-                      Login
-                    </Button>
-                    <Button size="sm" className="flex-1 h-9 text-xs font-semibold rounded-xl bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => { setLoginOpen(true); setSignupMode(true); setMobileOpen(false); }}>
-                      Sign Up Free
-                    </Button>
+                    {headerSettings.showAuthButtons && (
+                      <>
+                        <Button variant="outline" size="sm" className="flex-1 h-9 text-xs font-semibold rounded-xl" onClick={() => { setLoginOpen(true); setSignupMode(false); setMobileOpen(false); }}>
+                          {headerSettings.loginLabel}
+                        </Button>
+                        <Button size="sm" className="flex-1 h-9 text-xs font-semibold rounded-xl bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => { setLoginOpen(true); setSignupMode(true); setMobileOpen(false); }}>
+                          {headerSettings.signupLabel}
+                        </Button>
+                      </>
+                    )}
                   </>
                 )}
               </div>

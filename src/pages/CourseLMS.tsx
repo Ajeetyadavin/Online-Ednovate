@@ -19,6 +19,9 @@ import {
   type Chapter,
   type Lesson,
 } from "@/context/PlatformDataContext";
+import { decodeVideoUrl, getYouTubeEmbedUrl } from "@/lib/video-utils";
+
+const fallbackVideoUrl = "https://www.w3schools.com/html/mov_bbb.mp4";
 
 const CourseLMS = () => {
   const { id } = useParams();
@@ -130,23 +133,31 @@ const CourseLMS = () => {
   const allLessons = curriculum.flatMap((ch) => ch.lessons);
   const currentLessonId = activeLesson?.id || allLessons[0]?.id || "";
   const currentIndex = allLessons.findIndex((l) => l.id === currentLessonId);
+  const isLessonAccessible = (lesson: Lesson) => !lesson.locked || Boolean(lesson.isPreview);
 
   const handleLessonClick = (lesson: Lesson) => {
-    if (lesson.locked) return;
+    if (!isLessonAccessible(lesson)) return;
     setActiveLesson(lesson);
     setSidebarOpen(false);
   };
 
   const goToNextLesson = () => {
-    if (currentIndex < allLessons.length - 1) {
-      const next = allLessons[currentIndex + 1];
-      if (!next.locked) setActiveLesson(next);
+    for (let index = currentIndex + 1; index < allLessons.length; index += 1) {
+      const candidate = allLessons[index];
+      if (isLessonAccessible(candidate)) {
+        setActiveLesson(candidate);
+        break;
+      }
     }
   };
 
   const goToPrevLesson = () => {
-    if (currentIndex > 0) {
-      setActiveLesson(allLessons[currentIndex - 1]);
+    for (let index = currentIndex - 1; index >= 0; index -= 1) {
+      const candidate = allLessons[index];
+      if (isLessonAccessible(candidate)) {
+        setActiveLesson(candidate);
+        break;
+      }
     }
   };
 
@@ -182,6 +193,11 @@ const CourseLMS = () => {
       </div>
     );
   }
+
+  const resolvedLessonVideoUrl = decodeVideoUrl(activeLesson.videoUrl || "") || fallbackVideoUrl;
+  const youtubeEmbedUrl = getYouTubeEmbedUrl(resolvedLessonVideoUrl);
+  const shouldRenderYouTube =
+    activeLesson.type === "video" && (activeLesson.videoSource === "youtube" || Boolean(youtubeEmbedUrl));
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -275,13 +291,13 @@ const CourseLMS = () => {
                         <button
                           key={lesson.id}
                           onClick={() => handleLessonClick(lesson)}
-                          disabled={lesson.locked}
+                          disabled={!isLessonAccessible(lesson)}
                           className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all duration-200 group
                             ${activeLesson.id === lesson.id 
                               ? "bg-primary/8 border-l-3 border-primary ml-0" 
                               : "hover:bg-muted/60 border-l-3 border-transparent"
                             }
-                            ${lesson.locked ? "opacity-35 cursor-not-allowed" : "cursor-pointer"}
+                            ${!isLessonAccessible(lesson) ? "opacity-35 cursor-not-allowed" : "cursor-pointer"}
                           `}
                         >
                           <div className={`w-5 h-5 rounded-full flex items-center justify-center shrink-0
@@ -310,6 +326,11 @@ const CourseLMS = () => {
                             {lesson.type === "quiz" && <BarChart3 className="w-2.5 h-2.5" />}
                             {lesson.duration}
                           </span>
+                          {lesson.isPreview && (
+                            <span className="text-[10px] shrink-0 px-1.5 py-0.5 rounded-md bg-green-100 text-green-700">
+                              Preview
+                            </span>
+                          )}
                         </button>
                       ))}
                     </AccordionContent>
@@ -331,15 +352,26 @@ const CourseLMS = () => {
           <div className="bg-gradient-to-b from-black via-black to-foreground/95 aspect-video w-full max-h-[60vh] relative group/player">
             {activeLesson.type === "video" ? (
               <>
-                <video
-                  key={activeLesson.id}
-                  controls
-                  autoPlay
-                  className="w-full h-full object-contain"
-                  src={activeLesson.videoUrl}
-                >
-                  Your browser does not support the video tag.
-                </video>
+                {shouldRenderYouTube && youtubeEmbedUrl ? (
+                  <iframe
+                    key={activeLesson.id}
+                    src={youtubeEmbedUrl}
+                    className="w-full h-full"
+                    title={activeLesson.title}
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video
+                    key={activeLesson.id}
+                    controls
+                    autoPlay
+                    className="w-full h-full object-contain"
+                    src={resolvedLessonVideoUrl}
+                  >
+                    Your browser does not support the video tag.
+                  </video>
+                )}
                 {/* Floating lesson nav buttons */}
                 <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between opacity-0 group-hover/player:opacity-100 transition-opacity pointer-events-none">
                   <Button 
@@ -381,7 +413,16 @@ const CourseLMS = () => {
                   className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-full px-6 h-10 font-semibold shadow-lg"
                   onClick={() => {
                     if (activeLesson.type === "pdf") {
+                      if (activeLesson.resourceUrl) {
+                        window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer");
+                        return;
+                      }
                       downloadStudyMaterialPdf(`${course.title}-${activeLesson.title}`);
+                      return;
+                    }
+
+                    if (activeLesson.type === "quiz" && activeLesson.resourceUrl) {
+                      window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer");
                     }
                   }}
                 >
@@ -411,6 +452,9 @@ const CourseLMS = () => {
                     <Badge className="bg-accent/10 text-accent text-[10px] border-0">
                       <CheckCircle2 className="w-3 h-3 mr-0.5" /> Done
                     </Badge>
+                  )}
+                  {activeLesson.isPreview && (
+                    <Badge className="bg-green-100 text-green-700 text-[10px] border-0">Preview</Badge>
                   )}
                 </div>
                 <div className="min-w-0">
@@ -458,7 +502,13 @@ const CourseLMS = () => {
                   <div>
                     <h3 className="text-sm font-bold text-foreground mb-2">About this Lesson</h3>
                     <p className="text-sm text-foreground/70 leading-relaxed">
-                      This lecture covers the essential concepts of <strong className="text-foreground">{activeLesson.title}</strong> as part of the {course.title} course. Pay close attention to the key concepts discussed.
+                      {activeLesson.description?.trim()
+                        ? activeLesson.description
+                        : (
+                          <>
+                            This lecture covers the essential concepts of <strong className="text-foreground">{activeLesson.title}</strong> as part of the {course.title} course. Pay close attention to the key concepts discussed.
+                          </>
+                        )}
                     </p>
                   </div>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -495,6 +545,16 @@ const CourseLMS = () => {
                       >
                         <FileText className="w-3.5 h-3.5" /> Practice Sheet
                       </Button>
+                      {activeLesson.resourceUrl && (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          className="rounded-full text-xs h-8 gap-1.5"
+                          onClick={() => window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer")}
+                        >
+                          <Download className="w-3.5 h-3.5" /> Custom Resource
+                        </Button>
+                      )}
                     </div>
                   </div>
                 </div>

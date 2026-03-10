@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { usePlatformData } from "@/context/PlatformDataContext";
+import { decodeVideoUrl, getYouTubeEmbedUrl } from "@/lib/video-utils";
 
 const defaultContent = [
   { title: "Module 1 - Core Concepts", lectures: 25 },
@@ -80,6 +81,26 @@ const CourseDetails = () => {
       lectures: chapter.lessons.length,
     }));
   }, [course.id, course.title, getCurriculumForCourse]);
+
+  const courseDemo = useMemo(() => {
+    const dedicatedDemoUrl = decodeVideoUrl(course.demoVideoUrl || "");
+    if (!course.demoVideoVisible || !dedicatedDemoUrl) {
+      return null;
+    }
+
+    return {
+      label: course.demoVideoTitle?.trim() || "Dedicated Course Demo",
+      videoUrl: dedicatedDemoUrl,
+      youtubeEmbedUrl: getYouTubeEmbedUrl(dedicatedDemoUrl),
+      thumbnailUrl: course.demoVideoThumbnailUrl?.trim() || "",
+    };
+  }, [
+    course.demoVideoTitle,
+    course.demoVideoThumbnailUrl,
+    course.demoVideoUrl,
+    course.demoVideoVisible,
+  ]);
+
   const totalLectures = content.reduce((sum, c) => sum + c.lectures, 0);
   const validityMonths = course.hours > 400 ? 18 : 12;
   const perHourCost = course.hours > 0 ? (course.price / course.hours).toFixed(2) : "0";
@@ -137,15 +158,49 @@ const CourseDetails = () => {
           <div className="flex-1 min-w-0">
             {/* Course Banner */}
             <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[rgb(38,72,151)] via-[rgba(38,72,151,0.9)] to-accent/60 aspect-video mb-6 group">
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="text-center p-6">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 rounded-2xl bg-primary-foreground/15 flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-500">
-                    <PlayCircle className="w-8 h-8 sm:w-10 sm:h-10 text-primary-foreground" />
+              {courseDemo ? (
+                <>
+                  {courseDemo.youtubeEmbedUrl ? (
+                    <iframe
+                      src={courseDemo.youtubeEmbedUrl}
+                      title={`${course.title} demo video`}
+                      className="w-full h-full"
+                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                      allowFullScreen
+                    />
+                  ) : (
+                    <video
+                      controls
+                      preload="metadata"
+                      className="w-full h-full object-cover"
+                      src={courseDemo.videoUrl}
+                      poster={courseDemo.thumbnailUrl || undefined}
+                    >
+                      Your browser does not support the video tag.
+                    </video>
+                  )}
+                  <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/25 to-transparent pointer-events-none" />
+                  <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5 pointer-events-none">
+                    <p className="inline-flex items-center rounded-full bg-accent/90 text-accent-foreground text-[10px] font-bold px-2.5 py-1 uppercase tracking-wider mb-2">
+                      Course Demo
+                    </p>
+                    <h2 className="text-primary-foreground text-lg sm:text-2xl font-bold mb-1">{course.title}</h2>
+                    <p className="text-primary-foreground/80 text-xs sm:text-sm">
+                      {courseDemo.label} • {course.professor}
+                    </p>
                   </div>
-                  <h2 className="text-primary-foreground text-lg sm:text-2xl font-bold mb-2">{course.title}</h2>
-                  <p className="text-primary-foreground/70 text-sm">{course.professor}</p>
+                </>
+              ) : (
+                <div className="absolute inset-0 flex items-center justify-center">
+                  <div className="text-center p-6">
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 rounded-2xl bg-primary-foreground/15 flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-500">
+                      <PlayCircle className="w-8 h-8 sm:w-10 sm:h-10 text-primary-foreground" />
+                    </div>
+                    <h2 className="text-primary-foreground text-lg sm:text-2xl font-bold mb-2">{course.title}</h2>
+                    <p className="text-primary-foreground/70 text-sm">{course.professor}</p>
+                  </div>
                 </div>
-              </div>
+              )}
               {course.discount > 0 && (
                 <div className="absolute top-4 right-4 bg-accent text-accent-foreground text-xs font-bold px-3 py-1.5 rounded-lg animate-pulse shadow-lg">
                   {course.discount}% OFF

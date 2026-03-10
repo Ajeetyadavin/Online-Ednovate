@@ -1,5 +1,36 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
+export type HeaderButtonStyle = "solid" | "outline" | "ghost";
+
+export interface HeaderNavLink {
+  id: string;
+  label: string;
+  href: string;
+  hasDropdown: boolean;
+  visible: boolean;
+}
+
+export interface HeaderQuickButton {
+  id: string;
+  label: string;
+  href: string;
+  style: HeaderButtonStyle;
+  visible: boolean;
+  newTab: boolean;
+}
+
+export type MobileFooterAction = "link" | "tel" | "login" | "dashboard";
+export type MobileFooterIcon = "home" | "courses" | "phone" | "profile" | "login" | "support" | "settings";
+
+export interface MobileFooterButton {
+  id: string;
+  label: string;
+  href: string;
+  action: MobileFooterAction;
+  icon: MobileFooterIcon;
+  visible: boolean;
+}
+
 export interface SiteSettings {
   colors: {
     primary: string;
@@ -25,9 +56,26 @@ export interface SiteSettings {
     faq: boolean;
     ctaBand: boolean;
   };
+  header: {
+    topBarVisible: boolean;
+    topBarPhone: string;
+    topBarEmail: string;
+    topBarPrimaryText: string;
+    topBarSecondaryText: string;
+    showSearch: boolean;
+    showAuthButtons: boolean;
+    loginLabel: string;
+    signupLabel: string;
+    navLinks: HeaderNavLink[];
+    customButtons: HeaderQuickButton[];
+  };
+  mobileFooter: {
+    visible: boolean;
+    buttons: MobileFooterButton[];
+  };
 }
 
-const defaultSettings: SiteSettings = {
+const createDefaultSettings = (): SiteSettings => ({
   colors: {
     primary: "#1E3A5F",
     accent: "#E04040",
@@ -52,6 +100,199 @@ const defaultSettings: SiteSettings = {
     faq: true,
     ctaBand: true,
   },
+  header: {
+    topBarVisible: true,
+    topBarPhone: "+91 98765 43210",
+    topBarEmail: "info@ednovate.in",
+    topBarPrimaryText: "Download App",
+    topBarSecondaryText: "Demo Classes Available",
+    showSearch: true,
+    showAuthButtons: true,
+    loginLabel: "Login",
+    signupLabel: "Sign Up Free",
+    navLinks: [
+      {
+        id: "nav-courses",
+        label: "Courses",
+        href: "/packages",
+        hasDropdown: true,
+        visible: true,
+      },
+      {
+        id: "nav-new-releases",
+        label: "New Releases",
+        href: "/#courses",
+        hasDropdown: false,
+        visible: true,
+      },
+      {
+        id: "nav-most-popular",
+        label: "Most Popular",
+        href: "/#courses",
+        hasDropdown: false,
+        visible: true,
+      },
+      {
+        id: "nav-about",
+        label: "About Us",
+        href: "/#why-choose",
+        hasDropdown: false,
+        visible: true,
+      },
+      {
+        id: "nav-contact",
+        label: "Contact Us",
+        href: "/#footer",
+        hasDropdown: false,
+        visible: true,
+      },
+    ],
+    customButtons: [
+      {
+        id: "header-btn-1",
+        label: "Book Demo",
+        href: "/packages",
+        style: "outline",
+        visible: true,
+        newTab: false,
+      },
+    ],
+  },
+  mobileFooter: {
+    visible: true,
+    buttons: [
+      {
+        id: "mobile-btn-home",
+        label: "Home",
+        href: "/",
+        action: "link",
+        icon: "home",
+        visible: true,
+      },
+      {
+        id: "mobile-btn-courses",
+        label: "Courses",
+        href: "/packages",
+        action: "link",
+        icon: "courses",
+        visible: true,
+      },
+      {
+        id: "mobile-btn-phone",
+        label: "Call Us",
+        href: "+919876543210",
+        action: "tel",
+        icon: "phone",
+        visible: true,
+      },
+      {
+        id: "mobile-btn-account",
+        label: "Account",
+        href: "/dashboard",
+        action: "login",
+        icon: "login",
+        visible: true,
+      },
+    ],
+  },
+});
+
+const defaultSettings: SiteSettings = createDefaultSettings();
+
+const normalizeHeaderButton = (
+  button: Partial<HeaderQuickButton>,
+  index: number,
+): HeaderQuickButton => {
+  const style: HeaderButtonStyle =
+    button.style === "outline" || button.style === "ghost" ? button.style : "solid";
+
+  return {
+    id: button.id || `header-btn-${index + 1}`,
+    label: button.label || `Button ${index + 1}`,
+    href: button.href || "/",
+    style,
+    visible: button.visible !== false,
+    newTab: Boolean(button.newTab),
+  };
+};
+
+const normalizeHeaderNavLink = (
+  link: Partial<HeaderNavLink>,
+  index: number,
+): HeaderNavLink => {
+  return {
+    id: link.id || `nav-link-${index + 1}`,
+    label: link.label || `Menu ${index + 1}`,
+    href: link.href || "/",
+    hasDropdown: Boolean(link.hasDropdown),
+    visible: link.visible !== false,
+  };
+};
+
+const normalizeMobileFooterButton = (
+  button: Partial<MobileFooterButton>,
+  index: number,
+): MobileFooterButton => {
+  const action: MobileFooterAction =
+    button.action === "tel" || button.action === "login" || button.action === "dashboard"
+      ? button.action
+      : "link";
+  const icon: MobileFooterIcon =
+    button.icon === "courses" ||
+    button.icon === "phone" ||
+    button.icon === "profile" ||
+    button.icon === "login" ||
+    button.icon === "support" ||
+    button.icon === "settings"
+      ? button.icon
+      : "home";
+
+  return {
+    id: button.id || `mobile-btn-${index + 1}`,
+    label: button.label || `Button ${index + 1}`,
+    href: button.href || "/",
+    action,
+    icon,
+    visible: button.visible !== false,
+  };
+};
+
+const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
+  const base = createDefaultSettings();
+
+  return {
+    ...base,
+    ...stored,
+    colors: {
+      ...base.colors,
+      ...(stored.colors || {}),
+    },
+    fonts: {
+      ...base.fonts,
+      ...(stored.fonts || {}),
+    },
+    sections: {
+      ...base.sections,
+      ...(stored.sections || {}),
+    },
+    header: {
+      ...base.header,
+      ...(stored.header || {}),
+      navLinks: Array.isArray(stored.header?.navLinks)
+        ? stored.header!.navLinks.map((link, index) => normalizeHeaderNavLink(link, index))
+        : base.header.navLinks,
+      customButtons: Array.isArray(stored.header?.customButtons)
+        ? stored.header!.customButtons.map((button, index) => normalizeHeaderButton(button, index))
+        : base.header.customButtons,
+    },
+    mobileFooter: {
+      ...base.mobileFooter,
+      ...(stored.mobileFooter || {}),
+      buttons: Array.isArray(stored.mobileFooter?.buttons)
+        ? stored.mobileFooter!.buttons.map((button, index) => normalizeMobileFooterButton(button, index))
+        : base.mobileFooter.buttons,
+    },
+  };
 };
 
 function hexToHSL(hex: string): string {
@@ -84,6 +325,8 @@ interface SiteSettingsContextType {
   updateColors: (colors: Partial<SiteSettings["colors"]>) => void;
   updateFonts: (fonts: Partial<SiteSettings["fonts"]>) => void;
   updateSections: (sections: Partial<SiteSettings["sections"]>) => void;
+  updateHeader: (header: Partial<SiteSettings["header"]>) => void;
+  updateMobileFooter: (mobileFooter: Partial<SiteSettings["mobileFooter"]>) => void;
   updateLogo: (logo: string) => void;
   resetSettings: () => void;
 }
@@ -96,9 +339,9 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
   const [settings, setSettings] = useState<SiteSettings>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) return { ...defaultSettings, ...JSON.parse(stored) };
+      if (stored) return mergeStoredSettings(JSON.parse(stored) as Partial<SiteSettings>);
     } catch {}
-    return defaultSettings;
+    return createDefaultSettings();
   });
 
   // Apply CSS variables whenever colors change
@@ -128,7 +371,7 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
   }, [settings.fonts]);
 
   const updateSettings = (newSettings: Partial<SiteSettings>) => {
-    setSettings((prev) => ({ ...prev, ...newSettings }));
+    setSettings((prev) => mergeStoredSettings({ ...prev, ...newSettings }));
   };
 
   const updateColors = (colors: Partial<SiteSettings["colors"]>) => {
@@ -143,17 +386,46 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, sections: { ...prev.sections, ...sections } }));
   };
 
+  const updateHeader = (header: Partial<SiteSettings["header"]>) => {
+    setSettings((prev) => ({
+      ...prev,
+      header: {
+        ...prev.header,
+        ...header,
+        navLinks: header.navLinks
+          ? header.navLinks.map((link, index) => normalizeHeaderNavLink(link, index))
+          : prev.header.navLinks,
+        customButtons: header.customButtons
+          ? header.customButtons.map((button, index) => normalizeHeaderButton(button, index))
+          : prev.header.customButtons,
+      },
+    }));
+  };
+
+  const updateMobileFooter = (mobileFooter: Partial<SiteSettings["mobileFooter"]>) => {
+    setSettings((prev) => ({
+      ...prev,
+      mobileFooter: {
+        ...prev.mobileFooter,
+        ...mobileFooter,
+        buttons: mobileFooter.buttons
+          ? mobileFooter.buttons.map((button, index) => normalizeMobileFooterButton(button, index))
+          : prev.mobileFooter.buttons,
+      },
+    }));
+  };
+
   const updateLogo = (logo: string) => {
     setSettings((prev) => ({ ...prev, logo }));
   };
 
   const resetSettings = () => {
-    setSettings(defaultSettings);
+    setSettings(createDefaultSettings());
     localStorage.removeItem(STORAGE_KEY);
   };
 
   return (
-    <SiteSettingsContext.Provider value={{ settings, updateSettings, updateColors, updateFonts, updateSections, updateLogo, resetSettings }}>
+    <SiteSettingsContext.Provider value={{ settings, updateSettings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateLogo, resetSettings }}>
       {children}
     </SiteSettingsContext.Provider>
   );

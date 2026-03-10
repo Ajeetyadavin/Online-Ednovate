@@ -8,6 +8,14 @@ export default defineConfig(({ mode }) => ({
   server: {
     host: "::",
     port: 8080,
+    proxy: {
+      "/portal-api": {
+        target: "https://letsednovate.com",
+        changeOrigin: true,
+        secure: false,
+        rewrite: (path) => path.replace(/^\/portal-api/, "/Portal/apiweb"),
+      },
+    },
     hmr: {
       overlay: false,
     },
