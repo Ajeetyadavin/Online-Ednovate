@@ -2,8 +2,10 @@ import { createContext, useCallback, useContext, useState, ReactNode } from "rea
 import {
   fetchProfileApi,
   loginWithEmailApi,
+  resetPasswordByMobileApi,
   sendLoginOtpApi,
   signupApi,
+  verifyStoredOtpApi,
   verifyLoginOtpApi,
   type AuthActionResult,
   type AuthUserProfile,
@@ -18,6 +20,8 @@ interface AuthContextType {
   login: (name?: string) => void;
   logout: () => void;
   sendOtp: (mobileNo: string) => Promise<AuthActionResult>;
+  verifyOtpCode: (mobileNo: string, otp: string) => Promise<AuthActionResult>;
+  resetPassword: (mobileNo: string, password: string) => Promise<AuthActionResult>;
   verifyOtpAndLogin: (mobileNo: string, otp: string) => Promise<AuthActionResult>;
   loginWithEmail: (email: string, password: string) => Promise<AuthActionResult>;
   signup: (payload: SignupPayload) => Promise<AuthActionResult>;
@@ -48,6 +52,14 @@ const parseStoredUser = (): AuthUserProfile | null => {
       name: parsed.name || "Student",
       email: parsed.email || "",
       mobile: parsed.mobile || "",
+      gender: parsed.gender || "",
+      country: parsed.country || "",
+      state: parsed.state || "",
+      city: parsed.city || "",
+      pin: parsed.pin || "",
+      course: parsed.course || "",
+      level: parsed.level || "",
+      attemptYear: parsed.attemptYear || "",
     };
   } catch {
     return null;
@@ -64,6 +76,8 @@ const AuthContext = createContext<AuthContextType>({
   login: () => {},
   logout: () => {},
   sendOtp: async () => errorResult("Auth provider is not ready."),
+  verifyOtpCode: async () => errorResult("Auth provider is not ready."),
+  resetPassword: async () => errorResult("Auth provider is not ready."),
   verifyOtpAndLogin: async () => errorResult("Auth provider is not ready."),
   loginWithEmail: async () => errorResult("Auth provider is not ready."),
   signup: async () => errorResult("Auth provider is not ready."),
@@ -91,6 +105,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       name: safeName,
       email: nextUser.email || "",
       mobile: nextUser.mobile || "",
+      gender: nextUser.gender || "",
+      country: nextUser.country || "",
+      state: nextUser.state || "",
+      city: nextUser.city || "",
+      pin: nextUser.pin || "",
+      course: nextUser.course || "",
+      level: nextUser.level || "",
+      attemptYear: nextUser.attemptYear || "",
     };
 
     setUser(normalizedUser);
@@ -107,6 +129,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       name: name || user?.name || "Student",
       email: user?.email || "",
       mobile: user?.mobile || "",
+      gender: user?.gender || "",
+      country: user?.country || "",
+      state: user?.state || "",
+      city: user?.city || "",
+      pin: user?.pin || "",
+      course: user?.course || "",
+      level: user?.level || "",
+      attemptYear: user?.attemptYear || "",
     });
   };
 
@@ -137,6 +167,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         name: profile.name || user.name || "Student",
         email: profile.email || user.email || "",
         mobile: profile.mobile || user.mobile || "",
+        gender: profile.gender || user.gender || "",
+        country: profile.country || user.country || "",
+        state: profile.state || user.state || "",
+        city: profile.city || user.city || "",
+        pin: profile.pin || user.pin || "",
+        course: profile.course || user.course || "",
+        level: profile.level || user.level || "",
+        attemptYear: profile.attemptYear || user.attemptYear || "",
       });
 
       return { ok: true, message: profileResult.message };
@@ -147,6 +185,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
 
   const sendOtp = async (mobileNo: string): Promise<AuthActionResult> => {
     return sendLoginOtpApi(mobileNo);
+  };
+
+  const verifyOtpCode = async (mobileNo: string, otp: string): Promise<AuthActionResult> => {
+    return verifyStoredOtpApi(mobileNo, otp);
+  };
+
+  const resetPassword = async (mobileNo: string, password: string): Promise<AuthActionResult> => {
+    return resetPasswordByMobileApi(mobileNo, password);
   };
 
   const verifyOtpAndLogin = async (mobileNo: string, otp: string): Promise<AuthActionResult> => {
@@ -160,6 +206,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       name: "Student",
       email: "",
       mobile: mobileNo,
+      gender: "",
+      country: "",
+      state: "",
+      city: "",
+      pin: "",
+      course: "",
+      level: "",
+      attemptYear: "",
     };
 
     setIsProfileLoading(true);
@@ -172,6 +226,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: profile.name || baseUser.name,
           email: profile.email || baseUser.email,
           mobile: profile.mobile || baseUser.mobile,
+          gender: profile.gender || baseUser.gender,
+          country: profile.country || baseUser.country,
+          state: profile.state || baseUser.state,
+          city: profile.city || baseUser.city,
+          pin: profile.pin || baseUser.pin,
+          course: profile.course || baseUser.course,
+          level: profile.level || baseUser.level,
+          attemptYear: profile.attemptYear || baseUser.attemptYear,
         });
       } else {
         applyUser(baseUser);
@@ -194,6 +256,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       name: loginResult.data.name || "Student",
       email: loginResult.data.email || email,
       mobile: loginResult.data.mobile || "",
+      gender: loginResult.data.gender || "",
+      country: loginResult.data.country || "",
+      state: loginResult.data.state || "",
+      city: loginResult.data.city || "",
+      pin: loginResult.data.pin || "",
+      course: loginResult.data.course || "",
+      level: loginResult.data.level || "",
+      attemptYear: loginResult.data.attemptYear || "",
     };
 
     setIsProfileLoading(true);
@@ -206,6 +276,14 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           name: profile.name || baseUser.name,
           email: profile.email || baseUser.email,
           mobile: profile.mobile || baseUser.mobile,
+          gender: profile.gender || baseUser.gender,
+          country: profile.country || baseUser.country,
+          state: profile.state || baseUser.state,
+          city: profile.city || baseUser.city,
+          pin: profile.pin || baseUser.pin,
+          course: profile.course || baseUser.course,
+          level: profile.level || baseUser.level,
+          attemptYear: profile.attemptYear || baseUser.attemptYear,
         });
       } else {
         applyUser(baseUser);
@@ -255,6 +333,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         login,
         logout,
         sendOtp,
+        verifyOtpCode,
+        resetPassword,
         verifyOtpAndLogin,
         loginWithEmail,
         signup,

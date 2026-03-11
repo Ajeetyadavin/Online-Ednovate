@@ -36,6 +36,33 @@ npm i
 npm run dev
 ```
 
+## Node backend with PostgreSQL
+
+This repo now includes a lightweight Node API server in `server/`.
+
+```sh
+# Start backend API
+npm run server
+
+# Or run backend with auto-reload
+npm run server:dev
+```
+
+Health endpoints:
+
+- `http://localhost:4000/api/health`
+- `http://localhost:4000/api/db-check`
+
+By default, the backend reads local PostgreSQL settings from `.env`:
+
+- `API_PORT=4000`
+- `PGHOST=127.0.0.1`
+- `PGPORT=5432`
+- `PGUSER=ajeet`
+- `PGDATABASE=ednovate_db`
+
+If you prefer a single connection string, set `DATABASE_URL` instead.
+
 **Edit a file directly in GitHub**
 
 - Navigate to the desired file(s).

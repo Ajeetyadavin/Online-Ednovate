@@ -1,11 +1,14 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { Check, ChevronLeft, Eye, EyeOff, KeyRound, Mail, Phone, ShieldCheck, Smartphone } from "lucide-react";
+import { toast } from "sonner";
+
 import { useAuth } from "@/context/AuthContext";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { categories } from "@/data/courses";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { GraduationCap, Smartphone, Mail, ArrowLeft, Shield, CheckCircle2, KeyRound, Eye, EyeOff, Lock, User } from "lucide-react";
 
 interface LoginModalProps {
   open: boolean;
@@ -15,7 +18,64 @@ interface LoginModalProps {
   redirectPath?: string;
 }
 
-type View = "login" | "otp" | "otp-verify" | "forgot-choose" | "forgot-email" | "forgot-phone" | "forgot-otp-verify" | "forgot-success";
+type SignupStep = 1 | 2 | 3;
+
+interface SignupFormState {
+  firstName: string;
+  lastName: string;
+  gender: string;
+  countryCode: string;
+  mobile: string;
+  email: string;
+  password: string;
+  confirmPassword: string;
+  country: string;
+  state: string;
+  city: string;
+  pin: string;
+  course: string;
+  level: string;
+  attemptYear: string;
+  captchaChecked: boolean;
+  termsAccepted: boolean;
+}
+
+const GENDER_OPTIONS = ["Male", "Female", "Other"];
+const COUNTRY_OPTIONS = ["India", "United Arab Emirates", "United States", "Canada"];
+const STATE_OPTIONS_BY_COUNTRY: Record<string, string[]> = {
+  India: ["Maharashtra", "Gujarat", "Delhi", "Karnataka", "Tamil Nadu"],
+  "United Arab Emirates": ["Dubai", "Abu Dhabi", "Sharjah"],
+  "United States": ["California", "Texas", "New York", "Florida"],
+  Canada: ["Ontario", "Alberta", "British Columbia", "Quebec"],
+};
+const LEVEL_OPTIONS = ["Beginner", "Intermediate", "Advanced"];
+
+const INITIAL_SIGNUP_FORM: SignupFormState = {
+  firstName: "",
+  lastName: "",
+  gender: "",
+  countryCode: "+91",
+  mobile: "",
+  email: "",
+  password: "",
+  confirmPassword: "",
+  country: "",
+  state: "",
+  city: "",
+  pin: "",
+  course: "",
+  level: "",
+  attemptYear: "",
+  captchaChecked: false,
+  termsAccepted: false,
+};
+
+const normalizeMobile = (value: string) => value.replace(/\D/g, "").slice(-10);
+const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
+const formatTime = (seconds: number) => `0:${String(seconds).padStart(2, "0")}`;
+
+const fieldClassName =
+  "h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-medium text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus-visible:border-[rgb(38,72,151)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(38,72,151)]/20";
 
 const LoginModal = ({
   open,
@@ -25,428 +85,1059 @@ const LoginModal = ({
   redirectPath = "/dashboard",
 }: LoginModalProps) => {
   const navigate = useNavigate();
-  const { login } = useAuth();
-  const [view, setView] = useState<View>("login");
-  const [phone, setPhone] = useState("");
-  const [email, setEmail] = useState("");
+  const { loginWithEmail, sendOtp, signup, verifyOtpAndLogin, verifyOtpCode, resetPassword } = useAuth();
+
   const [loginIdentifier, setLoginIdentifier] = useState("");
-  const [passwordInput, setPasswordInput] = useState("");
-  const [isIdentifierFocused, setIsIdentifierFocused] = useState(false);
-  const [isPasswordFocused, setIsPasswordFocused] = useState(false);
-  const [isBlinking, setIsBlinking] = useState(false);
-  const [showPassword, setShowPassword] = useState(false);
+  const [loginPassword, setLoginPassword] = useState("");
+  const [showLoginPassword, setShowLoginPassword] = useState(false);
+  const [isLoginSubmitting, setIsLoginSubmitting] = useState(false);
+  const [loginMethod, setLoginMethod] = useState<"password" | "otp">("password");
+  const [loginOtpMobile, setLoginOtpMobile] = useState("");
+  const [loginOtpCode, setLoginOtpCode] = useState("");
+  const [loginOtpSeconds, setLoginOtpSeconds] = useState(55);
+  const [isLoginOtpSending, setIsLoginOtpSending] = useState(false);
+  const [loginOtpSent, setLoginOtpSent] = useState(false);
+  const [isLoginOtpVerifying, setIsLoginOtpVerifying] = useState(false);
 
-  useEffect(() => {
-    if (view !== "login") {
-      setIsIdentifierFocused(false);
-      setIsPasswordFocused(false);
+  const [signupForm, setSignupForm] = useState<SignupFormState>(INITIAL_SIGNUP_FORM);
+  const [signupStep, setSignupStep] = useState<SignupStep>(1);
+  const [showSignupPassword, setShowSignupPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [otpCode, setOtpCode] = useState("");
+  const [otpSeconds, setOtpSeconds] = useState(55);
+  const [isOtpSending, setIsOtpSending] = useState(false);
+  const [isSignupSubmitting, setIsSignupSubmitting] = useState(false);
+
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
+  const [forgotMobile, setForgotMobile] = useState("");
+  const [forgotOtpSent, setForgotOtpSent] = useState(false);
+  const [forgotOtpCode, setForgotOtpCode] = useState("");
+  const [forgotSeconds, setForgotSeconds] = useState(55);
+  const [forgotNewPassword, setForgotNewPassword] = useState("");
+  const [forgotConfirmPassword, setForgotConfirmPassword] = useState("");
+  const [showForgotNewPassword, setShowForgotNewPassword] = useState(false);
+  const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
+  const [isForgotSubmitting, setIsForgotSubmitting] = useState(false);
+
+  const courseOptions = useMemo(() => categories.filter((item) => item.id !== "all").map((item) => item.label), []);
+
+  const attemptYears = useMemo(() => {
+    const currentYear = new Date().getFullYear();
+    return Array.from({ length: 5 }, (_, index) => String(currentYear - 1 + index));
+  }, []);
+
+  const stepTitle = useMemo(() => {
+    if (signupStep === 1) {
+      return "Personal Details";
     }
-  }, [view]);
+    if (signupStep === 2) {
+      return "Location and Course";
+    }
+    return "OTP Verification";
+  }, [signupStep]);
+
+  const availableStates = signupForm.country ? STATE_OPTIONS_BY_COUNTRY[signupForm.country] || [] : [];
+
+  const resetFormState = () => {
+    setLoginIdentifier("");
+    setLoginPassword("");
+    setShowLoginPassword(false);
+    setIsLoginSubmitting(false);
+    setLoginMethod("password");
+    setLoginOtpMobile("");
+    setLoginOtpCode("");
+    setLoginOtpSeconds(55);
+    setIsLoginOtpSending(false);
+    setLoginOtpSent(false);
+    setIsLoginOtpVerifying(false);
+
+    setSignupForm({ ...INITIAL_SIGNUP_FORM });
+    setSignupStep(1);
+    setShowSignupPassword(false);
+    setShowConfirmPassword(false);
+    setOtpCode("");
+    setOtpSeconds(55);
+    setIsOtpSending(false);
+    setIsSignupSubmitting(false);
+
+    setShowForgotPassword(false);
+    setForgotMobile("");
+    setForgotOtpSent(false);
+    setForgotOtpCode("");
+    setForgotSeconds(55);
+    setForgotNewPassword("");
+    setForgotConfirmPassword("");
+    setShowForgotNewPassword(false);
+    setShowForgotConfirmPassword(false);
+    setIsForgotSubmitting(false);
+  };
 
   useEffect(() => {
-    if (view !== "login" || isPasswordFocused) {
-      setIsBlinking(false);
+    if (!open) {
+      return;
+    }
+    resetFormState();
+  }, [open]);
+
+  useEffect(() => {
+    if (!open || !isSignup) {
+      return;
+    }
+    setSignupStep(1);
+    setOtpCode("");
+    setOtpSeconds(55);
+  }, [isSignup, open]);
+
+  useEffect(() => {
+    if (!open || !isSignup || signupStep !== 3 || otpSeconds <= 0) {
       return;
     }
 
-    let blinkTimeout: number | null = null;
-    const blinkInterval = window.setInterval(() => {
-      setIsBlinking(true);
-      blinkTimeout = window.setTimeout(() => setIsBlinking(false), 160);
-    }, 2800);
+    const timer = window.setInterval(() => {
+      setOtpSeconds((previous) => (previous > 0 ? previous - 1 : 0));
+    }, 1000);
 
-    return () => {
-      window.clearInterval(blinkInterval);
-      if (blinkTimeout) {
-        window.clearTimeout(blinkTimeout);
-      }
-    };
-  }, [view, isPasswordFocused]);
+    return () => window.clearInterval(timer);
+  }, [isSignup, open, otpSeconds, signupStep]);
 
-  const handleReset = () => {
-    setView("login");
-    setPhone("");
-    setEmail("");
-    setLoginIdentifier("");
-    setPasswordInput("");
-    setIsIdentifierFocused(false);
-    setIsPasswordFocused(false);
-    setIsBlinking(false);
-    setShowPassword(false);
+  useEffect(() => {
+    if (!open || !showForgotPassword || !forgotOtpSent || forgotSeconds <= 0) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setForgotSeconds((previous) => (previous > 0 ? previous - 1 : 0));
+    }, 1000);
+
+    return () => window.clearInterval(timer);
+  }, [open, showForgotPassword, forgotOtpSent, forgotSeconds]);
+
+  useEffect(() => {
+    if (!open || isSignup || !loginOtpSent || loginOtpSeconds <= 0) {
+      return;
+    }
+    const timer = window.setInterval(() => {
+      setLoginOtpSeconds((previous) => (previous > 0 ? previous - 1 : 0));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [open, isSignup, loginOtpSent, loginOtpSeconds]);
+
+  const updateSignupField = <K extends keyof SignupFormState>(field: K, value: SignupFormState[K]) => {
+    setSignupForm((previous) => ({
+      ...previous,
+      [field]: value,
+    }));
   };
 
-  const OtpBoxes = () => (
-    <div className="flex gap-2.5 justify-center">
-      {[...Array(6)].map((_, i) => (
-        <input
-          key={i}
-          type="text"
-          maxLength={1}
-          className="w-10 h-12 text-center text-lg font-bold rounded-lg border border-border bg-background focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground"
-          onInput={(e) => {
-            const t = e.target as HTMLInputElement;
-            if (t.value && t.nextElementSibling) (t.nextElementSibling as HTMLInputElement).focus();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Backspace" && !(e.target as HTMLInputElement).value) {
-              const prev = (e.target as HTMLElement).previousElementSibling as HTMLInputElement;
-              if (prev) prev.focus();
-            }
-          }}
-        />
-      ))}
-    </div>
-  );
+  const handleModalOpenChange = (nextOpen: boolean) => {
+    onOpenChange(nextOpen);
+    if (!nextOpen) {
+      resetFormState();
+    }
+  };
 
-  const BackButton = ({ onClick, label = "Back" }: { onClick: () => void; label?: string }) => (
-    <button
-      type="button"
-      onClick={onClick}
-      className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors mb-1"
-    >
-      <ArrowLeft className="w-3.5 h-3.5" /> {label}
-    </button>
-  );
+  const handleModeSwitch = () => {
+    resetFormState();
+    onToggleMode();
+  };
 
-  const InputWithIcon = ({ icon: Icon, ...props }: { icon: React.ElementType } & React.InputHTMLAttributes<HTMLInputElement>) => (
-    <div className="relative">
-      <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-      <Input {...props} className="h-11 text-sm rounded-lg pl-10 border-border bg-background" />
-    </div>
-  );
-
-  const pupilShift = isIdentifierFocused
-    ? Math.max(-1.5, Math.min(4, loginIdentifier.length * 0.4))
-    : 0;
-
-  const eyesClosed = isPasswordFocused || isBlinking;
-  const mouthSmile = loginIdentifier.includes("@") || isIdentifierFocused;
-
-  const loginMood = isPasswordFocused
-    ? "Password type karte waqt eyes secure mode mein hain"
-    : isIdentifierFocused
-      ? "Email/mobile dekh raha hoon"
-      : isSignup
-        ? "Naya account banane ke liye ready"
-        : "Welcome back";
-
-  const handleAuthSuccess = () => {
-    login("Student");
+  const completeLogin = () => {
     onOpenChange(false);
+    resetFormState();
     navigate(redirectPath);
   };
 
+  const validateStepOne = () => {
+    if (!signupForm.firstName.trim()) {
+      toast.error("Please enter first name.");
+      return false;
+    }
+    if (!signupForm.lastName.trim()) {
+      toast.error("Please enter last name.");
+      return false;
+    }
+    if (!signupForm.gender) {
+      toast.error("Please select gender.");
+      return false;
+    }
+    if (signupForm.mobile.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number.");
+      return false;
+    }
+    if (!isValidEmail(signupForm.email)) {
+      toast.error("Please enter a valid email address.");
+      return false;
+    }
+    if (signupForm.password.trim().length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return false;
+    }
+    if (signupForm.password !== signupForm.confirmPassword) {
+      toast.error("Password and confirm password do not match.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const validateStepTwo = () => {
+    if (!signupForm.country) {
+      toast.error("Please choose country.");
+      return false;
+    }
+    if (!signupForm.state) {
+      toast.error("Please choose state.");
+      return false;
+    }
+    if (!signupForm.city.trim()) {
+      toast.error("Please enter city.");
+      return false;
+    }
+    if (!/^\d{6}$/.test(signupForm.pin)) {
+      toast.error("Please enter a valid 6-digit pin code.");
+      return false;
+    }
+    if (!signupForm.course) {
+      toast.error("Please select course.");
+      return false;
+    }
+    if (!signupForm.level) {
+      toast.error("Please select level.");
+      return false;
+    }
+    if (!/^\d{4}$/.test(signupForm.attemptYear.trim())) {
+      toast.error("Please enter valid attempt year.");
+      return false;
+    }
+    if (!signupForm.captchaChecked) {
+      toast.error("Please confirm captcha checkbox.");
+      return false;
+    }
+    if (!signupForm.termsAccepted) {
+      toast.error("Please accept terms and privacy policy.");
+      return false;
+    }
+
+    return true;
+  };
+
+  const handleLoginSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (!loginIdentifier.trim() || !loginPassword.trim()) {
+      toast.error("Please enter login details.");
+      return;
+    }
+
+    setIsLoginSubmitting(true);
+    try {
+      const response = await loginWithEmail(loginIdentifier, loginPassword);
+      if (!response.ok) {
+        toast.error(response.message || "Login failed.");
+        return;
+      }
+
+      toast.success(response.message || "Login successful.");
+      completeLogin();
+    } finally {
+      setIsLoginSubmitting(false);
+    }
+  };
+
+  const handleSendLoginOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const mobile = normalizeMobile(loginOtpMobile);
+    if (mobile.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+    setIsLoginOtpSending(true);
+    try {
+      const response = await sendOtp(mobile);
+      if (!response.ok) {
+        toast.error(response.message || "Failed to send OTP.");
+        return;
+      }
+      toast.success(response.message || "OTP sent to your mobile.");
+      setLoginOtpCode("");
+      setLoginOtpSeconds(55);
+      setLoginOtpSent(true);
+    } finally {
+      setIsLoginOtpSending(false);
+    }
+  };
+
+  const handleVerifyLoginOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (loginOtpCode.trim().length !== 6) {
+      toast.error("Please enter the 6-digit OTP.");
+      return;
+    }
+    setIsLoginOtpVerifying(true);
+    try {
+      const response = await verifyOtpAndLogin(normalizeMobile(loginOtpMobile), loginOtpCode);
+      if (!response.ok) {
+        toast.error(response.message || "OTP verification failed.");
+        return;
+      }
+      toast.success("Login successful.");
+      completeLogin();
+    } finally {
+      setIsLoginOtpVerifying(false);
+    }
+  };
+
+  const handleResendLoginOtp = async () => {
+    if (loginOtpSeconds > 0 || isLoginOtpSending) return;
+    setIsLoginOtpSending(true);
+    try {
+      const response = await sendOtp(normalizeMobile(loginOtpMobile));
+      if (!response.ok) {
+        toast.error(response.message || "Could not resend OTP.");
+        return;
+      }
+      toast.success("OTP resent successfully.");
+      setLoginOtpSeconds(55);
+    } finally {
+      setIsLoginOtpSending(false);
+    }
+  };
+
+  const handleStepOneSubmit = (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!validateStepOne()) {
+      return;
+    }
+    setSignupStep(2);
+  };
+
+  const handleStepTwoSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+    if (!validateStepTwo()) {
+      return;
+    }
+
+    setIsOtpSending(true);
+    try {
+      const response = await sendOtp(signupForm.mobile);
+      if (!response.ok) {
+        toast.error(response.message || "Failed to send OTP.");
+        return;
+      }
+
+      toast.success(response.message || "OTP sent successfully.");
+      setOtpCode("");
+      setOtpSeconds(55);
+      setSignupStep(3);
+    } finally {
+      setIsOtpSending(false);
+    }
+  };
+
+  const handleResendOtp = async () => {
+    if (otpSeconds > 0) {
+      return;
+    }
+
+    setIsOtpSending(true);
+    try {
+      const response = await sendOtp(signupForm.mobile);
+      if (!response.ok) {
+        toast.error(response.message || "Could not resend OTP.");
+        return;
+      }
+
+      toast.success("OTP resent successfully.");
+      setOtpSeconds(55);
+    } finally {
+      setIsOtpSending(false);
+    }
+  };
+
+  const handleSignupSubmit = async (event: React.FormEvent) => {
+    event.preventDefault();
+
+    if (otpCode.trim().length !== 6) {
+      toast.error("Please enter 6-digit OTP.");
+      return;
+    }
+
+    setIsSignupSubmitting(true);
+    try {
+      const otpResult = await verifyOtpCode(signupForm.mobile, otpCode);
+      if (!otpResult.ok) {
+        toast.error(otpResult.message || "OTP verification failed.");
+        return;
+      }
+
+      const fullName = `${signupForm.firstName.trim()} ${signupForm.lastName.trim()}`.trim();
+      const signupResult = await signup({
+        name: fullName,
+        email: signupForm.email,
+        mobile: signupForm.mobile,
+        password: signupForm.password,
+        gender: signupForm.gender,
+        country: signupForm.country,
+        state: signupForm.state,
+        city: signupForm.city,
+        pin: signupForm.pin,
+        course: signupForm.course,
+        level: signupForm.level,
+        attemptYear: signupForm.attemptYear,
+      });
+
+      if (!signupResult.ok) {
+        toast.error(signupResult.message || "Signup failed.");
+        return;
+      }
+
+      const loginResult = await loginWithEmail(signupForm.email, signupForm.password);
+      if (!loginResult.ok) {
+        toast.success(signupResult.message || "Signup complete. Please login.");
+        setSignupStep(1);
+        onToggleMode();
+        return;
+      }
+
+      toast.success("Signup successful.");
+      completeLogin();
+      if (isSignup) {
+        onToggleMode();
+      }
+    } finally {
+      setIsSignupSubmitting(false);
+    }
+  };
+
+  const handleSendForgotOtp = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const mobile = normalizeMobile(forgotMobile);
+    if (mobile.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+
+    setIsForgotSubmitting(true);
+    try {
+      const response = await sendOtp(mobile);
+      if (!response.ok) {
+        toast.error(response.message || "Failed to send OTP.");
+        return;
+      }
+      toast.success(response.message || "OTP sent to your mobile.");
+      setForgotOtpSent(true);
+      setForgotOtpCode("");
+      setForgotSeconds(55);
+    } finally {
+      setIsForgotSubmitting(false);
+    }
+  };
+
+  const handleResendForgotOtp = async () => {
+    if (forgotSeconds > 0 || isForgotSubmitting) return;
+    const mobile = normalizeMobile(forgotMobile);
+    if (mobile.length !== 10) return;
+
+    setIsForgotSubmitting(true);
+    try {
+      const response = await sendOtp(mobile);
+      if (!response.ok) {
+        toast.error(response.message || "Could not resend OTP.");
+        return;
+      }
+      toast.success("OTP resent successfully.");
+      setForgotSeconds(55);
+    } finally {
+      setIsForgotSubmitting(false);
+    }
+  };
+
+  const handleForgotReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    const mobile = normalizeMobile(forgotMobile);
+    if (mobile.length !== 10) {
+      toast.error("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+    if (forgotOtpCode.trim().length !== 6) {
+      toast.error("Please enter the 6-digit OTP.");
+      return;
+    }
+    if (forgotNewPassword.trim().length < 6) {
+      toast.error("Password must be at least 6 characters.");
+      return;
+    }
+    if (forgotNewPassword !== forgotConfirmPassword) {
+      toast.error("Password and confirm password do not match.");
+      return;
+    }
+
+    setIsForgotSubmitting(true);
+    try {
+      const verifyResult = await verifyOtpCode(mobile, forgotOtpCode);
+      if (!verifyResult.ok) {
+        toast.error(verifyResult.message || "OTP verification failed.");
+        return;
+      }
+
+      const resetResult = await resetPassword(mobile, forgotNewPassword);
+      if (!resetResult.ok) {
+        toast.error(resetResult.message || "Password reset failed.");
+        return;
+      }
+
+      toast.success(resetResult.message || "Password reset successful. Please login.");
+      setShowForgotPassword(false);
+      setForgotOtpSent(false);
+      setForgotOtpCode("");
+      setForgotNewPassword("");
+      setForgotConfirmPassword("");
+      setForgotSeconds(55);
+      setLoginMethod("password");
+    } finally {
+      setIsForgotSubmitting(false);
+    }
+  };
+
   return (
-    <Dialog open={open} onOpenChange={(v) => { onOpenChange(v); if (!v) handleReset(); }}>
-      <DialogContent className="sm:max-w-[400px] p-0 overflow-hidden rounded-2xl border border-border shadow-xl bg-card gap-0">
-        {/* Compact Header */}
-        <div className="bg-[rgb(38,72,151)] px-6 py-5 text-center">
-          {view === "login" ? (
-            <div className="relative w-20 h-20 rounded-[24px] bg-primary-foreground/15 border border-primary-foreground/20 flex items-center justify-center mx-auto mb-2.5 backdrop-blur-sm animate-float">
-              <div className="absolute inset-0 rounded-2xl bg-gradient-to-b from-primary-foreground/10 to-transparent" />
-              <div className="absolute left-2 top-2 w-3 h-3 rounded-full bg-primary-foreground/20" />
+    <Dialog open={open} onOpenChange={handleModalOpenChange}>
+      <DialogContent className="w-[96vw] max-w-[480px] overflow-hidden rounded-3xl border-0 p-0 shadow-[0_32px_64px_-8px_rgba(0,0,0,0.28)]">
+        <div className="flex max-h-[96vh] flex-col">
 
-              <div className="absolute top-2.5 left-1/2 -translate-x-1/2 w-14 h-14 rounded-[18px] bg-primary-foreground/95 shadow-inner shadow-primary-foreground/30" />
+          {/* ── HEADER ── */}
+          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-[rgb(38,72,151)] via-[rgb(38,72,151)] to-[rgb(17,37,92)] px-7 pb-6 pt-7">
+            {/* decorative blobs */}
+            <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10" />
+            <div className="pointer-events-none absolute -bottom-6 -left-6 h-24 w-24 rounded-full bg-white/10" />
 
-              <div className="absolute top-[28px] left-[26px] w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm">
-                {eyesClosed ? (
-                  <span className="w-3.5 h-[2px] rounded-full bg-[rgb(38,72,151)]" />
-                ) : (
-                  <span
-                    className="w-1.5 h-1.5 rounded-full bg-[rgb(38,72,151)] transition-transform duration-200"
-                    style={{ transform: `translateX(${pupilShift}px)` }}
-                  />
-                )}
-              </div>
+            {/* logo */}
+            <img src="/ednovate-logo.svg" alt="Ednovate" className="relative z-10 h-9 w-auto rounded-lg bg-white px-2.5 py-1.5 shadow" />
 
-              <div className="absolute top-[28px] right-[26px] w-4 h-4 rounded-full bg-white flex items-center justify-center shadow-sm">
-                {eyesClosed ? (
-                  <span className="w-3.5 h-[2px] rounded-full bg-[rgb(38,72,151)]" />
-                ) : (
-                  <span
-                    className="w-1.5 h-1.5 rounded-full bg-[rgb(38,72,151)] transition-transform duration-200"
-                    style={{ transform: `translateX(${pupilShift}px)` }}
-                  />
-                )}
-              </div>
-
-              <div
-                className={`absolute bottom-3 left-1/2 -translate-x-1/2 transition-all duration-200 ${
-                  isPasswordFocused
-                    ? "w-5 h-[2px] rounded-full bg-[rgb(38,72,151)]"
-                    : mouthSmile
-                      ? "w-7 h-3 border-b-2 border-[rgb(38,72,151)] rounded-b-full"
-                      : "w-4 h-[2px] rounded-full bg-[rgb(38,72,151)]"
-                }`}
-              />
-
-              <div
-                className={`absolute top-[34px] -left-1.5 w-6 h-6 rounded-full bg-primary-foreground border border-primary-foreground/70 shadow-sm transition-all duration-300 ${
-                  isPasswordFocused
-                    ? "opacity-100 translate-y-0 rotate-[14deg]"
-                    : "opacity-0 translate-y-4 -rotate-[10deg]"
-                }`}
-              />
-
-              <div
-                className={`absolute top-[34px] -right-1.5 w-6 h-6 rounded-full bg-primary-foreground border border-primary-foreground/70 shadow-sm transition-all duration-300 ${
-                  isPasswordFocused
-                    ? "opacity-100 translate-y-0 -rotate-[14deg]"
-                    : "opacity-0 translate-y-4 rotate-[10deg]"
-                }`}
-              />
-
-              {isIdentifierFocused && !isPasswordFocused && (
-                <div className="absolute -right-1 -top-1 w-5 h-5 rounded-full bg-accent text-accent-foreground flex items-center justify-center shadow">
-                  <Mail className="w-3 h-3" />
-                </div>
-              )}
-
-              {isPasswordFocused && (
-                <div className="absolute -right-1 -top-1 w-5 h-5 rounded-full bg-primary-foreground text-primary flex items-center justify-center shadow animate-pulse">
-                  <Lock className="w-3 h-3" />
-                </div>
-              )}
+            {/* title + subtitle */}
+            <div className="relative z-10 mt-5">
+              <DialogTitle className="text-3xl font-extrabold leading-tight tracking-tight text-white">
+                {showForgotPassword ? "Reset Password" : isSignup ? "Create Account" : "Welcome Back"}
+              </DialogTitle>
+              <p className="mt-1.5 text-sm font-medium text-[rgb(211,224,255)]">
+                {showForgotPassword
+                  ? "Verify OTP and set a new password."
+                  : isSignup
+                  ? signupStep === 3
+                    ? "Almost there! Verify your mobile number."
+                    : "Join thousands of learners on Ednovate."
+                  : loginMethod === "password"
+                    ? "Sign in to continue your learning journey."
+                    : loginOtpSent
+                      ? `OTP sent to \u2022\u2022\u2022\u2022\u2022\u2022${loginOtpMobile.slice(-4)}. Enter below.`
+                      : "Enter your mobile to receive a one-time password."}
+              </p>
             </div>
-          ) : (
-            <div className="w-11 h-11 rounded-xl bg-primary-foreground/15 flex items-center justify-center mx-auto mb-2.5">
-              {view.startsWith("forgot") ? (
-                view === "forgot-success" ? <CheckCircle2 className="w-5 h-5 text-primary-foreground" /> : <KeyRound className="w-5 h-5 text-primary-foreground" />
-              ) : (
-                <Smartphone className="w-5 h-5 text-primary-foreground" />
-              )}
-            </div>
-          )}
-          <DialogTitle className="text-lg font-bold text-primary-foreground">
-            {view === "login" ? (isSignup ? "Create Account" : "Welcome Back") :
-             view === "otp" ? "Login with OTP" :
-             view === "otp-verify" ? "Verify OTP" :
-             view === "forgot-choose" ? "Reset Password" :
-             view === "forgot-email" ? "Reset via Email" :
-             view === "forgot-phone" ? "Reset via Mobile" :
-             view === "forgot-otp-verify" ? "Verify & Reset" :
-             "Email Sent!"}
-          </DialogTitle>
-          <p className="text-xs text-primary-foreground/65 mt-1">
-            {view === "login" ? (isSignup ? "Start your learning journey" : "Login to continue learning") :
-             view === "otp" ? "We'll send a code to your phone" :
-             view === "otp-verify" ? `Sent to +91 ${phone}` :
-             view === "forgot-choose" ? "Choose how to reset" :
-             view === "forgot-email" ? "We'll send a reset link" :
-             view === "forgot-phone" ? "Verify via OTP" :
-             view === "forgot-otp-verify" ? `Sent to +91 ${phone}` :
-             `Sent to ${email}`}
-          </p>
-          {view === "login" && (
-            <p className="text-[10px] text-primary-foreground/80 mt-1.5">{loginMood}</p>
-          )}
-        </div>
 
-        {/* LOGIN */}
-        {view === "login" && (
-          <form className="p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); handleAuthSuccess(); }}>
-            {isSignup && (
-              <div className="space-y-1.5">
-                <Label className="text-xs font-medium text-foreground">Full Name</Label>
-                <InputWithIcon icon={User} placeholder="Enter your full name" />
+            {/* signup step bar */}
+            {isSignup && !showForgotPassword && (
+              <div className="relative z-10 mt-6 flex items-center gap-0">
+                {([{ id: 1 as SignupStep, label: "Profile" }, { id: 2 as SignupStep, label: "Location" }, { id: 3 as SignupStep, label: "Verify" }]).map((step, index) => {
+                  const isComplete = signupStep > step.id;
+                  const isActive   = signupStep === step.id;
+                  return (
+                    <div key={step.id} className={`flex items-center ${index < 2 ? "flex-1" : ""}`}>
+                      <div className="flex flex-col items-center gap-1">
+                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all ${
+                          isComplete ? "bg-[rgb(231,70,35)] text-white shadow"
+                            : isActive  ? "bg-white text-[rgb(38,72,151)] shadow"
+                            : "bg-white/15 text-white/60"
+                        }`}>
+                          {isComplete ? <Check className="h-4 w-4" /> : step.id}
+                        </div>
+                        <span className={`text-[10px] font-semibold ${ isActive ? "text-white" : "text-white/50" }`}>{step.label}</span>
+                      </div>
+                      {index < 2 && (
+                        <div className={`mx-3 mb-4 h-px flex-1 transition-all ${ signupStep > step.id ? "bg-white" : "bg-white/25" }`} />
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-foreground">Email or Mobile</Label>
-              <InputWithIcon
-                icon={Mail}
-                placeholder="Enter email or mobile"
-                value={loginIdentifier}
-                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setLoginIdentifier(e.target.value)}
-                onFocus={() => setIsIdentifierFocused(true)}
-                onBlur={() => setIsIdentifierFocused(false)}
-              />
-            </div>
-            <div className="space-y-1.5">
-              <div className="flex items-center justify-between">
-                <Label className="text-xs font-medium text-foreground">Password</Label>
-                {!isSignup && (
-                  <button type="button" onClick={() => setView("forgot-choose")} className="text-[11px] text-accent hover:underline font-medium">
-                    Forgot?
+          </div>
+
+          {/* ── SCROLLABLE FORM BODY ── */}
+          <div className="flex-1 overflow-y-auto bg-white px-7 py-6">
+
+            {/* LOGIN */}
+            {!isSignup && !showForgotPassword && (
+              <div>
+                <div className="mb-6 flex rounded-2xl border border-slate-200 bg-slate-100 p-1">
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMethod("password"); setLoginOtpSent(false); setLoginOtpCode(""); }}
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all ${
+                      loginMethod === "password" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    <KeyRound className="h-4 w-4" />
+                    Password
                   </button>
+                  <button
+                    type="button"
+                    onClick={() => { setLoginMethod("otp"); setLoginOtpSent(false); setLoginOtpCode(""); }}
+                    className={`flex flex-1 items-center justify-center gap-2 rounded-lg py-2.5 text-sm font-semibold transition-all ${
+                      loginMethod === "otp" ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+                    }`}
+                  >
+                    <Smartphone className="h-4 w-4" />
+                    OTP Login
+                  </button>
+                </div>
+
+                {loginMethod === "password" && (
+                  <form className="space-y-4" onSubmit={handleLoginSubmit}>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="loginIdentifier" className="text-sm font-semibold text-slate-700">
+                        Email or Mobile No
+                      </Label>
+                      <div className="relative">
+                        <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          id="loginIdentifier"
+                          className={`${fieldClassName} pl-9`}
+                          placeholder="email@example.com or 10-digit mobile"
+                          value={loginIdentifier}
+                          onChange={(event) => setLoginIdentifier(event.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <div className="flex items-center justify-between">
+                        <Label htmlFor="loginPassword" className="text-sm font-semibold text-slate-700">
+                          Password
+                        </Label>
+                        <button
+                          type="button"
+                          onClick={() => { setShowForgotPassword(true); }}
+                          className="text-xs font-semibold text-teal-600 hover:text-teal-500"
+                        >
+                          Forgot password?
+                        </button>
+                      </div>
+                      <div className="relative">
+                        <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          id="loginPassword"
+                          type={showLoginPassword ? "text" : "password"}
+                          className={`${fieldClassName} pl-9 pr-10`}
+                          placeholder="Enter your password"
+                          value={loginPassword}
+                          onChange={(event) => setLoginPassword(event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowLoginPassword((previous) => !previous)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showLoginPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+                    <Button type="submit" disabled={isLoginSubmitting} className="h-11 w-full rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
+                      {isLoginSubmitting ? "Signing in\u2026" : "Sign In"}
+                    </Button>
+                  </form>
+                )}
+
+                {loginMethod === "otp" && !loginOtpSent && (
+                  <form className="space-y-4" onSubmit={handleSendLoginOtp}>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="loginOtpMobile" className="text-sm font-semibold text-slate-700">
+                        Mobile Number
+                      </Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          id="loginOtpMobile"
+                          className={`${fieldClassName} pl-9`}
+                          placeholder="Enter 10-digit mobile number"
+                          value={loginOtpMobile}
+                          onChange={(event) => setLoginOtpMobile(normalizeMobile(event.target.value))}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500">We'll send a 6-digit OTP to this number.</p>
+                    </div>
+                    <Button type="submit" disabled={isLoginOtpSending} className="h-11 w-full rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
+                      {isLoginOtpSending ? "Sending OTP\u2026" : "Send OTP"}
+                    </Button>
+                  </form>
+                )}
+
+                {loginMethod === "otp" && loginOtpSent && (
+                  <form className="space-y-4" onSubmit={handleVerifyLoginOtp}>
+                    <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-emerald-800">OTP sent to \u2022\u2022\u2022\u2022\u2022\u2022{loginOtpMobile.slice(-4)}</p>
+                        <p className="text-xs text-emerald-600">Valid for 10 minutes.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setLoginOtpSent(false); setLoginOtpCode(""); }}
+                        className="shrink-0 text-xs font-bold text-emerald-700 underline hover:text-emerald-600"
+                      >
+                        Edit
+                      </button>
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label htmlFor="loginOtpCode" className="text-sm font-semibold text-slate-700">
+                        Enter 6-Digit OTP
+                      </Label>
+                      <Input
+                        id="loginOtpCode"
+                        className={`${fieldClassName} text-center text-2xl font-bold tracking-[0.5em]`}
+                        placeholder="\u2022 \u2022 \u2022 \u2022 \u2022 \u2022"
+                        maxLength={6}
+                        value={loginOtpCode}
+                        onChange={(event) => setLoginOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      />
+                    </div>
+                    <Button type="submit" disabled={isLoginOtpVerifying} className="h-11 w-full rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
+                      {isLoginOtpVerifying ? "Verifying\u2026" : "Verify & Sign In"}
+                    </Button>
+                    <p className="text-center text-sm text-slate-500">
+                      {loginOtpSeconds > 0
+                        ? <>Resend in <span className="font-semibold text-slate-700">{formatTime(loginOtpSeconds)}</span></>
+                        : <button type="button" onClick={handleResendLoginOtp} disabled={isLoginOtpSending} className="font-semibold text-emerald-600 hover:text-emerald-500 disabled:opacity-50">{isLoginOtpSending ? "Resending\u2026" : "Resend OTP"}</button>
+                      }
+                    </p>
+                  </form>
                 )}
               </div>
-              <div className="relative">
-                <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                <Input
-                  type={showPassword ? "text" : "password"}
-                  placeholder="Enter password"
-                  value={passwordInput}
-                  onChange={(e: React.ChangeEvent<HTMLInputElement>) => setPasswordInput(e.target.value)}
-                  onFocus={() => setIsPasswordFocused(true)}
-                  onBlur={() => setIsPasswordFocused(false)}
-                  className="h-11 text-sm rounded-lg pl-10 pr-10 border-border bg-background"
-                />
-                <button
-                  type="button"
-                  onMouseDown={(e) => e.preventDefault()}
-                  onClick={() => setShowPassword(!showPassword)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                >
-                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                </button>
-              </div>
-            </div>
-
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-sm h-11 rounded-lg">
-              {isSignup ? "Create Account" : "Login"}
-            </Button>
-
-            {!isSignup && (
-              <>
-                <div className="relative">
-                  <div className="absolute inset-0 flex items-center"><div className="w-full border-t border-border" /></div>
-                  <div className="relative flex justify-center"><span className="bg-card px-3 text-[10px] text-muted-foreground uppercase tracking-widest">or</span></div>
-                </div>
-                <Button type="button" variant="outline" onClick={() => setView("otp")} className="w-full h-11 rounded-lg text-sm font-medium border-border hover:bg-muted">
-                  <Smartphone className="w-4 h-4 mr-2 text-accent" />
-                  Login with OTP
-                </Button>
-              </>
             )}
 
-            <p className="text-center text-xs text-muted-foreground">
-              {isSignup ? "Already have an account?" : "Don't have an account?"}{" "}
-              <button type="button" onClick={onToggleMode} className="text-accent font-semibold hover:underline">
-                {isSignup ? "Login" : "Sign Up"}
-              </button>
-            </p>
-          </form>
-        )}
+            {/* FORGOT PASSWORD */}
+            {showForgotPassword && (
+              <div>
+                {!forgotOtpSent ? (
+                  <form className="space-y-4" onSubmit={handleSendForgotOtp}>
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-semibold text-slate-700">Mobile Number</Label>
+                      <div className="relative">
+                        <Phone className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          className={`${fieldClassName} pl-9`}
+                          placeholder="Enter 10-digit mobile number"
+                          value={forgotMobile}
+                          onChange={(event) => setForgotMobile(normalizeMobile(event.target.value))}
+                        />
+                      </div>
+                      <p className="text-xs text-slate-500">We'll send a 6-digit OTP to reset your password.</p>
+                    </div>
+                    <Button
+                      type="submit"
+                      disabled={isForgotSubmitting}
+                      className="h-11 w-full rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md"
+                    >
+                      {isForgotSubmitting ? "Sending OTP…" : "Send OTP"}
+                    </Button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowForgotPassword(false); }}
+                      className="w-full text-center text-xs font-semibold text-slate-500 hover:text-slate-700"
+                    >
+                      Back to Sign in
+                    </button>
+                  </form>
+                ) : (
+                  <form className="space-y-4" onSubmit={handleForgotReset}>
+                    <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
+                      <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm font-semibold text-emerald-800">
+                          OTP sent to ••••••{normalizeMobile(forgotMobile).slice(-4)}
+                        </p>
+                        <p className="text-xs text-emerald-600">Enter OTP and set a new password.</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => { setForgotOtpSent(false); setForgotOtpCode(""); setForgotSeconds(55); }}
+                        className="shrink-0 text-xs font-bold text-emerald-700 underline hover:text-emerald-600"
+                      >
+                        Edit
+                      </button>
+                    </div>
 
-        {/* OTP - ENTER PHONE */}
-        {view === "otp" && (
-          <form className="p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); if (phone.length >= 10) setView("otp-verify"); }}>
-            <BackButton onClick={() => setView("login")} label="Back to login" />
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-foreground">Mobile Number</Label>
-              <div className="flex gap-2">
-                <div className="h-11 px-3 rounded-lg bg-muted flex items-center text-xs font-semibold text-muted-foreground border border-border">+91</div>
-                <Input type="tel" placeholder="10-digit mobile number" className="h-11 text-sm rounded-lg flex-1 border-border" maxLength={10} value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} />
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-semibold text-slate-700">Enter 6-Digit OTP</Label>
+                      <Input
+                        className={`${fieldClassName} text-center text-2xl font-bold tracking-[0.5em]`}
+                        placeholder="• • • • • •"
+                        maxLength={6}
+                        value={forgotOtpCode}
+                        onChange={(event) => setForgotOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      />
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-semibold text-slate-700">New Password</Label>
+                      <div className="relative">
+                        <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          type={showForgotNewPassword ? "text" : "password"}
+                          className={`${fieldClassName} pl-9 pr-10`}
+                          placeholder="Min 6 chars"
+                          value={forgotNewPassword}
+                          onChange={(event) => setForgotNewPassword(event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowForgotNewPassword((p) => !p)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showForgotNewPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      <Label className="text-sm font-semibold text-slate-700">Confirm Password</Label>
+                      <div className="relative">
+                        <KeyRound className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                        <Input
+                          type={showForgotConfirmPassword ? "text" : "password"}
+                          className={`${fieldClassName} pl-9 pr-10`}
+                          placeholder="Re-enter"
+                          value={forgotConfirmPassword}
+                          onChange={(event) => setForgotConfirmPassword(event.target.value)}
+                        />
+                        <button
+                          type="button"
+                          onClick={() => setShowForgotConfirmPassword((p) => !p)}
+                          className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600"
+                        >
+                          {showForgotConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                        </button>
+                      </div>
+                    </div>
+
+                    <Button
+                      type="submit"
+                      disabled={isForgotSubmitting}
+                      className="h-11 w-full rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md"
+                    >
+                      {isForgotSubmitting ? "Resetting…" : "Reset Password"}
+                    </Button>
+
+                    <p className="text-center text-sm text-slate-500">
+                      {forgotSeconds > 0
+                        ? <>Resend in <span className="font-semibold text-slate-700">{formatTime(forgotSeconds)}</span></>
+                        : (
+                          <button
+                            type="button"
+                            onClick={handleResendForgotOtp}
+                            disabled={isForgotSubmitting}
+                            className="font-semibold text-emerald-600 hover:text-emerald-500 disabled:opacity-50"
+                          >
+                            {isForgotSubmitting ? "Resending…" : "Resend OTP"}
+                          </button>
+                        )}
+                    </p>
+                  </form>
+                )}
               </div>
-            </div>
-            <Button type="submit" disabled={phone.length < 10} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-sm h-11 rounded-lg disabled:opacity-50">
-              <Shield className="w-4 h-4 mr-2" /> Send OTP
-            </Button>
-            <p className="text-[10px] text-center text-muted-foreground">By continuing, you agree to our Terms & Privacy Policy</p>
-          </form>
-        )}
+            )}
 
-        {/* OTP - VERIFY */}
-        {view === "otp-verify" && (
-          <form className="p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); handleAuthSuccess(); }}>
-            <BackButton onClick={() => setView("otp")} label="Change number" />
-            <div className="space-y-3">
-              <Label className="text-xs font-medium text-foreground">Enter 6-digit OTP</Label>
-              <OtpBoxes />
-            </div>
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-sm h-11 rounded-lg">Verify & Login</Button>
-            <p className="text-center text-xs">
-              <button type="button" className="text-accent font-medium hover:underline">Resend OTP</button>
-              <span className="text-muted-foreground ml-1">(00:30)</span>
-            </p>
-          </form>
-        )}
-
-        {/* FORGOT - CHOOSE */}
-        {view === "forgot-choose" && (
-          <div className="p-5 space-y-3">
-            <BackButton onClick={() => setView("login")} label="Back to login" />
-            {[
-              { id: "forgot-email" as View, icon: Mail, title: "Reset via Email", desc: "Get a reset link in your inbox" },
-              { id: "forgot-phone" as View, icon: Smartphone, title: "Reset via OTP", desc: "Verify with mobile OTP" },
-            ].map((opt) => (
-              <button
-                key={opt.id}
-                onClick={() => setView(opt.id)}
-                className="w-full flex items-center gap-3.5 p-3.5 rounded-lg border border-border hover:border-accent/50 hover:bg-accent/5 transition-all group text-left"
-              >
-                <div className="w-10 h-10 rounded-lg bg-accent/10 flex items-center justify-center group-hover:bg-accent/15 transition-colors shrink-0">
-                  <opt.icon className="w-4.5 h-4.5 text-accent" />
+            {/* SIGNUP STEP 1 */}
+            {isSignup && !showForgotPassword && signupStep === 1 && (
+              <form className="space-y-4" onSubmit={handleStepOneSubmit}>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">First Name*</Label>
+                    <Input className={fieldClassName} placeholder="First name" value={signupForm.firstName} onChange={(event) => updateSignupField("firstName", event.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">Last Name*</Label>
+                    <Input className={fieldClassName} placeholder="Last name" value={signupForm.lastName} onChange={(event) => updateSignupField("lastName", event.target.value)} />
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold text-foreground">{opt.title}</p>
-                  <p className="text-[11px] text-muted-foreground">{opt.desc}</p>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Gender*</Label>
+                  <select className={`${fieldClassName} appearance-none`} value={signupForm.gender} onChange={(event) => updateSignupField("gender", event.target.value)}>
+                    <option value="">Select gender</option>
+                    {GENDER_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                  </select>
                 </div>
-              </button>
-            ))}
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Mobile No*</Label>
+                  <div className="grid grid-cols-[90px_1fr] gap-2">
+                    <select className={`${fieldClassName} appearance-none`} value={signupForm.countryCode} onChange={(event) => updateSignupField("countryCode", event.target.value)}>
+                      <option value="+91">+91</option>
+                      <option value="+971">+971</option>
+                      <option value="+1">+1</option>
+                    </select>
+                    <Input className={fieldClassName} placeholder="10-digit mobile" value={signupForm.mobile} onChange={(event) => updateSignupField("mobile", normalizeMobile(event.target.value))} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Email Address*</Label>
+                  <div className="relative">
+                    <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Input type="email" className={`${fieldClassName} pl-9`} placeholder="your@email.com" value={signupForm.email} onChange={(event) => updateSignupField("email", event.target.value)} />
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">Password*</Label>
+                    <div className="relative">
+                      <Input type={showSignupPassword ? "text" : "password"} className={`${fieldClassName} pr-10`} placeholder="Min 6 chars" value={signupForm.password} onChange={(event) => updateSignupField("password", event.target.value)} />
+                      <button type="button" onClick={() => setShowSignupPassword((p) => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        {showSignupPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">Confirm*</Label>
+                    <div className="relative">
+                      <Input type={showConfirmPassword ? "text" : "password"} className={`${fieldClassName} pr-10`} placeholder="Re-enter" value={signupForm.confirmPassword} onChange={(event) => updateSignupField("confirmPassword", event.target.value)} />
+                      <button type="button" onClick={() => setShowConfirmPassword((p) => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+                <Button type="submit" className="h-11 w-full rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
+                  Continue
+                </Button>
+              </form>
+            )}
+
+            {/* SIGNUP STEP 2 */}
+            {isSignup && !showForgotPassword && signupStep === 2 && (
+              <form className="space-y-4" onSubmit={handleStepTwoSubmit}>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">Country*</Label>
+                    <select className={`${fieldClassName} appearance-none`} value={signupForm.country} onChange={(event) => { setSignupForm((previous) => ({ ...previous, country: event.target.value, state: "" })); }}>
+                      <option value="">Select</option>
+                      {COUNTRY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">State*</Label>
+                    <select className={`${fieldClassName} appearance-none`} value={signupForm.state} onChange={(event) => updateSignupField("state", event.target.value)} disabled={!signupForm.country}>
+                      <option value="">Select</option>
+                      {availableStates.map((option) => <option key={option} value={option}>{option}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">City*</Label>
+                    <Input className={fieldClassName} placeholder="Your city" value={signupForm.city} onChange={(event) => updateSignupField("city", event.target.value)} />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">Pin Code*</Label>
+                    <Input className={fieldClassName} placeholder="6-digit pin" value={signupForm.pin} onChange={(event) => updateSignupField("pin", event.target.value.replace(/\D/g, "").slice(0, 6))} />
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Course*</Label>
+                  <select className={`${fieldClassName} appearance-none`} value={signupForm.course} onChange={(event) => updateSignupField("course", event.target.value)}>
+                    <option value="">Select course</option>
+                    {courseOptions.map((course) => <option key={course} value={course}>{course}</option>)}
+                  </select>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">Level*</Label>
+                    <select className={`${fieldClassName} appearance-none`} value={signupForm.level} onChange={(event) => updateSignupField("level", event.target.value)}>
+                      <option value="">Select</option>
+                      {LEVEL_OPTIONS.map((level) => <option key={level} value={level}>{level}</option>)}
+                    </select>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-sm font-semibold text-slate-700">Attempt Year*</Label>
+                    <select className={`${fieldClassName} appearance-none`} value={signupForm.attemptYear} onChange={(event) => updateSignupField("attemptYear", event.target.value)}>
+                      <option value="">Select</option>
+                      {attemptYears.map((year) => <option key={year} value={year}>{year}</option>)}
+                    </select>
+                  </div>
+                </div>
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                  <input type="checkbox" checked={signupForm.captchaChecked} onChange={(event) => updateSignupField("captchaChecked", event.target.checked)} className="h-4 w-4 accent-emerald-600" />
+                  <span className="flex-1 text-sm text-slate-700">I am not a robot</span>
+                  <span className="text-[11px] font-bold text-slate-400">reCAPTCHA</span>
+                </label>
+                <label className="flex cursor-pointer items-start gap-2">
+                  <input type="checkbox" checked={signupForm.termsAccepted} onChange={(event) => updateSignupField("termsAccepted", event.target.checked)} className="mt-0.5 h-4 w-4 accent-emerald-600" />
+                  <span className="text-xs text-slate-500">
+                    I agree to the{" "}<span className="font-semibold text-emerald-600">Terms & Conditions</span>{" "}and{" "}<span className="font-semibold text-emerald-600">Privacy Policy</span>.
+                  </span>
+                </label>
+                <div className="grid grid-cols-2 gap-3 pt-1">
+                  <Button type="button" variant="outline" onClick={() => setSignupStep(1)} className="h-11 rounded-xl border-slate-200">
+                    <ChevronLeft className="mr-1 h-4 w-4" /> Back
+                  </Button>
+                  <Button type="submit" disabled={isOtpSending} className="h-11 rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
+                    {isOtpSending ? "Sending\u2026" : "Continue"}
+                  </Button>
+                </div>
+              </form>
+            )}
+
+            {/* SIGNUP STEP 3 – OTP */}
+            {isSignup && !showForgotPassword && signupStep === 3 && (
+              <form className="space-y-5" onSubmit={handleSignupSubmit}>
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+                  <ShieldCheck className="h-6 w-6 shrink-0 text-emerald-600" />
+                  <div>
+                    <p className="text-sm font-semibold text-emerald-800">Verification code sent</p>
+                    <p className="text-xs text-emerald-600">{signupForm.countryCode} {signupForm.mobile}</p>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-sm font-semibold text-slate-700">Enter 6-Digit OTP</Label>
+                  <Input
+                    className={`${fieldClassName} text-center text-2xl font-bold tracking-[0.5em]`}
+                    placeholder="\u2022 \u2022 \u2022 \u2022 \u2022 \u2022"
+                    maxLength={6}
+                    value={otpCode}
+                    onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                  />
+                  <p className="pt-1 text-center text-2xl font-bold text-slate-600">{formatTime(otpSeconds)}</p>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <Button type="button" variant="outline" onClick={() => setSignupStep(2)} className="h-11 rounded-xl border-slate-200">
+                    <ChevronLeft className="mr-1 h-4 w-4" /> Back
+                  </Button>
+                  <Button type="submit" disabled={isSignupSubmitting} className="h-11 rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
+                    {isSignupSubmitting ? "Creating\u2026" : "Create Account"}
+                  </Button>
+                </div>
+                <p className="text-center text-sm">
+                  <button type="button" onClick={handleResendOtp} disabled={otpSeconds > 0 || isOtpSending} className="font-semibold text-emerald-600 disabled:cursor-not-allowed disabled:text-slate-400">
+                    {isOtpSending ? "Resending\u2026" : "Resend OTP"}
+                  </button>
+                </p>
+              </form>
+            )}
+
           </div>
-        )}
 
-        {/* FORGOT - EMAIL */}
-        {view === "forgot-email" && (
-          <form className="p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); if (email.includes("@")) setView("forgot-success"); }}>
-            <BackButton onClick={() => setView("forgot-choose")} />
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-foreground">Email Address</Label>
-              <InputWithIcon icon={Mail} type="email" placeholder="Enter your registered email" value={email} onChange={(e: React.ChangeEvent<HTMLInputElement>) => setEmail(e.target.value)} />
-            </div>
-            <Button type="submit" disabled={!email.includes("@")} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-sm h-11 rounded-lg disabled:opacity-50">
-              Send Reset Link
-            </Button>
-          </form>
-        )}
-
-        {/* FORGOT - PHONE */}
-        {view === "forgot-phone" && (
-          <form className="p-5 space-y-4" onSubmit={(e) => { e.preventDefault(); if (phone.length >= 10) setView("forgot-otp-verify"); }}>
-            <BackButton onClick={() => setView("forgot-choose")} />
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-foreground">Mobile Number</Label>
-              <div className="flex gap-2">
-                <div className="h-11 px-3 rounded-lg bg-muted flex items-center text-xs font-semibold text-muted-foreground border border-border">+91</div>
-                <Input type="tel" placeholder="10-digit number" className="h-11 text-sm rounded-lg flex-1 border-border" maxLength={10} value={phone} onChange={(e) => setPhone(e.target.value.replace(/\D/g, ""))} />
-              </div>
-            </div>
-            <Button type="submit" disabled={phone.length < 10} className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-sm h-11 rounded-lg disabled:opacity-50">
-              Send OTP
-            </Button>
-          </form>
-        )}
-
-        {/* FORGOT - OTP VERIFY + NEW PASSWORD */}
-        {view === "forgot-otp-verify" && (
-          <form className="p-5 space-y-4" onSubmit={(e) => e.preventDefault()}>
-            <BackButton onClick={() => setView("forgot-phone")} label="Change number" />
-            <div className="space-y-3">
-              <Label className="text-xs font-medium text-foreground">Enter 6-digit OTP</Label>
-              <OtpBoxes />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-foreground">New Password</Label>
-              <InputWithIcon icon={Lock} type="password" placeholder="Enter new password" />
-            </div>
-            <div className="space-y-1.5">
-              <Label className="text-xs font-medium text-foreground">Confirm Password</Label>
-              <InputWithIcon icon={Lock} type="password" placeholder="Confirm new password" />
-            </div>
-            <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-sm h-11 rounded-lg">Reset Password</Button>
-            <p className="text-center text-xs">
-              <button type="button" className="text-accent font-medium hover:underline">Resend OTP</button>
-              <span className="text-muted-foreground ml-1">(00:30)</span>
+          {/* ── FOOTER ── */}
+          <div className="shrink-0 border-t border-slate-100 bg-white px-7 py-4 text-center">
+            <p className="text-sm font-medium text-slate-600">
+              {showForgotPassword ? (
+                <>Remembered your password?{" "}<button type="button" onClick={() => setShowForgotPassword(false)} className="font-bold text-teal-600 hover:text-teal-500">Sign In</button></>
+              ) : isSignup ? (
+                <>Already have an account?{" "}<button type="button" onClick={handleModeSwitch} className="font-bold text-teal-600 hover:text-teal-500">Sign In</button></>
+              ) : (
+                <>New to Ednovate?{" "}<button type="button" onClick={handleModeSwitch} className="font-bold text-teal-600 hover:text-teal-500">Create Account</button></>
+              )}
             </p>
-          </form>
-        )}
-
-        {/* FORGOT - SUCCESS */}
-        {view === "forgot-success" && (
-          <div className="p-6 space-y-4 text-center">
-            <div className="w-14 h-14 rounded-full bg-accent/10 flex items-center justify-center mx-auto">
-              <CheckCircle2 className="w-7 h-7 text-accent" />
-            </div>
-            <p className="text-sm text-muted-foreground leading-relaxed">Check your inbox and click the reset link. Also check spam folder.</p>
-            <Button onClick={() => setView("forgot-choose")} variant="outline" className="w-full h-10 rounded-lg text-sm">Try another method</Button>
-            <button type="button" onClick={() => setView("login")} className="text-xs text-accent font-medium hover:underline">← Back to Login</button>
           </div>
-        )}
+
+        </div>
       </DialogContent>
     </Dialog>
   );
 };
 
 export default LoginModal;
+

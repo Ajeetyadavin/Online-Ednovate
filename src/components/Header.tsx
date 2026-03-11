@@ -21,7 +21,9 @@ const Header = () => {
   const { settings } = useSiteSettings();
   const headerSettings = settings.header;
   const navLinks = headerSettings.navLinks.filter((link) => link.visible);
-  const customHeaderButtons = headerSettings.customButtons.filter((button) => button.visible);
+  const customHeaderButtons = headerSettings.customButtons
+    .filter((button) => button.visible)
+    .filter((button) => button.label.toLowerCase() !== "book demo" && button.label.toLowerCase() !== "signup for free");
 
   const isExternalHref = (href: string) => /^(https?:\/\/|mailto:|tel:)/i.test(href);
 
@@ -179,13 +181,7 @@ const Header = () => {
                     >
                       {headerSettings.loginLabel}
                     </Button>
-                    <Button
-                      size="sm"
-                      className="hidden sm:flex bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold h-9 px-4 rounded-xl shadow-sm"
-                      onClick={() => { setLoginOpen(true); setSignupMode(true); }}
-                    >
-                      {headerSettings.signupLabel}
-                    </Button>
+                    {/* Signup CTA hidden as requested */}
                   </>
                 )}
               </>
@@ -236,9 +232,7 @@ const Header = () => {
                         <Button variant="outline" size="sm" className="flex-1 h-9 text-xs font-semibold rounded-xl" onClick={() => { setLoginOpen(true); setSignupMode(false); setMobileOpen(false); }}>
                           {headerSettings.loginLabel}
                         </Button>
-                        <Button size="sm" className="flex-1 h-9 text-xs font-semibold rounded-xl bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => { setLoginOpen(true); setSignupMode(true); setMobileOpen(false); }}>
-                          {headerSettings.signupLabel}
-                        </Button>
+                        {/* Mobile Signup CTA hidden as requested */}
                       </>
                     )}
                   </>

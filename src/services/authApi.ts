@@ -3,6 +3,14 @@ export interface AuthUserProfile {
   name: string;
   email: string;
   mobile: string;
+  gender?: string;
+  country?: string;
+  state?: string;
+  city?: string;
+  pin?: string;
+  course?: string;
+  level?: string;
+  attemptYear?: string;
 }
 
 export interface SignupPayload {
@@ -10,6 +18,14 @@ export interface SignupPayload {
   email: string;
   mobile: string;
   password: string;
+  gender?: string;
+  country?: string;
+  state?: string;
+  city?: string;
+  pin?: string;
+  course?: string;
+  level?: string;
+  attemptYear?: string;
 }
 
 export interface AuthActionResult<T = undefined> {
@@ -44,12 +60,21 @@ const generateStudentId = () => `EDN-${Math.random().toString(36).slice(2, 8).to
 
 const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const normalizeMobile = (mobile: string) => mobile.replace(/\D/g, "").slice(-10);
+const sanitizeText = (value: string | undefined) => value?.trim() || "";
 
 export const signupApi = async (payload: SignupPayload): Promise<AuthActionResult> => {
   const name = payload.name?.trim();
   const email = normalizeEmail(payload.email || "");
   const mobile = normalizeMobile(payload.mobile || "");
   const password = payload.password || "";
+  const gender = sanitizeText(payload.gender);
+  const country = sanitizeText(payload.country);
+  const state = sanitizeText(payload.state);
+  const city = sanitizeText(payload.city);
+  const pin = sanitizeText(payload.pin);
+  const course = sanitizeText(payload.course);
+  const level = sanitizeText(payload.level);
+  const attemptYear = sanitizeText(payload.attemptYear);
 
   if (!name || !email || !mobile || !password) {
     return { ok: false, message: "Please fill all required fields." };
@@ -67,6 +92,14 @@ export const signupApi = async (payload: SignupPayload): Promise<AuthActionResul
     email,
     mobile,
     password,
+    gender,
+    country,
+    state,
+    city,
+    pin,
+    course,
+    level,
+    attemptYear,
   });
   saveUsers(users);
 
@@ -74,17 +107,20 @@ export const signupApi = async (payload: SignupPayload): Promise<AuthActionResul
 };
 
 export const loginWithEmailApi = async (
-  email: string,
+  emailOrMobile: string,
   password: string,
 ): Promise<AuthActionResult<AuthUserProfile>> => {
   const users = getUsers();
-  const normalizedEmail = normalizeEmail(email || "");
+  const normalizedEmail = normalizeEmail(emailOrMobile || "");
+  const normalizedMobile = normalizeMobile(emailOrMobile || "");
   const user = users.find(
-    (item) => item.email === normalizedEmail && item.password === password,
+    (item) =>
+      (item.email === normalizedEmail || (normalizedMobile.length === 10 && item.mobile === normalizedMobile))
+      && item.password === password,
   );
 
   if (!user) {
-    return { ok: false, message: "Invalid email or password." };
+    return { ok: false, message: "Invalid email/mobile or password." };
   }
 
   return {
@@ -95,6 +131,14 @@ export const loginWithEmailApi = async (
       name: user.name,
       email: user.email,
       mobile: user.mobile,
+      gender: user.gender,
+      country: user.country,
+      state: user.state,
+      city: user.city,
+      pin: user.pin,
+      course: user.course,
+      level: user.level,
+      attemptYear: user.attemptYear,
     },
   };
 };
@@ -148,6 +192,59 @@ export const verifyLoginOtpApi = async (
   };
 };
 
+export const verifyStoredOtpApi = async (
+  mobileNo: string,
+  otp: string,
+): Promise<AuthActionResult> => {
+  const mobile = normalizeMobile(mobileNo || "");
+  if (mobile.length !== 10) {
+    return { ok: false, message: "Invalid mobile number." };
+  }
+
+  const otpMap = parseJson<Record<string, string>>(OTP_STORAGE_KEY, {});
+  const expectedOtp = otpMap[mobile] || "123456";
+  if ((otp || "").trim() !== expectedOtp && (otp || "").trim() !== "123456") {
+    return { ok: false, message: "Invalid OTP." };
+  }
+
+  return {
+    ok: true,
+    message: "OTP verified successfully.",
+  };
+};
+
+export const resetPasswordByMobileApi = async (
+  mobileNo: string,
+  password: string,
+): Promise<AuthActionResult> => {
+  const mobile = normalizeMobile(mobileNo || "");
+  if (mobile.length !== 10) {
+    return { ok: false, message: "Invalid mobile number." };
+  }
+
+  if (!password || password.trim().length < 6) {
+    return { ok: false, message: "Password must be at least 6 characters." };
+  }
+
+  const users = getUsers();
+  const userIndex = users.findIndex((item) => item.mobile === mobile);
+  if (userIndex === -1) {
+    return { ok: false, message: "Account not found for this mobile number." };
+  }
+
+  users[userIndex] = {
+    ...users[userIndex],
+    password: password.trim(),
+  };
+
+  saveUsers(users);
+
+  return {
+    ok: true,
+    message: "Password reset successful. Please login with your new password.",
+  };
+};
+
 export const fetchProfileApi = async (
   studentId: string,
 ): Promise<AuthActionResult<Partial<AuthUserProfile>>> => {
@@ -169,6 +266,14 @@ export const fetchProfileApi = async (
       name: user.name,
       email: user.email,
       mobile: user.mobile,
+      gender: user.gender,
+      country: user.country,
+      state: user.state,
+      city: user.city,
+      pin: user.pin,
+      course: user.course,
+      level: user.level,
+      attemptYear: user.attemptYear,
     },
   };
 };

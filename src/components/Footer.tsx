@@ -8,7 +8,7 @@ const Footer = () => {
   const { settings } = useSiteSettings();
   return (
     <footer id="footer" className="relative mt-6 md:mt-8">
-      <div className="bg-[rgb(38,72,151)] text-primary-foreground relative overflow-hidden">
+      <div className="bg-[rgb(38,72,151)] text-white relative overflow-hidden">
         <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
           backgroundSize: "20px 20px"
@@ -20,17 +20,17 @@ const Footer = () => {
             {/* Brand */}
             <div className="col-span-2 sm:col-span-2 lg:col-span-2">
               <div className="mb-5">
-                <img src={settings.logo} alt="Ednovate" className="h-12 w-auto" style={{ filter: "brightness(0) invert(1)" }} />
+                <img src={settings.logo} alt="Ednovate" className="h-12 w-auto drop-shadow-md" />
               </div>
-              <p className="text-sm text-primary-foreground/65 leading-relaxed max-w-sm mb-6">
+              <p className="text-sm text-white/80 leading-relaxed max-w-sm mb-6">
                 India&apos;s trusted online learning platform for CA, CS, CMA and professional courses. Structured programs, expert mentorship, and outcomes that matter.
               </p>
               <div className="flex flex-col sm:flex-row gap-2 max-w-sm">
                 <Input
                   placeholder="Your email"
-                  className="h-10 text-sm bg-primary-foreground/10 border-primary-foreground/15 text-primary-foreground placeholder:text-primary-foreground/45 rounded-xl"
+                  className="h-10 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/60 rounded-xl"
                 />
-                <Button size="sm" className="h-10 px-4 w-full sm:w-auto bg-accent hover:bg-accent/90 text-accent-foreground text-xs font-semibold rounded-xl">
+                <Button size="sm" className="h-10 px-4 w-full sm:w-auto bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] text-white text-xs font-semibold rounded-xl">
                   Subscribe
                 </Button>
               </div>
@@ -38,7 +38,7 @@ const Footer = () => {
 
             {/* Quick Links */}
             <div>
-              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-primary-foreground/85">Quick Links</h4>
+              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-white/90">Quick Links</h4>
               <ul className="space-y-2.5">
                 {[
                   { label: "Home", href: "/" },
@@ -48,7 +48,7 @@ const Footer = () => {
                   { label: "Contact Us", href: "/#footer" },
                 ].map((link) => (
                   <li key={link.label}>
-                    <Link to={link.href} className="text-sm text-primary-foreground/60 hover:text-accent transition-colors">
+                    <Link to={link.href} className="text-sm text-white/75 hover:text-white transition-colors">
                       {link.label}
                     </Link>
                   </li>
@@ -58,11 +58,11 @@ const Footer = () => {
 
             {/* Courses */}
             <div>
-              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-primary-foreground/85">Courses</h4>
+              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-white/90">Courses</h4>
               <ul className="space-y-2.5">
                 {["CA Foundation", "CA Inter", "CA Final", "CS Executive", "CS Professional", "CMA / CFA"].map((course) => (
                   <li key={course}>
-                    <Link to="/packages" className="text-sm text-primary-foreground/60 hover:text-accent transition-colors">
+                    <Link to="/packages" className="text-sm text-white/75 hover:text-white transition-colors">
                       {course}
                     </Link>
                   </li>
@@ -72,24 +72,24 @@ const Footer = () => {
 
             {/* Contact */}
             <div>
-              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-primary-foreground/85">Contact</h4>
+              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-white/90">Contact</h4>
               <ul className="space-y-3">
-                <li className="flex items-start gap-2.5 text-sm text-primary-foreground/60">
+                <li className="flex items-start gap-2.5 text-sm text-white/75">
                   <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-accent" />
                   Mumbai, Maharashtra
                 </li>
-                <li className="flex items-center gap-2.5 text-sm text-primary-foreground/60">
+                <li className="flex items-center gap-2.5 text-sm text-white/75">
                   <Phone className="w-4 h-4 flex-shrink-0 text-accent" />
                   +91 98765 43210
                 </li>
-                <li className="flex items-center gap-2.5 text-sm text-primary-foreground/60 break-all">
+                <li className="flex items-center gap-2.5 text-sm text-white/75 break-all">
                   <Mail className="w-4 h-4 flex-shrink-0 text-accent" />
                   info@ednovate.in
                 </li>
               </ul>
               <div className="flex gap-2.5 mt-5">
                 {[Facebook, Instagram, Youtube, Twitter].map((Icon, i) => (
-                  <a key={i} href="#" className="w-9 h-9 rounded-xl bg-primary-foreground/8 border border-primary-foreground/10 flex items-center justify-center hover:bg-accent hover:text-accent-foreground hover:border-accent transition-all">
+                  <a key={i} href="#" className="w-9 h-9 rounded-xl bg-white/10 border border-white/15 flex items-center justify-center hover:bg-[rgb(231,70,35)] hover:text-white hover:border-[rgb(231,70,35)] transition-all">
                     <Icon className="w-4 h-4" />
                   </a>
                 ))}
@@ -98,13 +98,13 @@ const Footer = () => {
           </div>
         </div>
 
-        <div className="border-t border-primary-foreground/10">
-          <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center text-xs text-primary-foreground/45 gap-2">
+        <div className="border-t border-white/10">
+          <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center text-xs text-white/70 gap-2">
             <span>© 2026 Ednovate. All rights reserved.</span>
             <div className="flex gap-4">
-              <a href="#" className="hover:text-primary-foreground transition-colors">Privacy</a>
-              <a href="#" className="hover:text-primary-foreground transition-colors">Terms</a>
-              <a href="#" className="hover:text-primary-foreground transition-colors">Refunds</a>
+              <a href="#" className="hover:text-white transition-colors">Privacy</a>
+              <a href="#" className="hover:text-white transition-colors">Terms</a>
+              <a href="#" className="hover:text-white transition-colors">Refunds</a>
             </div>
           </div>
         </div>
