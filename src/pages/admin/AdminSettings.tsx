@@ -413,6 +413,24 @@ const AdminSettings = () => {
                   </div>
                   <Switch checked={settings.header.showAuthButtons} onCheckedChange={(checked) => updateHeader({ showAuthButtons: checked })} />
                 </div>
+                <div className="flex items-center justify-between border border-border rounded-lg p-3 md:col-span-2">
+                  <div>
+                    <p className="font-medium text-sm">Notice Scroll Speed</p>
+                    <p className="text-xs text-muted-foreground">Seconds for one full loop. Lower = faster, higher = slower.</p>
+                  </div>
+                  <Input
+                    type="number"
+                    min={10}
+                    max={60}
+                    value={settings.header.announcementSpeedSeconds}
+                    onChange={(e) =>
+                      updateHeader({
+                        announcementSpeedSeconds: Math.min(60, Math.max(10, Number(e.target.value) || 10)),
+                      })
+                    }
+                    className="w-24 text-right"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

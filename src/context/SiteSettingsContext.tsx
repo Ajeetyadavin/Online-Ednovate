@@ -66,6 +66,7 @@ export interface SiteSettings {
     showAuthButtons: boolean;
     loginLabel: string;
     signupLabel: string;
+    announcementSpeedSeconds: number;
     navLinks: HeaderNavLink[];
     customButtons: HeaderQuickButton[];
   };
@@ -110,6 +111,7 @@ const createDefaultSettings = (): SiteSettings => ({
     showAuthButtons: true,
     loginLabel: "Login",
     signupLabel: "Sign Up Free",
+    announcementSpeedSeconds: 28,
     navLinks: [
       {
         id: "nav-courses",

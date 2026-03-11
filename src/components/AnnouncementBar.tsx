@@ -1,10 +1,13 @@
 import { Megaphone } from "lucide-react";
 import { Link } from "react-router-dom";
 import { usePlatformData } from "@/context/PlatformDataContext";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const AnnouncementBar = () => {
   const { announcements } = usePlatformData();
   const visibleAnnouncements = announcements.filter((announcement) => announcement.isVisible);
+  const { settings } = useSiteSettings();
+  const speedSeconds = settings.header.announcementSpeedSeconds || 28;
 
   if (visibleAnnouncements.length === 0) {
     return null;
@@ -33,7 +36,10 @@ const AnnouncementBar = () => {
             </div>
 
             <div className="flex-1 overflow-hidden relative">
-              <div className="flex animate-marquee whitespace-nowrap gap-8 sm:gap-12 py-2 px-3.5 sm:px-5 [animation-duration:32s] sm:[animation-duration:28s] hover:[animation-play-state:paused]">
+              <div
+                className="flex animate-marquee whitespace-nowrap gap-8 sm:gap-12 py-2 px-3.5 sm:px-5 hover:[animation-play-state:paused]"
+                style={{ animationDuration: `${speedSeconds}s` }}
+              >
                 {[...visibleAnnouncements, ...visibleAnnouncements].map((item, i) => (
                   <Link
                     key={i}
