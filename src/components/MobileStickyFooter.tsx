@@ -83,7 +83,7 @@ const MobileStickyFooter = () => {
               <button
                 key={button.id}
                 onClick={() => handleButtonAction(button.action, button.href)}
-                className="flex flex-col items-center gap-0.5 text-primary-foreground/70 hover:text-accent transition-all tap-bounce active:scale-110"
+                className="flex flex-col items-center gap-0.5 text-white hover:text-white transition-all tap-bounce active:scale-110"
               >
                 <IconComponent className="w-5 h-5" />
                 <span className="text-[9px] font-semibold truncate max-w-[64px]">
