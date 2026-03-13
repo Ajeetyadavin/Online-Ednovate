@@ -4,7 +4,6 @@ import { Check, ChevronLeft, Eye, EyeOff, KeyRound, Mail, Phone, ShieldCheck, Sm
 import { toast } from "sonner";
 
 import { useAuth } from "@/context/AuthContext";
-import { categories } from "@/data/courses";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -33,9 +32,6 @@ interface SignupFormState {
   state: string;
   city: string;
   pin: string;
-  course: string;
-  level: string;
-  attemptYear: string;
   captchaChecked: boolean;
   termsAccepted: boolean;
 }
@@ -48,7 +44,6 @@ const STATE_OPTIONS_BY_COUNTRY: Record<string, string[]> = {
   "United States": ["California", "Texas", "New York", "Florida"],
   Canada: ["Ontario", "Alberta", "British Columbia", "Quebec"],
 };
-const LEVEL_OPTIONS = ["Beginner", "Intermediate", "Advanced"];
 
 const INITIAL_SIGNUP_FORM: SignupFormState = {
   firstName: "",
@@ -63,9 +58,6 @@ const INITIAL_SIGNUP_FORM: SignupFormState = {
   state: "",
   city: "",
   pin: "",
-  course: "",
-  level: "",
-  attemptYear: "",
   captchaChecked: false,
   termsAccepted: false,
 };
@@ -119,19 +111,12 @@ const LoginModal = ({
   const [showForgotConfirmPassword, setShowForgotConfirmPassword] = useState(false);
   const [isForgotSubmitting, setIsForgotSubmitting] = useState(false);
 
-  const courseOptions = useMemo(() => categories.filter((item) => item.id !== "all").map((item) => item.label), []);
-
-  const attemptYears = useMemo(() => {
-    const currentYear = new Date().getFullYear();
-    return Array.from({ length: 5 }, (_, index) => String(currentYear - 1 + index));
-  }, []);
-
   const stepTitle = useMemo(() => {
     if (signupStep === 1) {
       return "Personal Details";
     }
     if (signupStep === 2) {
-      return "Location and Course";
+      return "Location Details";
     }
     return "OTP Verification";
   }, [signupStep]);
@@ -294,18 +279,6 @@ const LoginModal = ({
     }
     if (!/^\d{6}$/.test(signupForm.pin)) {
       toast.error("Please enter a valid 6-digit pin code.");
-      return false;
-    }
-    if (!signupForm.course) {
-      toast.error("Please select course.");
-      return false;
-    }
-    if (!signupForm.level) {
-      toast.error("Please select level.");
-      return false;
-    }
-    if (!/^\d{4}$/.test(signupForm.attemptYear.trim())) {
-      toast.error("Please enter valid attempt year.");
       return false;
     }
     if (!signupForm.captchaChecked) {
@@ -480,9 +453,6 @@ const LoginModal = ({
         state: signupForm.state,
         city: signupForm.city,
         pin: signupForm.pin,
-        course: signupForm.course,
-        level: signupForm.level,
-        attemptYear: signupForm.attemptYear,
       });
 
       if (!signupResult.ok) {
@@ -1034,29 +1004,6 @@ const LoginModal = ({
                   <div className="space-y-1.5">
                     <Label className="text-sm font-semibold text-slate-700">Pin Code*</Label>
                     <Input className={fieldClassName} placeholder="6-digit pin" value={signupForm.pin} onChange={(event) => updateSignupField("pin", event.target.value.replace(/\D/g, "").slice(0, 6))} />
-                  </div>
-                </div>
-                <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Course*</Label>
-                  <select className={`${fieldClassName} appearance-none`} value={signupForm.course} onChange={(event) => updateSignupField("course", event.target.value)}>
-                    <option value="">Select course</option>
-                    {courseOptions.map((course) => <option key={course} value={course}>{course}</option>)}
-                  </select>
-                </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">Level*</Label>
-                    <select className={`${fieldClassName} appearance-none`} value={signupForm.level} onChange={(event) => updateSignupField("level", event.target.value)}>
-                      <option value="">Select</option>
-                      {LEVEL_OPTIONS.map((level) => <option key={level} value={level}>{level}</option>)}
-                    </select>
-                  </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">Attempt Year*</Label>
-                    <select className={`${fieldClassName} appearance-none`} value={signupForm.attemptYear} onChange={(event) => updateSignupField("attemptYear", event.target.value)}>
-                      <option value="">Select</option>
-                      {attemptYears.map((year) => <option key={year} value={year}>{year}</option>)}
-                    </select>
                   </div>
                 </div>
                 <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">

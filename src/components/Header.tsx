@@ -110,8 +110,8 @@ const Header = () => {
                 to={link.href}
                 className={`px-3.5 py-2 rounded-lg text-[13px] font-semibold transition-all flex items-center gap-1.5 ${
                   location.pathname === link.href
-                    ? "text-primary bg-primary/10"
-                    : "text-foreground/70 hover:text-foreground hover:bg-muted"
+                    ? "text-[#000000] bg-[#0000000d]"
+                    : "text-[#000000] hover:text-[#000000] hover:bg-muted"
                 }`}
               >
                 {link.label}
@@ -176,7 +176,7 @@ const Header = () => {
                     <Button
                       variant="ghost"
                       size="sm"
-                      className="hidden sm:flex text-xs font-semibold h-9 px-3.5 rounded-xl text-foreground/80 hover:text-foreground hover:bg-muted"
+                      className="hidden sm:flex text-xs font-semibold h-9 px-3.5 rounded-xl text-[#000000] hover:text-[#000000] hover:bg-muted"
                       onClick={() => { setLoginOpen(true); setSignupMode(false); }}
                     >
                       {headerSettings.loginLabel}
@@ -205,7 +205,7 @@ const Header = () => {
                   key={link.label}
                   to={link.href}
                   onClick={() => setMobileOpen(false)}
-                  className="block px-3 py-2.5 rounded-xl text-sm font-medium text-foreground/75 hover:bg-muted hover:text-foreground transition-colors"
+                  className="block px-3 py-2.5 rounded-xl text-sm font-medium text-[#000000] hover:bg-muted hover:text-[#000000] transition-colors"
                 >
                   {link.label}
                 </Link>

@@ -102,7 +102,7 @@
 
 @layer components {
   .section-title {
-    @apply text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-foreground;
+    @apply text-2xl sm:text-3xl md:text-4xl font-black tracking-tight text-foreground;
   }
   .section-subtitle {
     @apply text-base sm:text-lg font-bold text-foreground max-w-xl mx-auto mt-2;

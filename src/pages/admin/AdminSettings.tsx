@@ -1,19 +1,21 @@
-import { useState, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Palette, Type, Layout, Eye, Save, Image, RotateCcw, Upload, PanelTop, Smartphone, Plus, Trash2, Zap } from "lucide-react";
-import { useSiteSettings } from "@/context/SiteSettingsContext";
+import { Palette, Type, Layout, Eye, Save, Image, RotateCcw, Upload, PanelTop, Smartphone, Plus, Trash2, Zap, MessageCircle, Phone } from "lucide-react";
+import { useSiteSettings, type SiteSettings } from "@/context/SiteSettingsContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
+import { ENQUIRY_LEADS_UPDATED_EVENT, clearEnquiryLeads, deleteEnquiryLead, formatEnquiryLeadDate, getEnquiryLeads, getReadableTextColor, sanitizeHexColor, type EnquiryLead } from "@/lib/contactTools";
 import { toast } from "sonner";
 
 const AdminSettings = () => {
-  const { settings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateAnimations, updateLogo, resetSettings } = useSiteSettings();
+  const { settings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateFloatingContact, updateAnimations, updateLogo, resetSettings } = useSiteSettings();
   const { resetPlatformData } = usePlatformData();
   const [saved, setSaved] = useState(false);
+  const [enquiryLeads, setEnquiryLeads] = useState<EnquiryLead[]>(() => getEnquiryLeads());
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSave = () => {
@@ -186,6 +188,63 @@ const AdminSettings = () => {
     });
   };
 
+  useEffect(() => {
+    const syncLeads = () => {
+      setEnquiryLeads(getEnquiryLeads());
+    };
+
+    syncLeads();
+    window.addEventListener(ENQUIRY_LEADS_UPDATED_EVENT, syncLeads);
+    window.addEventListener("storage", syncLeads);
+
+    return () => {
+      window.removeEventListener(ENQUIRY_LEADS_UPDATED_EVENT, syncLeads);
+      window.removeEventListener("storage", syncLeads);
+    };
+  }, []);
+
+  const updateFloatingEnquiry = (updates: Partial<SiteSettings["floatingContact"]["enquiry"]>) => {
+    updateFloatingContact({
+      enquiry: {
+        ...settings.floatingContact.enquiry,
+        ...updates,
+      },
+    });
+  };
+
+  const updateFloatingCall = (updates: Partial<SiteSettings["floatingContact"]["call"]>) => {
+    updateFloatingContact({
+      call: {
+        ...settings.floatingContact.call,
+        ...updates,
+      },
+    });
+  };
+
+  const updateFloatingWhatsapp = (updates: Partial<SiteSettings["floatingContact"]["whatsapp"]>) => {
+    updateFloatingContact({
+      whatsapp: {
+        ...settings.floatingContact.whatsapp,
+        ...updates,
+      },
+    });
+  };
+
+  const handleDeleteLead = (id: string) => {
+    deleteEnquiryLead(id);
+    toast.success("Lead removed.");
+  };
+
+  const handleClearLeads = () => {
+    clearEnquiryLeads();
+    toast.success("All enquiry leads cleared.");
+  };
+
+  const togglePreviewColor = sanitizeHexColor(settings.floatingContact.toggleColor, settings.colors.primary);
+  const enquiryPreviewColor = sanitizeHexColor(settings.floatingContact.enquiry.color, "#FFFFFF");
+  const callPreviewColor = sanitizeHexColor(settings.floatingContact.call.color, "#2563EB");
+  const whatsappPreviewColor = sanitizeHexColor(settings.floatingContact.whatsapp.color, "#22C55E");
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
@@ -214,6 +273,7 @@ const AdminSettings = () => {
           <TabsTrigger value="logo" className="gap-2"><Image className="w-4 h-4" />Logo</TabsTrigger>
           <TabsTrigger value="sections" className="gap-2"><Layout className="w-4 h-4" />Sections</TabsTrigger>
           <TabsTrigger value="animations" className="gap-2"><Zap className="w-4 h-4" />Animations</TabsTrigger>
+          <TabsTrigger value="contact" className="gap-2"><MessageCircle className="w-4 h-4" />Contact</TabsTrigger>
           <TabsTrigger value="navigation" className="gap-2"><PanelTop className="w-4 h-4" />Navigation</TabsTrigger>
         </TabsList>
 
@@ -469,6 +529,268 @@ const AdminSettings = () => {
                 <p>• Disabling animations makes all sections appear instantly without any effect</p>
               </div>
 
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* CONTACT */}
+        <TabsContent value="contact" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Floating Contact Widget</CardTitle>
+              <CardDescription>Show, hide, edit labels and numbers, and control button colors for the right-side contact widget.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="flex items-center justify-between border border-border rounded-lg p-4">
+                <div>
+                  <p className="font-medium text-sm">Show Floating Contact Widget</p>
+                  <p className="text-xs text-muted-foreground">Right-side toggle button with enquiry, call, and WhatsApp actions.</p>
+                </div>
+                <Switch
+                  checked={settings.floatingContact.visible}
+                  onCheckedChange={(checked) => updateFloatingContact({ visible: checked })}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Toggle Button Color</label>
+                  <div className="flex items-center gap-3">
+                    <input
+                      type="color"
+                      value={togglePreviewColor}
+                      onChange={(e) => updateFloatingContact({ toggleColor: e.target.value })}
+                      className="w-12 h-10 rounded-lg cursor-pointer border border-border"
+                    />
+                    <Input
+                      value={settings.floatingContact.toggleColor}
+                      onChange={(e) => updateFloatingContact({ toggleColor: e.target.value })}
+                      className="flex-1 font-mono text-sm"
+                    />
+                  </div>
+                </div>
+
+                <div className="rounded-xl border border-border bg-muted/40 p-4">
+                  <p className="text-sm font-semibold text-foreground">Quick Preview</p>
+                  <p className="text-xs text-muted-foreground mt-1">Preview of widget colors and labels before saving.</p>
+                  <div className="mt-4 flex flex-wrap items-center gap-2">
+                    {settings.floatingContact.enquiry.visible && (
+                      <div
+                        className="inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold shadow-sm border"
+                        style={{
+                          backgroundColor: enquiryPreviewColor,
+                          color: getReadableTextColor(enquiryPreviewColor),
+                          borderColor: "rgba(15, 23, 42, 0.08)",
+                        }}
+                      >
+                        {settings.floatingContact.enquiry.label}
+                      </div>
+                    )}
+                    {settings.floatingContact.call.visible && (
+                      <div
+                        className="inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
+                        style={{ backgroundColor: callPreviewColor, color: getReadableTextColor(callPreviewColor) }}
+                      >
+                        {settings.floatingContact.call.label}
+                      </div>
+                    )}
+                    {settings.floatingContact.whatsapp.visible && (
+                      <div
+                        className="inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
+                        style={{ backgroundColor: whatsappPreviewColor, color: getReadableTextColor(whatsappPreviewColor) }}
+                      >
+                        {settings.floatingContact.whatsapp.label}
+                      </div>
+                    )}
+                    <div
+                      className="inline-flex h-12 w-12 items-center justify-center rounded-full shadow-sm"
+                      style={{ backgroundColor: togglePreviewColor, color: getReadableTextColor(togglePreviewColor) }}
+                    >
+                      <MessageCircle className="w-5 h-5" />
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
+                <div className="border border-border rounded-xl p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm">Enquiry Button</p>
+                      <p className="text-xs text-muted-foreground">Opens the enquiry popup form.</p>
+                    </div>
+                    <Switch
+                      checked={settings.floatingContact.enquiry.visible}
+                      onCheckedChange={(checked) => updateFloatingEnquiry({ visible: checked })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Label</label>
+                    <Input
+                      value={settings.floatingContact.enquiry.label}
+                      onChange={(e) => updateFloatingEnquiry({ label: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Button Color</label>
+                    <div className="flex items-center gap-3 mt-1">
+                      <input
+                        type="color"
+                        value={enquiryPreviewColor}
+                        onChange={(e) => updateFloatingEnquiry({ color: e.target.value })}
+                        className="w-12 h-10 rounded-lg cursor-pointer border border-border"
+                      />
+                      <Input
+                        value={settings.floatingContact.enquiry.color}
+                        onChange={(e) => updateFloatingEnquiry({ color: e.target.value })}
+                        className="flex-1 font-mono text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border border-border rounded-xl p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm">Call Button</p>
+                      <p className="text-xs text-muted-foreground">Show or hide the direct call action.</p>
+                    </div>
+                    <Switch
+                      checked={settings.floatingContact.call.visible}
+                      onCheckedChange={(checked) => updateFloatingCall({ visible: checked })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Label</label>
+                    <Input
+                      value={settings.floatingContact.call.label}
+                      onChange={(e) => updateFloatingCall({ label: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Phone Number</label>
+                    <Input
+                      value={settings.floatingContact.call.value}
+                      onChange={(e) => updateFloatingCall({ value: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Button Color</label>
+                    <div className="flex items-center gap-3 mt-1">
+                      <input
+                        type="color"
+                        value={callPreviewColor}
+                        onChange={(e) => updateFloatingCall({ color: e.target.value })}
+                        className="w-12 h-10 rounded-lg cursor-pointer border border-border"
+                      />
+                      <Input
+                        value={settings.floatingContact.call.color}
+                        onChange={(e) => updateFloatingCall({ color: e.target.value })}
+                        className="flex-1 font-mono text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border border-border rounded-xl p-4 space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-semibold text-sm">WhatsApp Button</p>
+                      <p className="text-xs text-muted-foreground">Show or hide the WhatsApp action link.</p>
+                    </div>
+                    <Switch
+                      checked={settings.floatingContact.whatsapp.visible}
+                      onCheckedChange={(checked) => updateFloatingWhatsapp({ visible: checked })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Label</label>
+                    <Input
+                      value={settings.floatingContact.whatsapp.label}
+                      onChange={(e) => updateFloatingWhatsapp({ label: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">WhatsApp Number</label>
+                    <Input
+                      value={settings.floatingContact.whatsapp.value}
+                      onChange={(e) => updateFloatingWhatsapp({ value: e.target.value })}
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-muted-foreground">Button Color</label>
+                    <div className="flex items-center gap-3 mt-1">
+                      <input
+                        type="color"
+                        value={whatsappPreviewColor}
+                        onChange={(e) => updateFloatingWhatsapp({ color: e.target.value })}
+                        className="w-12 h-10 rounded-lg cursor-pointer border border-border"
+                      />
+                      <Input
+                        value={settings.floatingContact.whatsapp.color}
+                        onChange={(e) => updateFloatingWhatsapp({ color: e.target.value })}
+                        className="flex-1 font-mono text-sm"
+                      />
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card>
+            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <CardTitle className="text-lg">Enquiry Leads</CardTitle>
+                <CardDescription>Leads submitted from the Enquire Now popup. These entries are stored in this browser only.</CardDescription>
+              </div>
+              {enquiryLeads.length > 0 && (
+                <Button variant="outline" onClick={handleClearLeads} className="gap-2">
+                  <Trash2 className="w-4 h-4" /> Clear All
+                </Button>
+              )}
+            </CardHeader>
+            <CardContent>
+              {enquiryLeads.length === 0 ? (
+                <div className="rounded-xl border border-dashed border-border bg-muted/30 px-5 py-8 text-center">
+                  <p className="font-medium text-foreground">No enquiry leads yet</p>
+                  <p className="text-sm text-muted-foreground mt-1">New popup submissions will appear here automatically.</p>
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-border">
+                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Name</th>
+                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Location</th>
+                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Mobile</th>
+                        <th className="text-left py-3 px-2 text-muted-foreground font-medium hidden md:table-cell">Submitted</th>
+                        <th className="text-right py-3 px-2 text-muted-foreground font-medium">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {enquiryLeads.map((lead) => (
+                        <tr key={lead.id} className="border-b border-border/50 hover:bg-muted/30">
+                          <td className="py-3 px-2 font-medium text-foreground">{lead.name}</td>
+                          <td className="py-3 px-2 text-muted-foreground">{lead.location}</td>
+                          <td className="py-3 px-2 text-foreground">{lead.mobile}</td>
+                          <td className="py-3 px-2 text-muted-foreground hidden md:table-cell">{formatEnquiryLeadDate(lead.createdAt)}</td>
+                          <td className="py-3 px-2 text-right">
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              className="text-destructive hover:text-destructive"
+                              onClick={() => handleDeleteLead(lead.id)}
+                            >
+                              <Trash2 className="w-4 h-4" />
+                            </Button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </CardContent>
           </Card>
         </TabsContent>

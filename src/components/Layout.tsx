@@ -2,6 +2,7 @@ import { Outlet } from "react-router-dom";
 import Header from "./Header";
 import Footer from "./Footer";
 import MobileStickyFooter from "./MobileStickyFooter";
+import FloatingContact from "./FloatingContact";
 
 const Layout = () => {
   return (
@@ -10,6 +11,7 @@ const Layout = () => {
       <Outlet />
       <Footer />
       <MobileStickyFooter />
+      <FloatingContact />
     </div>
   );
 };

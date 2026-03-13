@@ -22,13 +22,13 @@ const Footer = () => {
               <div className="mb-5">
                 <img src={settings.logo} alt="Ednovate" className="h-12 w-auto drop-shadow-md" />
               </div>
-              <p className="text-sm text-white/80 leading-relaxed max-w-sm mb-6">
+              <p className="text-sm text-white leading-relaxed max-w-sm mb-6">
                 India&apos;s trusted online learning platform for CA, CS, CMA and professional courses. Structured programs, expert mentorship, and outcomes that matter.
               </p>
               <div className="flex flex-col sm:flex-row gap-2 max-w-sm">
                 <Input
                   placeholder="Your email"
-                  className="h-10 text-sm bg-white/10 border-white/20 text-white placeholder:text-white/60 rounded-xl"
+                  className="h-10 text-sm bg-white/10 border-white/20 text-white placeholder:text-white rounded-xl"
                 />
                 <Button size="sm" className="h-10 px-4 w-full sm:w-auto bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] text-white text-xs font-semibold rounded-xl">
                   Subscribe
@@ -38,7 +38,7 @@ const Footer = () => {
 
             {/* Quick Links */}
             <div>
-              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-white/90">Quick Links</h4>
+              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-white">Quick Links</h4>
               <ul className="space-y-2.5">
                 {[
                   { label: "Home", href: "/" },
@@ -48,7 +48,7 @@ const Footer = () => {
                   { label: "Contact Us", href: "/#footer" },
                 ].map((link) => (
                   <li key={link.label}>
-                    <Link to={link.href} className="text-sm text-white/75 hover:text-white transition-colors">
+                    <Link to={link.href} className="text-sm text-white hover:text-white transition-colors">
                       {link.label}
                     </Link>
                   </li>
@@ -58,11 +58,11 @@ const Footer = () => {
 
             {/* Courses */}
             <div>
-              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-white/90">Courses</h4>
+              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-white">Courses</h4>
               <ul className="space-y-2.5">
                 {["CA Foundation", "CA Inter", "CA Final", "CS Executive", "CS Professional", "CMA / CFA"].map((course) => (
                   <li key={course}>
-                    <Link to="/packages" className="text-sm text-white/75 hover:text-white transition-colors">
+                    <Link to="/packages" className="text-sm text-white hover:text-white transition-colors">
                       {course}
                     </Link>
                   </li>
@@ -72,17 +72,17 @@ const Footer = () => {
 
             {/* Contact */}
             <div>
-              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-white/90">Contact</h4>
+              <h4 className="font-bold text-xs uppercase tracking-[0.14em] mb-4 text-white">Contact</h4>
               <ul className="space-y-3">
-                <li className="flex items-start gap-2.5 text-sm text-white/75">
+                <li className="flex items-start gap-2.5 text-sm text-white">
                   <MapPin className="w-4 h-4 mt-0.5 flex-shrink-0 text-accent" />
                   Mumbai, Maharashtra
                 </li>
-                <li className="flex items-center gap-2.5 text-sm text-white/75">
+                <li className="flex items-center gap-2.5 text-sm text-white">
                   <Phone className="w-4 h-4 flex-shrink-0 text-accent" />
                   +91 98765 43210
                 </li>
-                <li className="flex items-center gap-2.5 text-sm text-white/75 break-all">
+                <li className="flex items-center gap-2.5 text-sm text-white break-all">
                   <Mail className="w-4 h-4 flex-shrink-0 text-accent" />
                   info@ednovate.in
                 </li>
@@ -99,7 +99,7 @@ const Footer = () => {
         </div>
 
         <div className="border-t border-white/10">
-          <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center text-xs text-white/70 gap-2">
+          <div className="container mx-auto px-4 py-4 flex flex-col sm:flex-row justify-between items-center text-xs text-white gap-2">
             <span>© 2026 Ednovate. All rights reserved.</span>
             <div className="flex gap-4">
               <a href="#" className="hover:text-white transition-colors">Privacy</a>

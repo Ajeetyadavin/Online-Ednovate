@@ -34,6 +34,16 @@ export interface MobileFooterButton {
   visible: boolean;
 }
 
+export interface FloatingContactActionSettings {
+  label: string;
+  color: string;
+  visible: boolean;
+}
+
+export interface FloatingContactChannelSettings extends FloatingContactActionSettings {
+  value: string;
+}
+
 export interface SiteSettings {
   colors: {
     primary: string;
@@ -76,6 +86,13 @@ export interface SiteSettings {
   mobileFooter: {
     visible: boolean;
     buttons: MobileFooterButton[];
+  };
+  floatingContact: {
+    visible: boolean;
+    toggleColor: string;
+    enquiry: FloatingContactActionSettings;
+    call: FloatingContactChannelSettings;
+    whatsapp: FloatingContactChannelSettings;
   };
   animations: {
     enabled: boolean;
@@ -205,6 +222,27 @@ const createDefaultSettings = (): SiteSettings => ({
       },
     ],
   },
+  floatingContact: {
+    visible: true,
+    toggleColor: "#1E3A5F",
+    enquiry: {
+      label: "Enquire Now",
+      color: "#FFFFFF",
+      visible: true,
+    },
+    call: {
+      label: "Call Us",
+      color: "#2563EB",
+      value: "+91 98765 43210",
+      visible: true,
+    },
+    whatsapp: {
+      label: "WhatsApp",
+      color: "#22C55E",
+      value: "+91 98765 43210",
+      visible: true,
+    },
+  },
   animations: {
     enabled: true,
     type: "up",
@@ -272,6 +310,27 @@ const normalizeMobileFooterButton = (
   };
 };
 
+const normalizeFloatingContactAction = (
+  action: Partial<FloatingContactActionSettings> | undefined,
+  fallback: FloatingContactActionSettings,
+): FloatingContactActionSettings => {
+  return {
+    label: action?.label || fallback.label,
+    color: action?.color || fallback.color,
+    visible: action?.visible !== false,
+  };
+};
+
+const normalizeFloatingContactChannel = (
+  action: Partial<FloatingContactChannelSettings> | undefined,
+  fallback: FloatingContactChannelSettings,
+): FloatingContactChannelSettings => {
+  return {
+    ...normalizeFloatingContactAction(action, fallback),
+    value: action?.value || fallback.value,
+  };
+};
+
 const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
   const base = createDefaultSettings();
 
@@ -306,6 +365,13 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
       buttons: Array.isArray(stored.mobileFooter?.buttons)
         ? stored.mobileFooter!.buttons.map((button, index) => normalizeMobileFooterButton(button, index))
         : base.mobileFooter.buttons,
+    },
+    floatingContact: {
+      ...base.floatingContact,
+      ...(stored.floatingContact || {}),
+      enquiry: normalizeFloatingContactAction(stored.floatingContact?.enquiry, base.floatingContact.enquiry),
+      call: normalizeFloatingContactChannel(stored.floatingContact?.call, base.floatingContact.call),
+      whatsapp: normalizeFloatingContactChannel(stored.floatingContact?.whatsapp, base.floatingContact.whatsapp),
     },
     animations: {
       ...base.animations,
@@ -346,6 +412,7 @@ interface SiteSettingsContextType {
   updateSections: (sections: Partial<SiteSettings["sections"]>) => void;
   updateHeader: (header: Partial<SiteSettings["header"]>) => void;
   updateMobileFooter: (mobileFooter: Partial<SiteSettings["mobileFooter"]>) => void;
+  updateFloatingContact: (floatingContact: Partial<SiteSettings["floatingContact"]>) => void;
   updateAnimations: (animations: Partial<SiteSettings["animations"]>) => void;
   updateLogo: (logo: string) => void;
   resetSettings: () => void;
@@ -448,6 +515,25 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     }));
   };
 
+  const updateFloatingContact = (floatingContact: Partial<SiteSettings["floatingContact"]>) => {
+    setSettings((prev) => ({
+      ...prev,
+      floatingContact: {
+        ...prev.floatingContact,
+        ...floatingContact,
+        enquiry: floatingContact.enquiry
+          ? { ...prev.floatingContact.enquiry, ...floatingContact.enquiry }
+          : prev.floatingContact.enquiry,
+        call: floatingContact.call
+          ? { ...prev.floatingContact.call, ...floatingContact.call }
+          : prev.floatingContact.call,
+        whatsapp: floatingContact.whatsapp
+          ? { ...prev.floatingContact.whatsapp, ...floatingContact.whatsapp }
+          : prev.floatingContact.whatsapp,
+      },
+    }));
+  };
+
   const updateLogo = (logo: string) => {
     setSettings((prev) => ({ ...prev, logo }));
   };
@@ -462,7 +548,7 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <SiteSettingsContext.Provider value={{ settings, updateSettings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateAnimations, updateLogo, resetSettings }}>
+    <SiteSettingsContext.Provider value={{ settings, updateSettings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateFloatingContact, updateAnimations, updateLogo, resetSettings }}>
       {children}
     </SiteSettingsContext.Provider>
   );
