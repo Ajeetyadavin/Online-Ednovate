@@ -5,13 +5,13 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Switch } from "@/components/ui/switch";
-import { Palette, Type, Layout, Eye, Save, Image, RotateCcw, Upload, PanelTop, Smartphone, Plus, Trash2 } from "lucide-react";
+import { Palette, Type, Layout, Eye, Save, Image, RotateCcw, Upload, PanelTop, Smartphone, Plus, Trash2, Zap } from "lucide-react";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { toast } from "sonner";
 
 const AdminSettings = () => {
-  const { settings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateLogo, resetSettings } = useSiteSettings();
+  const { settings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateAnimations, updateLogo, resetSettings } = useSiteSettings();
   const { resetPlatformData } = usePlatformData();
   const [saved, setSaved] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -213,6 +213,7 @@ const AdminSettings = () => {
           <TabsTrigger value="fonts" className="gap-2"><Type className="w-4 h-4" />Fonts</TabsTrigger>
           <TabsTrigger value="logo" className="gap-2"><Image className="w-4 h-4" />Logo</TabsTrigger>
           <TabsTrigger value="sections" className="gap-2"><Layout className="w-4 h-4" />Sections</TabsTrigger>
+          <TabsTrigger value="animations" className="gap-2"><Zap className="w-4 h-4" />Animations</TabsTrigger>
           <TabsTrigger value="navigation" className="gap-2"><PanelTop className="w-4 h-4" />Navigation</TabsTrigger>
         </TabsList>
 
@@ -379,6 +380,95 @@ const AdminSettings = () => {
                   </div>
                 ))}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* ANIMATIONS */}
+        <TabsContent value="animations">
+          <Card>
+            <CardHeader>
+              <CardTitle className="text-lg">Scroll Animations</CardTitle>
+              <CardDescription>Control homepage section scroll animations — change type, speed, or disable entirely</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+
+              {/* Enable / Disable */}
+              <div className="flex items-center justify-between border border-border rounded-xl p-4">
+                <div>
+                  <p className="font-semibold text-sm">Enable Scroll Animations</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">Sections will animate as they scroll into view</p>
+                </div>
+                <Switch
+                  checked={settings.animations.enabled}
+                  onCheckedChange={(checked) => updateAnimations({ enabled: checked })}
+                />
+              </div>
+
+              {/* Animation Type */}
+              <div className={`space-y-3 transition-opacity ${settings.animations.enabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
+                <p className="font-semibold text-sm">Animation Type</p>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                  {([
+                    { value: "up",     label: "Slide Up",    emoji: "⬆️" },
+                    { value: "down",   label: "Slide Down",  emoji: "⬇️" },
+                    { value: "left",   label: "Slide Left",  emoji: "⬅️" },
+                    { value: "right",  label: "Slide Right", emoji: "➡️" },
+                    { value: "scale",  label: "Zoom In",     emoji: "🔍" },
+                    { value: "fade",   label: "Fade Only",   emoji: "✨" },
+                    { value: "zoom",   label: "Zoom Out",    emoji: "🔎" },
+                    { value: "bounce", label: "Bounce",      emoji: "🏀" },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => updateAnimations({ type: opt.value })}
+                      className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all text-sm font-semibold tap-bounce ${
+                        settings.animations.type === opt.value
+                          ? "border-primary bg-primary/8 text-primary"
+                          : "border-border bg-card hover:border-primary/30"
+                      }`}
+                    >
+                      <span className="text-2xl">{opt.emoji}</span>
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Speed */}
+              <div className={`space-y-3 transition-opacity ${settings.animations.enabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
+                <p className="font-semibold text-sm">Animation Speed</p>
+                <div className="grid grid-cols-3 gap-3">
+                  {([
+                    { value: "fast",   label: "Fast",   sub: "0.28s" },
+                    { value: "normal", label: "Normal", sub: "0.6s"  },
+                    { value: "slow",   label: "Slow",   sub: "1s"    },
+                  ] as const).map((opt) => (
+                    <button
+                      key={opt.value}
+                      onClick={() => updateAnimations({ speed: opt.value })}
+                      className={`flex flex-col items-center gap-1 p-4 rounded-xl border-2 transition-all font-semibold tap-bounce ${
+                        settings.animations.speed === opt.value
+                          ? "border-primary bg-primary/8 text-primary"
+                          : "border-border bg-card hover:border-primary/30"
+                      }`}
+                    >
+                      <span className="text-base">{opt.label}</span>
+                      <span className="text-xs font-normal text-muted-foreground">{opt.sub}</span>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Info */}
+              <div className="rounded-xl bg-muted/60 border border-border p-4 text-sm text-muted-foreground space-y-1">
+                <p className="font-semibold text-foreground">How does it work?</p>
+                <p>• Sections automatically animate when they scroll into view</p>
+                <p>• Changing the type updates direction/style across all sections globally</p>
+                <p>• Speed controls how fast or slow the animation plays — also applied globally</p>
+                <p>• Disabling animations makes all sections appear instantly without any effect</p>
+              </div>
+
             </CardContent>
           </Card>
         </TabsContent>

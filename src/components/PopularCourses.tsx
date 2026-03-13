@@ -62,7 +62,7 @@ const PopularCourses = () => {
     <section id="courses" className="py-8 md:py-10 bg-muted/30">
       <div className="container mx-auto px-4">
         <div ref={titleRef} className={`text-center mb-8 reveal-up ${titleVisible ? "visible" : ""}`}>
-          <span className="text-primary text-xs font-bold uppercase tracking-widest">Explore</span>
+          <span className="text-primary text-sm font-extrabold uppercase tracking-widest">Explore</span>
           <h2 className="section-title mt-2">Popular Courses</h2>
           <p className="section-subtitle">Choose from our wide range of professional courses</p>
         </div>
@@ -73,7 +73,7 @@ const PopularCourses = () => {
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 rounded-lg text-xs font-semibold transition-all whitespace-nowrap tap-bounce ${
+                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap tap-bounce ${
                   activeTab === tab.id
                     ? "bg-primary text-primary-foreground shadow-sm"
                     : "text-muted-foreground hover:text-foreground hover:bg-muted/50"

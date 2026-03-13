@@ -79,9 +79,9 @@ const CourseCard = ({ course }: CourseCardProps) => {
 
       {/* Content */}
       <div className="p-2 sm:p-3.5 flex-1 flex flex-col">
-        <h3 className="font-bold text-foreground text-[11px] sm:text-[13px] mb-1 sm:mb-1.5 line-clamp-2 min-h-[2rem] sm:min-h-[2.25rem] leading-tight">{course.title}</h3>
+        <h3 className="font-black text-foreground text-[12px] sm:text-[14px] mb-1 sm:mb-1.5 line-clamp-2 min-h-[2rem] sm:min-h-[2.25rem] leading-tight">{course.title}</h3>
         
-        <div className="hidden sm:flex items-center gap-1 text-[11px] text-muted-foreground mb-2.5">
+        <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-foreground mb-2.5">
           <User className="w-3 h-3" />
           <span>{course.professor}</span>
         </div>

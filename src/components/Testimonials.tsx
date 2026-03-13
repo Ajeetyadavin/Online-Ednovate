@@ -64,7 +64,7 @@ const Testimonials = () => {
     <section className="py-8 md:py-10 bg-background relative overflow-hidden">
       <div className="container mx-auto px-4 relative z-10">
         <div ref={ref} className={`text-center mb-8 reveal-up ${isVisible ? "visible" : ""}`}>
-          <span className="text-primary text-xs font-bold uppercase tracking-widest">Testimonials</span>
+          <span className="text-primary text-sm font-extrabold uppercase tracking-widest">Testimonials</span>
           <h2 className="section-title mt-2">
             Student <span className="text-primary">Success Stories</span>
           </h2>
@@ -80,7 +80,7 @@ const Testimonials = () => {
               >
                 <Quote className="w-6 h-6 text-primary/15 mb-3" />
                 
-                <p className="text-foreground text-sm leading-relaxed mb-4 line-clamp-4">
+                <p className="text-foreground font-semibold text-base leading-relaxed mb-4 line-clamp-4">
                   {t.content}
                 </p>
 
@@ -100,8 +100,8 @@ const Testimonials = () => {
                     </span>
                   </div>
                   <div>
-                    <h4 className="font-bold text-xs text-foreground">{t.authorName}</h4>
-                    <p className="text-[11px] text-muted-foreground">{t.authorRole}</p>
+                    <h4 className="font-extrabold text-sm text-foreground">{t.authorName}</h4>
+                    <p className="text-xs font-semibold text-foreground/70">{t.authorRole}</p>
                   </div>
                 </div>
               </div>

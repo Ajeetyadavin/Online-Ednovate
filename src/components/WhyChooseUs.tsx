@@ -14,7 +14,7 @@ const WhyChooseUs = () => {
     <section id="why-choose" className="py-8 md:py-10 bg-muted/50">
       <div className="container mx-auto px-4">
         <div ref={titleRef} className={`text-center mb-8 reveal-up ${titleVisible ? "visible" : ""}`}>
-          <span className="text-primary text-xs font-bold uppercase tracking-widest">Why Ednovate</span>
+          <span className="text-primary text-sm font-extrabold uppercase tracking-widest">Why Ednovate</span>
           <h2 className="section-title mt-2">
             Everything You Need to <span className="text-primary">Succeed</span>
           </h2>
@@ -35,8 +35,8 @@ const WhyChooseUs = () => {
                     <Icon className="w-5 h-5 text-primary" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-bold text-sm text-foreground mb-1">{item.title}</h3>
-                    <p className="text-xs text-muted-foreground leading-relaxed">{item.description}</p>
+                    <h3 className="font-black text-base text-foreground mb-1.5">{item.title}</h3>
+                    <p className="text-sm font-semibold text-foreground leading-relaxed">{item.description}</p>
                   </div>
                 </div>
               </div>

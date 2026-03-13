@@ -22,6 +22,9 @@ export interface HeaderQuickButton {
 export type MobileFooterAction = "link" | "tel" | "login" | "dashboard";
 export type MobileFooterIcon = "home" | "courses" | "phone" | "profile" | "login" | "support" | "settings";
 
+export type AnimationType = "up" | "down" | "left" | "right" | "scale" | "fade" | "zoom" | "bounce";
+export type AnimationSpeed = "slow" | "normal" | "fast";
+
 export interface MobileFooterButton {
   id: string;
   label: string;
@@ -73,6 +76,11 @@ export interface SiteSettings {
   mobileFooter: {
     visible: boolean;
     buttons: MobileFooterButton[];
+  };
+  animations: {
+    enabled: boolean;
+    type: AnimationType;
+    speed: AnimationSpeed;
   };
 }
 
@@ -197,6 +205,11 @@ const createDefaultSettings = (): SiteSettings => ({
       },
     ],
   },
+  animations: {
+    enabled: true,
+    type: "up",
+    speed: "normal",
+  },
 });
 
 const defaultSettings: SiteSettings = createDefaultSettings();
@@ -294,6 +307,10 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
         ? stored.mobileFooter!.buttons.map((button, index) => normalizeMobileFooterButton(button, index))
         : base.mobileFooter.buttons,
     },
+    animations: {
+      ...base.animations,
+      ...(stored.animations || {}),
+    },
   };
 };
 
@@ -329,6 +346,7 @@ interface SiteSettingsContextType {
   updateSections: (sections: Partial<SiteSettings["sections"]>) => void;
   updateHeader: (header: Partial<SiteSettings["header"]>) => void;
   updateMobileFooter: (mobileFooter: Partial<SiteSettings["mobileFooter"]>) => void;
+  updateAnimations: (animations: Partial<SiteSettings["animations"]>) => void;
   updateLogo: (logo: string) => void;
   resetSettings: () => void;
 }
@@ -371,6 +389,19 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     document.documentElement.style.setProperty("--font-body", `'${settings.fonts.body}', sans-serif`);
     document.body.style.fontFamily = `'${settings.fonts.body}', sans-serif`;
   }, [settings.fonts]);
+
+  // Apply animation settings
+  useEffect(() => {
+    const root = document.documentElement;
+    const speedMap: Record<string, string> = { slow: "1s", normal: "0.6s", fast: "0.28s" };
+    root.style.setProperty("--anim-duration", speedMap[settings.animations.speed] || "0.6s");
+    if (!settings.animations.enabled) {
+      root.classList.add("animations-disabled");
+    } else {
+      root.classList.remove("animations-disabled");
+    }
+    root.setAttribute("data-anim-type", settings.animations.type);
+  }, [settings.animations]);
 
   const updateSettings = (newSettings: Partial<SiteSettings>) => {
     setSettings((prev) => mergeStoredSettings({ ...prev, ...newSettings }));
@@ -421,13 +452,17 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     setSettings((prev) => ({ ...prev, logo }));
   };
 
+  const updateAnimations = (animations: Partial<SiteSettings["animations"]>) => {
+    setSettings((prev) => ({ ...prev, animations: { ...prev.animations, ...animations } }));
+  };
+
   const resetSettings = () => {
     setSettings(createDefaultSettings());
     localStorage.removeItem(STORAGE_KEY);
   };
 
   return (
-    <SiteSettingsContext.Provider value={{ settings, updateSettings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateLogo, resetSettings }}>
+    <SiteSettingsContext.Provider value={{ settings, updateSettings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateAnimations, updateLogo, resetSettings }}>
       {children}
     </SiteSettingsContext.Provider>
   );

@@ -36,7 +36,7 @@ const FAQ = () => {
     <section className="py-8 md:py-10 bg-muted/30">
       <div className="container mx-auto px-4">
         <div ref={ref} className={`text-center mb-8 reveal-up ${isVisible ? "visible" : ""}`}>
-          <span className="text-primary text-xs font-bold uppercase tracking-widest">FAQs</span>
+          <span className="text-primary text-sm font-extrabold uppercase tracking-widest">FAQs</span>
           <h2 className="section-title mt-2">
             Frequently Asked <span className="text-primary">Questions</span>
           </h2>
@@ -51,10 +51,10 @@ const FAQ = () => {
                 value={`faq-${i}`}
                 className="bg-card border border-border rounded-xl px-5 data-[state=open]:border-primary/20 data-[state=open]:shadow-sm transition-all duration-300"
               >
-                <AccordionTrigger className="text-sm font-semibold text-foreground hover:no-underline py-4 [&[data-state=open]>svg]:text-primary">
+                <AccordionTrigger className="text-base font-extrabold text-foreground hover:no-underline py-4 [&[data-state=open]>svg]:text-primary">
                   {faq.q}
                 </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground leading-relaxed pb-4">
+                <AccordionContent className="text-sm font-semibold text-foreground leading-relaxed pb-4">
                   {faq.a}
                 </AccordionContent>
               </AccordionItem>

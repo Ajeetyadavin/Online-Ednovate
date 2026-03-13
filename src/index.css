@@ -7,22 +7,22 @@
 @layer base {
   :root {
     --background: 0 0% 100%;
-    --foreground: 220 35% 11%;
+    --foreground: 0 0% 0%;
 
     --card: 0 0% 100%;
-    --card-foreground: 220 35% 11%;
+    --card-foreground: 0 0% 0%;
 
     --popover: 0 0% 100%;
-    --popover-foreground: 220 35% 11%;
+    --popover-foreground: 0 0% 0%;
 
     --primary: 222 66% 30%;
     --primary-foreground: 0 0% 100%;
 
     --secondary: 220 25% 96%;
-    --secondary-foreground: 220 35% 11%;
+    --secondary-foreground: 0 0% 0%;
 
     --muted: 220 18% 95%;
-    --muted-foreground: 220 14% 42%;
+    --muted-foreground: 0 0% 0%;
 
     --accent: 6 88% 56%;
     --accent-foreground: 0 0% 100%;
@@ -96,15 +96,16 @@
   body {
     @apply bg-background text-foreground antialiased;
     font-family: 'Plus Jakarta Sans', 'Inter', system-ui, sans-serif;
+    font-weight: 500;
   }
 }
 
 @layer components {
   .section-title {
-    @apply text-2xl sm:text-3xl md:text-4xl font-extrabold tracking-tight text-foreground;
+    @apply text-3xl sm:text-4xl md:text-5xl font-black tracking-tight text-foreground;
   }
   .section-subtitle {
-    @apply text-sm sm:text-base text-muted-foreground max-w-xl mx-auto mt-2;
+    @apply text-base sm:text-lg font-bold text-foreground max-w-xl mx-auto mt-2;
   }
   .glass-card {
     @apply bg-card/80 backdrop-blur-xl border border-border/50 shadow-sm;
@@ -116,11 +117,11 @@
     @apply bg-clip-text text-transparent bg-gradient-to-r;
   }
 
-  /* Scroll reveal animations */
+  /* Scroll reveal animations — speed controlled via --anim-duration CSS variable */
   .reveal-up {
     opacity: 0;
     transform: translateY(30px);
-    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    transition: opacity var(--anim-duration, 0.6s) ease-out, transform var(--anim-duration, 0.6s) ease-out;
   }
   .reveal-up.visible {
     opacity: 1;
@@ -130,7 +131,7 @@
   .reveal-left {
     opacity: 0;
     transform: translateX(-30px);
-    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    transition: opacity var(--anim-duration, 0.6s) ease-out, transform var(--anim-duration, 0.6s) ease-out;
   }
   .reveal-left.visible {
     opacity: 1;
@@ -140,7 +141,7 @@
   .reveal-right {
     opacity: 0;
     transform: translateX(30px);
-    transition: opacity 0.6s ease-out, transform 0.6s ease-out;
+    transition: opacity var(--anim-duration, 0.6s) ease-out, transform var(--anim-duration, 0.6s) ease-out;
   }
   .reveal-right.visible {
     opacity: 1;
@@ -150,7 +151,7 @@
   .reveal-scale {
     opacity: 0;
     transform: scale(0.9);
-    transition: opacity 0.5s ease-out, transform 0.5s ease-out;
+    transition: opacity var(--anim-duration, 0.6s) ease-out, transform var(--anim-duration, 0.6s) ease-out;
   }
   .reveal-scale.visible {
     opacity: 1;
@@ -161,7 +162,7 @@
   .stagger-children > * {
     opacity: 0;
     transform: translateY(20px);
-    transition: opacity 0.4s ease-out, transform 0.4s ease-out;
+    transition: opacity var(--anim-duration, 0.4s) ease-out, transform var(--anim-duration, 0.4s) ease-out;
   }
   .stagger-children.visible > *:nth-child(1) { transition-delay: 0ms; opacity: 1; transform: translateY(0); }
   .stagger-children.visible > *:nth-child(2) { transition-delay: 80ms; opacity: 1; transform: translateY(0); }
@@ -172,6 +173,51 @@
   .stagger-children.visible > *:nth-child(7) { transition-delay: 480ms; opacity: 1; transform: translateY(0); }
   .stagger-children.visible > *:nth-child(8) { transition-delay: 560ms; opacity: 1; transform: translateY(0); }
   .stagger-children.visible > *:nth-child(9) { transition-delay: 640ms; opacity: 1; transform: translateY(0); }
+
+  /* ── Animation TYPE overrides via data-anim-type on :root ── */
+  /* "down" — slide from top */
+  :root[data-anim-type="down"] .reveal-up { transform: translateY(-30px); }
+  /* "left" — slide from right */
+  :root[data-anim-type="left"] .reveal-up { transform: translateX(30px); }
+  :root[data-anim-type="left"] .stagger-children > * { transform: translateX(30px); }
+  :root[data-anim-type="left"] .stagger-children.visible > * { transform: translateX(0); }
+  /* "right" — slide from left */
+  :root[data-anim-type="right"] .reveal-up { transform: translateX(-30px); }
+  :root[data-anim-type="right"] .stagger-children > * { transform: translateX(-30px); }
+  :root[data-anim-type="right"] .stagger-children.visible > * { transform: translateX(0); }
+  /* "scale" — zoom in */
+  :root[data-anim-type="scale"] .reveal-up { transform: scale(0.85); }
+  :root[data-anim-type="scale"] .stagger-children > * { transform: scale(0.85); }
+  :root[data-anim-type="scale"] .stagger-children.visible > * { transform: scale(1); }
+  /* "fade" — fade only, no movement */
+  :root[data-anim-type="fade"] .reveal-up { transform: none; }
+  :root[data-anim-type="fade"] .stagger-children > * { transform: none; }
+  /* "zoom" — zoom out from big */
+  :root[data-anim-type="zoom"] .reveal-up { transform: scale(1.12); }
+  :root[data-anim-type="zoom"] .stagger-children > * { transform: scale(1.12); }
+  :root[data-anim-type="zoom"] .stagger-children.visible > * { transform: scale(1); }
+  /* "bounce" — overshoot bounce */
+  :root[data-anim-type="bounce"] .reveal-up.visible { animation: bounceIn var(--anim-duration, 0.6s) cubic-bezier(0.34,1.56,0.64,1) forwards; }
+  :root[data-anim-type="bounce"] .stagger-children.visible > * { animation: bounceIn var(--anim-duration, 0.6s) cubic-bezier(0.34,1.56,0.64,1) forwards; }
+  @keyframes bounceIn {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  /* ── Disable all animations ── */
+  .animations-disabled .reveal-up,
+  .animations-disabled .reveal-left,
+  .animations-disabled .reveal-right,
+  .animations-disabled .reveal-scale {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
+  .animations-disabled .stagger-children > * {
+    opacity: 1 !important;
+    transform: none !important;
+    transition: none !important;
+  }
 
   /* Bounce on tap */
   .tap-bounce:active {

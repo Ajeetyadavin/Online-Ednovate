@@ -31,7 +31,7 @@ const HowItWorks = () => {
     <section className="py-8 md:py-10 bg-background relative overflow-hidden">
       <div className="container mx-auto px-4 relative z-10">
         <div ref={ref} className={`text-center mb-8 reveal-up ${isVisible ? "visible" : ""}`}>
-          <span className="text-accent text-xs font-bold uppercase tracking-widest">Simple Process</span>
+          <span className="text-accent text-sm font-extrabold uppercase tracking-widest">Simple Process</span>
           <h2 className="section-title mt-2">
             How It <span className="text-accent">Works</span>
           </h2>
@@ -53,8 +53,8 @@ const HowItWorks = () => {
                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-primary/8 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform duration-300">
                   <step.icon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                 </div>
-                <h3 className="font-bold text-sm sm:text-[15px] text-foreground mb-1">{step.title}</h3>
-                <p className="text-[11px] sm:text-xs text-muted-foreground leading-relaxed">{step.desc}</p>
+                <h3 className="font-black text-base sm:text-lg text-foreground mb-1.5">{step.title}</h3>
+                <p className="text-sm font-semibold text-foreground leading-relaxed">{step.desc}</p>
               </div>
             </div>
           ))}
