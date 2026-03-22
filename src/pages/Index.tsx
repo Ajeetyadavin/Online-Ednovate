@@ -9,6 +9,7 @@ import PopularCourses from "@/components/PopularCourses";
 import Testimonials from "@/components/Testimonials";
 import HowItWorks from "@/components/HowItWorks";
 import FAQ from "@/components/FAQ";
+import DynamicHomepageSection from "@/components/DynamicHomepageSection";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const Index = () => {
@@ -46,7 +47,7 @@ const Index = () => {
                   <div className="inline-flex items-center gap-1.5 bg-primary-foreground/10 text-primary-foreground/80 text-[10px] font-bold uppercase tracking-widest px-3 py-1.5 rounded-full mb-3">
                     <Sparkles className="w-3 h-3" /> Get Started Today
                   </div>
-                  <h3 className="text-2xl md:text-3xl font-extrabold text-primary-foreground tracking-tight">
+                  <h3 className="text-xl md:text-3xl font-extrabold text-primary-foreground tracking-tight">
                     Ready to Start Learning?
                   </h3>
                   <p className="text-primary-foreground/75 text-sm md:text-base mt-2 max-w-xl">
@@ -63,6 +64,14 @@ const Index = () => {
           </div>
         </div>
       )}
+
+      {/* Custom Homepage Sections */}
+      {(settings.customHomepageSections || [])
+        .filter((section) => section.visible)
+        .sort((a, b) => (a.order || 0) - (b.order || 0))
+        .map((section) => (
+          <DynamicHomepageSection key={section.id} section={section} />
+        ))}
     </>
   );
 };

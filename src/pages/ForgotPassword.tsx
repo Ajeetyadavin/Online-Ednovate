@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { ArrowLeft, Mail, Smartphone, Shield, CheckCircle2, Lock, KeyRound } from "lucide-react";
+import { ArrowLeft, Mail, Smartphone, CheckCircle2, Lock, KeyRound } from "lucide-react";
 import { Link } from "react-router-dom";
+import { resetPasswordByMobileApi, sendLoginOtpApi, verifyStoredOtpApi } from "@/services/authApi";
 
 type Method = "choose" | "email" | "phone";
 
@@ -13,44 +14,79 @@ const ForgotPassword = () => {
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
   const [otpSent, setOtpSent] = useState(false);
+  const [otp, setOtp] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [statusMessage, setStatusMessage] = useState("");
+  const [errorMessage, setErrorMessage] = useState("");
 
   const handleEmailSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (email.includes("@")) setSent(true);
+    setStatusMessage("");
+    setErrorMessage("");
+    if (!email.includes("@")) {
+      setErrorMessage("Please enter a valid email address.");
+      return;
+    }
+    setErrorMessage("Email reset is currently unavailable. Please use mobile OTP reset.");
   };
 
-  const handlePhoneOtp = (e: React.FormEvent) => {
+  const handlePhoneOtp = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (phone.length >= 10) setOtpSent(true);
+    setStatusMessage("");
+    setErrorMessage("");
+    if (phone.length < 10) {
+      setErrorMessage("Please enter a valid 10-digit mobile number.");
+      return;
+    }
+    const result = await sendLoginOtpApi(phone);
+    if (!result.ok) {
+      setErrorMessage(result.message || "Failed to send OTP.");
+      return;
+    }
+    setOtpSent(true);
+    setStatusMessage(result.message || "OTP sent successfully.");
+  };
+
+  const handleOtpReset = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStatusMessage("");
+    setErrorMessage("");
+
+    if ((otp || "").trim().length !== 6) {
+      setErrorMessage("Please enter a valid 6-digit OTP.");
+      return;
+    }
+    if ((newPassword || "").trim().length < 6) {
+      setErrorMessage("Password must be at least 6 characters.");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      setErrorMessage("New password and confirm password do not match.");
+      return;
+    }
+
+    const verify = await verifyStoredOtpApi(phone, otp);
+    if (!verify.ok) {
+      setErrorMessage(verify.message || "Invalid OTP.");
+      return;
+    }
+
+    const reset = await resetPasswordByMobileApi(phone, newPassword);
+    if (!reset.ok) {
+      setErrorMessage(reset.message || "Password reset failed.");
+      return;
+    }
+
+    setSent(true);
+    setOtpSent(false);
+    setStatusMessage(reset.message || "Password reset successful.");
   };
 
   const InputWithIcon = ({ icon: Icon, ...props }: { icon: React.ElementType } & React.InputHTMLAttributes<HTMLInputElement>) => (
     <div className="relative">
       <Icon className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
       <Input {...props} className="h-11 text-sm rounded-lg pl-10 border-border bg-background" />
-    </div>
-  );
-
-  const OtpBoxes = () => (
-    <div className="flex gap-2.5 justify-center">
-      {[...Array(6)].map((_, i) => (
-        <input
-          key={i}
-          type="text"
-          maxLength={1}
-          className="w-11 h-13 text-center text-lg font-bold rounded-lg border border-border bg-background focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all text-foreground"
-          onInput={(e) => {
-            const t = e.target as HTMLInputElement;
-            if (t.value && t.nextElementSibling) (t.nextElementSibling as HTMLInputElement).focus();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Backspace" && !(e.target as HTMLInputElement).value) {
-              const prev = (e.target as HTMLElement).previousElementSibling as HTMLInputElement;
-              if (prev) prev.focus();
-            }
-          }}
-        />
-      ))}
     </div>
   );
 
@@ -87,6 +123,9 @@ const ForgotPassword = () => {
           </div>
 
           <div className="p-6">
+            {errorMessage && <p className="mb-3 text-xs text-red-600 font-medium">{errorMessage}</p>}
+            {statusMessage && <p className="mb-3 text-xs text-emerald-600 font-medium">{statusMessage}</p>}
+
             {/* Success State */}
             {sent && (
               <div className="text-center space-y-5">
@@ -111,10 +150,18 @@ const ForgotPassword = () => {
 
             {/* OTP Verify State */}
             {otpSent && !sent && (
-              <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
+              <form className="space-y-4" onSubmit={handleOtpReset}>
                 <button
                   type="button"
-                  onClick={() => { setOtpSent(false); setMethod("choose"); }}
+                  onClick={() => {
+                    setOtpSent(false);
+                    setMethod("choose");
+                    setOtp("");
+                    setNewPassword("");
+                    setConfirmPassword("");
+                    setStatusMessage("");
+                    setErrorMessage("");
+                  }}
                   className="inline-flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
                   <ArrowLeft className="w-3.5 h-3.5" /> Change method
@@ -122,16 +169,35 @@ const ForgotPassword = () => {
 
                 <div className="space-y-3">
                   <Label className="text-xs font-medium text-foreground">Enter 6-digit OTP</Label>
-                  <OtpBoxes />
+                  <Input
+                    type="text"
+                    maxLength={6}
+                    value={otp}
+                    onChange={(e) => setOtp(e.target.value.replace(/\D/g, ""))}
+                    placeholder="Enter OTP"
+                    className="h-11 text-sm rounded-lg border-border"
+                  />
                 </div>
 
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-foreground">New Password</Label>
-                  <InputWithIcon icon={Lock} type="password" placeholder="Enter new password" />
+                  <InputWithIcon
+                    icon={Lock}
+                    type="password"
+                    placeholder="Enter new password"
+                    value={newPassword}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewPassword(e.target.value)}
+                  />
                 </div>
                 <div className="space-y-1.5">
                   <Label className="text-xs font-medium text-foreground">Confirm Password</Label>
-                  <InputWithIcon icon={Lock} type="password" placeholder="Confirm new password" />
+                  <InputWithIcon
+                    icon={Lock}
+                    type="password"
+                    placeholder="Confirm new password"
+                    value={confirmPassword}
+                    onChange={(e: React.ChangeEvent<HTMLInputElement>) => setConfirmPassword(e.target.value)}
+                  />
                 </div>
 
                 <Button type="submit" className="w-full bg-accent hover:bg-accent/90 text-accent-foreground font-semibold text-sm h-11 rounded-lg">
@@ -139,7 +205,17 @@ const ForgotPassword = () => {
                 </Button>
 
                 <p className="text-center text-xs">
-                  <button type="button" className="text-accent font-medium hover:underline">Resend OTP</button>
+                  <button type="button" className="text-accent font-medium hover:underline" onClick={() => {
+                    void (async () => {
+                      const result = await sendLoginOtpApi(phone);
+                      if (!result.ok) {
+                        setErrorMessage(result.message || "Failed to resend OTP.");
+                        return;
+                      }
+                      setStatusMessage(result.message || "OTP resent successfully.");
+                      setErrorMessage("");
+                    })();
+                  }}>Resend OTP</button>
                   <span className="text-muted-foreground ml-1">(00:30)</span>
                 </p>
               </form>

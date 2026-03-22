@@ -1,5 +1,6 @@
 import { Search, ShoppingCart, PlayCircle, Award } from "lucide-react";
 import { useScrollReveal } from "@/hooks/use-scroll-reveal";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const steps = [
   {
@@ -24,8 +25,20 @@ const steps = [
   },
 ];
 
+const stepIconMap: Record<string, React.ElementType> = {
+  Search,
+  ShoppingCart,
+  PlayCircle,
+  Award,
+};
+
 const HowItWorks = () => {
   const { ref, isVisible } = useScrollReveal({ threshold: 0.1 });
+  const { settings } = useSiteSettings();
+  const configured = settings.homepageContent?.howItWorks;
+  const displayTitle = configured?.title || "How It Works";
+  const displaySubtitle = configured?.subtitle || "Start your learning journey in 4 simple steps";
+  const displaySteps = configured?.steps?.length ? configured.steps : steps;
 
   return (
     <section className="py-8 md:py-10 bg-background relative overflow-hidden">
@@ -33,15 +46,17 @@ const HowItWorks = () => {
         <div ref={ref} className={`text-center mb-8 reveal-up ${isVisible ? "visible" : ""}`}>
           <span className="text-accent text-sm font-extrabold uppercase tracking-widest">Simple Process</span>
           <h2 className="section-title mt-2">
-            How It <span className="text-accent">Works</span>
+            {displayTitle}
           </h2>
-          <p className="section-subtitle">Start your learning journey in 4 simple steps</p>
+          <p className="section-subtitle">{displaySubtitle}</p>
         </div>
 
         <div className={`grid grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6 stagger-children ${isVisible ? "visible" : ""}`}>
-          {steps.map((step, i) => (
+          {displaySteps.map((step, i) => {
+            const StepIcon = typeof step.icon === "string" ? (stepIconMap[step.icon] || Search) : step.icon;
+            return (
             <div key={step.title} className="relative group">
-              {i < steps.length - 1 && (
+              {i < displaySteps.length - 1 && (
                 <div className="hidden lg:block absolute top-8 left-[60%] w-[80%] h-[2px] bg-gradient-to-r from-border to-transparent z-0" />
               )}
               
@@ -51,13 +66,13 @@ const HowItWorks = () => {
                 </div>
                 
                 <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-xl bg-primary/8 flex items-center justify-center mx-auto mb-3 group-hover:scale-110 transition-transform duration-300">
-                  <step.icon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
+                  <StepIcon className="w-5 h-5 sm:w-6 sm:h-6 text-primary" />
                 </div>
                 <h3 className="font-black text-base sm:text-lg text-foreground mb-1.5">{step.title}</h3>
-                <p className="text-sm font-semibold text-foreground leading-relaxed">{step.desc}</p>
+                <p className="text-sm text-muted-foreground leading-relaxed">{step.desc}</p>
               </div>
             </div>
-          ))}
+          );})}
         </div>
       </div>
     </section>

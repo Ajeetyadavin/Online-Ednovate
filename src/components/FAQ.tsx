@@ -5,6 +5,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const faqs = [
   {
@@ -31,21 +32,26 @@ const faqs = [
 
 const FAQ = () => {
   const { ref, isVisible } = useScrollReveal({ threshold: 0.1 });
+  const { settings } = useSiteSettings();
+  const faqTitle = settings.homepageContent?.faq?.title || "Frequently Asked Questions";
+  const faqSubtitle = settings.homepageContent?.faq?.subtitle || "Answers to your most common questions";
+  const faqsFromSettings = settings.homepageContent?.faq?.items || [];
+  const displayFaqs = faqsFromSettings.length > 0
+    ? faqsFromSettings.map((item) => ({ q: item.question, a: item.answer }))
+    : faqs;
 
   return (
     <section className="py-8 md:py-10 bg-muted/30">
       <div className="container mx-auto px-4">
         <div ref={ref} className={`text-center mb-8 reveal-up ${isVisible ? "visible" : ""}`}>
           <span className="text-primary text-sm font-extrabold uppercase tracking-widest">FAQs</span>
-          <h2 className="section-title mt-2">
-            Frequently Asked <span className="text-primary">Questions</span>
-          </h2>
-          <p className="section-subtitle">Answers to your most common questions</p>
+          <h2 className="section-title mt-2">{faqTitle}</h2>
+          <p className="section-subtitle">{faqSubtitle}</p>
         </div>
 
         <div className={`max-w-2xl mx-auto reveal-up ${isVisible ? "visible" : ""}`} style={{ transitionDelay: "200ms" }}>
           <Accordion type="single" collapsible className="space-y-2">
-            {faqs.map((faq, i) => (
+            {displayFaqs.map((faq, i) => (
               <AccordionItem
                 key={i}
                 value={`faq-${i}`}
@@ -54,7 +60,7 @@ const FAQ = () => {
                 <AccordionTrigger className="text-base font-extrabold text-foreground hover:no-underline py-4 [&[data-state=open]>svg]:text-primary">
                   {faq.q}
                 </AccordionTrigger>
-                <AccordionContent className="text-sm font-semibold text-foreground leading-relaxed pb-4">
+                <AccordionContent className="text-sm text-muted-foreground leading-relaxed pb-4">
                   {faq.a}
                 </AccordionContent>
               </AccordionItem>

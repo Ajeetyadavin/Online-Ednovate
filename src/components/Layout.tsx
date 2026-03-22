@@ -3,6 +3,7 @@ import Header from "./Header";
 import Footer from "./Footer";
 import MobileStickyFooter from "./MobileStickyFooter";
 import FloatingContact from "./FloatingContact";
+import MarketingPopupEngine from "./MarketingPopupEngine";
 
 const Layout = () => {
   return (
@@ -12,6 +13,7 @@ const Layout = () => {
       <Footer />
       <MobileStickyFooter />
       <FloatingContact />
+      <MarketingPopupEngine />
     </div>
   );
 };

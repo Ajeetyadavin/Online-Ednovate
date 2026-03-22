@@ -80,7 +80,7 @@ const Testimonials = () => {
               >
                 <Quote className="w-6 h-6 text-primary/15 mb-3" />
                 
-                <p className="text-foreground font-semibold text-base leading-relaxed mb-4 line-clamp-4">
+                <p className="text-foreground/90 text-sm leading-relaxed mb-4 line-clamp-4">
                   {t.content}
                 </p>
 
@@ -94,14 +94,18 @@ const Testimonials = () => {
                 </div>
 
                 <div className="flex items-center gap-3 pt-3 border-t border-border/50">
-                  <div className="w-9 h-9 rounded-full bg-primary flex items-center justify-center flex-shrink-0">
-                    <span className="text-primary-foreground font-bold text-xs">
-                      {t.authorName.charAt(0)}
-                    </span>
+                  <div className="w-9 h-9 rounded-full bg-primary overflow-hidden flex items-center justify-center flex-shrink-0">
+                    {t.avatarUrl ? (
+                      <img src={t.avatarUrl} alt={t.authorName} className="w-full h-full object-cover" />
+                    ) : (
+                      <span className="text-primary-foreground font-bold text-xs">
+                        {t.authorName.charAt(0)}
+                      </span>
+                    )}
                   </div>
                   <div>
                     <h4 className="font-extrabold text-sm text-foreground">{t.authorName}</h4>
-                    <p className="text-xs font-semibold text-foreground/70">{t.authorRole}</p>
+                    <p className="text-xs text-muted-foreground">{t.authorRole}</p>
                   </div>
                 </div>
               </div>

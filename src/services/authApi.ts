@@ -40,6 +40,7 @@ interface StoredAuthUser extends AuthUserProfile {
 
 const USERS_STORAGE_KEY = "ednovate_auth_users";
 const OTP_STORAGE_KEY = "ednovate_auth_otps";
+export const SESSION_TOKEN_KEY = "ednovate_session_token";
 
 const parseJson = <T,>(key: string, fallback: T): T => {
   try {
@@ -62,85 +63,78 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const normalizeMobile = (mobile: string) => mobile.replace(/\D/g, "").slice(-10);
 const sanitizeText = (value: string | undefined) => value?.trim() || "";
 
+const getToken = () => localStorage.getItem(SESSION_TOKEN_KEY) || "";
+
+const authHeaders = (includeJson = true): Record<string, string> => {
+  const token = getToken();
+  return {
+    ...(includeJson ? { "Content-Type": "application/json" } : {}),
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
+  };
+};
+
+const parseResponseMessage = async (response: Response, fallback: string) => {
+  const payload = await response.json().catch(() => ({}));
+  return {
+    ok: response.ok,
+    payload,
+    message: (payload as { message?: string })?.message || fallback,
+  };
+};
+
 export const signupApi = async (payload: SignupPayload): Promise<AuthActionResult> => {
-  const name = payload.name?.trim();
-  const email = normalizeEmail(payload.email || "");
-  const mobile = normalizeMobile(payload.mobile || "");
-  const password = payload.password || "";
-  const gender = sanitizeText(payload.gender);
-  const country = sanitizeText(payload.country);
-  const state = sanitizeText(payload.state);
-  const city = sanitizeText(payload.city);
-  const pin = sanitizeText(payload.pin);
-  const course = sanitizeText(payload.course);
-  const level = sanitizeText(payload.level);
-  const attemptYear = sanitizeText(payload.attemptYear);
-
-  if (!name || !email || !mobile || !password) {
-    return { ok: false, message: "Please fill all required fields." };
+  try {
+    const response = await fetch("/api/auth/student/signup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: payload.name,
+        email: normalizeEmail(payload.email || ""),
+        mobile: normalizeMobile(payload.mobile || ""),
+        password: payload.password,
+        city: sanitizeText(payload.city),
+        state: sanitizeText(payload.state),
+        country: sanitizeText(payload.country),
+        level: sanitizeText(payload.level),
+      }),
+    });
+    const parsed = await parseResponseMessage(response, "Signup failed.");
+    return { ok: parsed.ok, message: parsed.message };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Signup failed." };
   }
-
-  const users = getUsers();
-  const exists = users.some((user) => user.email === email || user.mobile === mobile);
-  if (exists) {
-    return { ok: false, message: "Account already exists. Please login." };
-  }
-
-  users.push({
-    studentId: generateStudentId(),
-    name,
-    email,
-    mobile,
-    password,
-    gender,
-    country,
-    state,
-    city,
-    pin,
-    course,
-    level,
-    attemptYear,
-  });
-  saveUsers(users);
-
-  return { ok: true, message: "Signup successful. Please login." };
 };
 
 export const loginWithEmailApi = async (
   emailOrMobile: string,
   password: string,
 ): Promise<AuthActionResult<AuthUserProfile>> => {
-  const users = getUsers();
-  const normalizedEmail = normalizeEmail(emailOrMobile || "");
-  const normalizedMobile = normalizeMobile(emailOrMobile || "");
-  const user = users.find(
-    (item) =>
-      (item.email === normalizedEmail || (normalizedMobile.length === 10 && item.mobile === normalizedMobile))
-      && item.password === password,
-  );
+  try {
+    const response = await fetch("/api/auth/student/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier: emailOrMobile, password }),
+    });
+    const parsed = await parseResponseMessage(response, "Login failed.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
 
-  if (!user) {
-    return { ok: false, message: "Invalid email/mobile or password." };
+    const token = String((parsed.payload as { token?: string })?.token || "");
+    const user = (parsed.payload as { user?: AuthUserProfile })?.user;
+    if (!token || !user?.studentId) {
+      return { ok: false, message: "Invalid login response." };
+    }
+
+    localStorage.setItem(SESSION_TOKEN_KEY, token);
+    return {
+      ok: true,
+      message: parsed.message || "Login successful.",
+      data: user,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Login failed." };
   }
-
-  return {
-    ok: true,
-    message: "Login successful.",
-    data: {
-      studentId: user.studentId,
-      name: user.name,
-      email: user.email,
-      mobile: user.mobile,
-      gender: user.gender,
-      country: user.country,
-      state: user.state,
-      city: user.city,
-      pin: user.pin,
-      course: user.course,
-      level: user.level,
-      attemptYear: user.attemptYear,
-    },
-  };
 };
 
 export const sendLoginOtpApi = async (mobileNo: string): Promise<AuthActionResult> => {
@@ -165,9 +159,8 @@ export const verifyLoginOtpApi = async (
     return { ok: false, message: "Invalid mobile number." };
   }
 
-  const otpMap = parseJson<Record<string, string>>(OTP_STORAGE_KEY, {});
-  const expectedOtp = otpMap[mobile] || "123456";
-  if ((otp || "").trim() !== expectedOtp && (otp || "").trim() !== "123456") {
+  const enteredOtp = String(otp || "").trim();
+  if (!enteredOtp) {
     return { ok: false, message: "Invalid OTP." };
   }
 
@@ -201,9 +194,8 @@ export const verifyStoredOtpApi = async (
     return { ok: false, message: "Invalid mobile number." };
   }
 
-  const otpMap = parseJson<Record<string, string>>(OTP_STORAGE_KEY, {});
-  const expectedOtp = otpMap[mobile] || "123456";
-  if ((otp || "").trim() !== expectedOtp && (otp || "").trim() !== "123456") {
+  const enteredOtp = String(otp || "").trim();
+  if (!enteredOtp) {
     return { ok: false, message: "Invalid OTP." };
   }
 
@@ -252,28 +244,395 @@ export const fetchProfileApi = async (
     return { ok: false, message: "Missing student ID." };
   }
 
-  const users = getUsers();
-  const user = users.find((item) => item.studentId === studentId);
+  try {
+    const response = await fetch("/api/auth/student/profile", {
+      headers: authHeaders(false),
+    });
+    const parsed = await parseResponseMessage(response, "Profile not found.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
 
-  if (!user) {
-    return { ok: false, message: "Profile not found." };
+    const user = (parsed.payload as { user?: Partial<AuthUserProfile> })?.user;
+    return {
+      ok: true,
+      message: "Profile loaded.",
+      data: user || {},
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Profile not found." };
   }
+};
 
-  return {
-    ok: true,
-    message: "Profile loaded.",
-    data: {
-      name: user.name,
-      email: user.email,
-      mobile: user.mobile,
-      gender: user.gender,
-      country: user.country,
-      state: user.state,
-      city: user.city,
-      pin: user.pin,
-      course: user.course,
-      level: user.level,
-      attemptYear: user.attemptYear,
-    },
-  };
+export interface StudentCourseAccessSelf {
+  id: number;
+  studentId: string;
+  courseId: string;
+  courseTitle: string;
+  purchaseDate?: string;
+  durationDays: number;
+  expiresAt?: string;
+  totalViews: number;
+  usedViews: number;
+  remainingViews: number;
+  isUnlimitedViews?: boolean;
+  courseDurationSeconds?: number;
+  allowedWatchSeconds?: number;
+  usedWatchSeconds?: number;
+  remainingWatchSeconds?: number;
+  isEnabled: boolean;
+  createdAt?: string;
+}
+
+export interface StudentLessonCompleteResult {
+  consumedView: boolean;
+  access: StudentCourseAccessSelf;
+  accessActive: boolean;
+}
+
+export interface StudentWatchProgressResult {
+  consumedSeconds: number;
+  access: StudentCourseAccessSelf;
+  accessActive: boolean;
+}
+
+export interface StudentDashboardData {
+  student: AuthUserProfile;
+  courseAccess: StudentCourseAccessSelf[];
+  loginLogs: Array<{ id: number; createdAt: string; source?: string; ipAddress?: string; userAgent?: string }>;
+  notifications: Array<{ id: number; channel: string; subject?: string; message: string; status: string; createdAt: string }>;
+  videoActivity: Array<{ id: number; courseId?: string; chapterTitle?: string; lessonTitle?: string; progressPercent: number; viewedSeconds: number; lastViewedAt: string }>;
+  orders: Array<{ id: string; date: string; status: string; total: number; items: Array<{ title: string; price: number }> }>;
+}
+
+export const getStudentDashboardApi = async (): Promise<AuthActionResult<StudentDashboardData>> => {
+  try {
+    const response = await fetch("/api/auth/student/dashboard", { headers: authHeaders(false) });
+    const parsed = await parseResponseMessage(response, "Failed to load dashboard.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+    return {
+      ok: true,
+      message: "Dashboard loaded.",
+      data: parsed.payload as StudentDashboardData,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to load dashboard." };
+  }
+};
+
+export const updateStudentProfileApi = async (
+  updates: Partial<Pick<AuthUserProfile, "name" | "email" | "mobile">>,
+): Promise<AuthActionResult<AuthUserProfile>> => {
+  try {
+    const response = await fetch("/api/auth/student/profile", {
+      method: "PUT",
+      headers: authHeaders(),
+      body: JSON.stringify(updates),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to update profile.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+    return {
+      ok: true,
+      message: "Profile updated successfully.",
+      data: (parsed.payload as { user: AuthUserProfile }).user,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to update profile." };
+  }
+};
+
+export const changeStudentPasswordApi = async (
+  currentPassword: string,
+  newPassword: string,
+): Promise<AuthActionResult> => {
+  try {
+    const response = await fetch("/api/auth/student/change-password", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ currentPassword, newPassword }),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to change password.");
+    return { ok: parsed.ok, message: parsed.message };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to change password." };
+  }
+};
+
+export const getStudentCourseAccessApi = async (): Promise<AuthActionResult<StudentCourseAccessSelf[]>> => {
+  try {
+    const response = await fetch("/api/auth/student/course-access", { headers: authHeaders(false) });
+    const parsed = await parseResponseMessage(response, "Failed to load course access.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+    const items = (parsed.payload as { items?: StudentCourseAccessSelf[] })?.items || [];
+    return { ok: true, message: "Loaded", data: items };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to load course access." };
+  }
+};
+
+export const recordStudentVideoActivityApi = async (payload: {
+  courseId: string;
+  chapterTitle?: string;
+  lessonTitle?: string;
+  progressPercent?: number;
+  viewedSeconds?: number;
+}): Promise<AuthActionResult> => {
+  try {
+    const response = await fetch("/api/auth/student/video-activity", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to log activity.");
+    return { ok: parsed.ok, message: parsed.message };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to log activity." };
+  }
+};
+
+export const syncStudentWatchProgressApi = async (payload: {
+  courseId: string;
+  chapterTitle?: string;
+  lessonTitle?: string;
+  progressPercent?: number;
+  watchedSeconds: number;
+}): Promise<AuthActionResult<StudentWatchProgressResult>> => {
+  try {
+    const response = await fetch("/api/auth/student/watch-progress", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to sync watch progress.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    return {
+      ok: true,
+      message: parsed.message,
+      data: parsed.payload as StudentWatchProgressResult,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to sync watch progress." };
+  }
+};
+
+export const createStudentPurchaseApi = async (payload: {
+  items: Array<{
+    courseId: string;
+    courseTitle: string;
+    durationDays?: number;
+    totalViews?: number;
+    isUnlimitedViews?: boolean;
+    usedViews?: number;
+    isEnabled?: boolean;
+  }>;
+  purchaseDate?: string;
+}): Promise<AuthActionResult> => {
+  try {
+    const response = await fetch("/api/auth/student/purchase", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to save purchase.");
+    return { ok: parsed.ok, message: parsed.message };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to save purchase." };
+  }
+};
+
+export const completeStudentLessonApi = async (payload: {
+  courseId: string;
+  lessonId: string;
+  chapterTitle?: string;
+  lessonTitle: string;
+  viewedSeconds?: number;
+}): Promise<AuthActionResult<StudentLessonCompleteResult>> => {
+  try {
+    const response = await fetch("/api/auth/student/lesson-complete", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to complete lesson.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    return {
+      ok: true,
+      message: parsed.message,
+      data: parsed.payload as StudentLessonCompleteResult,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to complete lesson." };
+  }
+};
+
+export interface StudentSupportCourse {
+  courseId: string;
+  courseTitle: string;
+  expiresAt?: string;
+}
+
+export interface StudentSupportTicket {
+  id: number;
+  ticketCode: string;
+  studentId: string;
+  studentName: string;
+  studentEmail: string;
+  courseId: string;
+  courseTitle: string;
+  subject: string;
+  issueCategory: string;
+  priority: "low" | "medium" | "high";
+  lessonTitle?: string;
+  issueDetails: string;
+  screenshotUrl?: string;
+  status: "open" | "in_progress" | "resolved" | "closed";
+  messageCount?: number;
+  latestMessageAt?: string;
+  lastReplyAt?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudentSupportMessage {
+  id: number;
+  ticketId: number;
+  senderRole: "student" | "admin";
+  senderId?: string;
+  senderName?: string;
+  message: string;
+  attachmentUrl?: string;
+  createdAt: string;
+}
+
+export const getStudentSupportCoursesApi = async (): Promise<AuthActionResult<StudentSupportCourse[]>> => {
+  try {
+    const response = await fetch("/api/auth/student/support/courses", { headers: authHeaders(false) });
+    const parsed = await parseResponseMessage(response, "Failed to load purchased courses.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    const items = (parsed.payload as { items?: StudentSupportCourse[] })?.items || [];
+    return { ok: true, message: "Loaded", data: items };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to load purchased courses." };
+  }
+};
+
+export const uploadStudentSupportScreenshotApi = async (payload: {
+  fileName: string;
+  base64Data: string;
+}): Promise<AuthActionResult<{ url: string }>> => {
+  try {
+    const response = await fetch("/api/auth/student/support/screenshot", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to upload screenshot.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    return {
+      ok: true,
+      message: "Uploaded",
+      data: parsed.payload as { url: string },
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to upload screenshot." };
+  }
+};
+
+export const createStudentSupportTicketApi = async (payload: {
+  courseId: string;
+  subject: string;
+  issueCategory: string;
+  priority: "low" | "medium" | "high";
+  lessonTitle?: string;
+  issueDetails: string;
+  screenshotUrl?: string;
+}): Promise<AuthActionResult<StudentSupportTicket>> => {
+  try {
+    const response = await fetch("/api/auth/student/support/tickets", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to create support ticket.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    const ticket = (parsed.payload as { ticket?: StudentSupportTicket })?.ticket;
+    return { ok: true, message: "Created", data: ticket };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to create support ticket." };
+  }
+};
+
+export const getStudentSupportTicketsApi = async (): Promise<AuthActionResult<StudentSupportTicket[]>> => {
+  try {
+    const response = await fetch("/api/auth/student/support/tickets", { headers: authHeaders(false) });
+    const parsed = await parseResponseMessage(response, "Failed to load support tickets.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    const items = (parsed.payload as { items?: StudentSupportTicket[] })?.items || [];
+    return { ok: true, message: "Loaded", data: items };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to load support tickets." };
+  }
+};
+
+export const getStudentSupportTicketDetailsApi = async (
+  ticketId: number,
+): Promise<AuthActionResult<{ ticket: StudentSupportTicket; messages: StudentSupportMessage[] }>> => {
+  try {
+    const response = await fetch(`/api/auth/student/support/tickets/${encodeURIComponent(String(ticketId))}`, {
+      headers: authHeaders(false),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to load ticket details.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    return {
+      ok: true,
+      message: "Loaded",
+      data: parsed.payload as { ticket: StudentSupportTicket; messages: StudentSupportMessage[] },
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to load ticket details." };
+  }
+};
+
+export const replyStudentSupportTicketApi = async (
+  ticketId: number,
+  message: string,
+): Promise<AuthActionResult> => {
+  try {
+    const response = await fetch(`/api/auth/student/support/tickets/${encodeURIComponent(String(ticketId))}/reply`, {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ message }),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to send reply.");
+    return { ok: parsed.ok, message: parsed.message };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to send reply." };
+  }
 };

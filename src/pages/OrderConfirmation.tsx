@@ -8,12 +8,18 @@ import confetti from "canvas-confetti";
 interface OrderItem {
   title: string;
   price: number;
+  taxPercentage?: number;
+  modeLabel?: string;
+  bookLabel?: string;
 }
 
 const OrderConfirmation = () => {
   const location = useLocation();
   const orderData = location.state as {
     items: OrderItem[];
+    subtotal?: number;
+    couponDiscount?: number;
+    taxAmount?: number;
     total: number;
     orderId: string;
     email: string;
@@ -49,6 +55,9 @@ const OrderConfirmation = () => {
 
   // Fallback if navigated directly
   const items = orderData?.items || [];
+  const subtotal = Number(orderData?.subtotal || items.reduce((sum, item) => sum + Number(item.price || 0), 0));
+  const couponDiscount = Number(orderData?.couponDiscount || 0);
+  const taxAmount = Number(orderData?.taxAmount || 0);
   const total = orderData?.total || 0;
   const orderId = orderData?.orderId || "EDN" + Math.random().toString(36).substring(2, 10).toUpperCase();
   const email = orderData?.email || "your email";
@@ -91,7 +100,11 @@ const OrderConfirmation = () => {
                 <div className="space-y-1.5 max-h-36 overflow-y-auto">
                   {items.map((item, i) => (
                     <div key={i} className="flex justify-between items-start gap-2 text-xs py-1.5 px-2 rounded bg-secondary/30">
-                      <span className="text-foreground/80 line-clamp-1 flex-1">{item.title}</span>
+                      <div className="flex-1">
+                        <span className="text-foreground/80 line-clamp-1 block">{item.title}</span>
+                        {item.modeLabel && <span className="text-[10px] text-accent font-medium">Mode: {item.modeLabel}</span>}
+                        {item.bookLabel && <span className="text-[10px] text-indigo-600 font-medium">Books: {item.bookLabel}</span>}
+                      </div>
                       <span className="font-semibold text-foreground whitespace-nowrap">₹{item.price.toLocaleString()}</span>
                     </div>
                   ))}
@@ -102,9 +115,28 @@ const OrderConfirmation = () => {
             <Separator />
 
             {/* Total */}
-            <div className="flex justify-between items-center">
-              <span className="text-sm font-bold text-foreground">Amount Paid</span>
-              <span className="text-lg font-extrabold text-accent">₹{total.toLocaleString()}</span>
+            <div className="space-y-1.5 text-xs">
+              <div className="flex justify-between text-muted-foreground">
+                <span>Subtotal</span>
+                <span>₹{subtotal.toLocaleString()}</span>
+              </div>
+              {couponDiscount > 0 && (
+                <div className="flex justify-between text-green-600 font-medium">
+                  <span>Coupon Discount</span>
+                  <span>-₹{couponDiscount.toLocaleString()}</span>
+                </div>
+              )}
+              {taxAmount > 0 && (
+                <div className="flex justify-between text-foreground/80 font-medium">
+                  <span>Tax</span>
+                  <span>+₹{taxAmount.toLocaleString()}</span>
+                </div>
+              )}
+              <Separator />
+              <div className="flex justify-between items-center">
+                <span className="text-sm font-bold text-foreground">Amount Paid</span>
+                <span className="text-lg font-extrabold text-accent">₹{total.toLocaleString()}</span>
+              </div>
             </div>
 
             <Separator />

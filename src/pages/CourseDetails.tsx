@@ -2,7 +2,9 @@ import { useParams, useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
 import LoginModal from "@/components/LoginModal";
+import VideoPlayer from "@/components/VideoPlayer";
 import confetti from "canvas-confetti";
 import {
   PlayCircle,
@@ -26,9 +28,11 @@ import {
   Phone,
   MessageCircle,
 } from "lucide-react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { decodeVideoUrl, getYouTubeEmbedUrl } from "@/lib/video-utils";
+import { getBunnyStreamVideoUrl } from "@/lib/bunnystream-api";
+import { adminApi } from "@/services/adminApi";
 
 const defaultContent = [
   { title: "Module 1 - Core Concepts", lectures: 25 },
@@ -36,12 +40,51 @@ const defaultContent = [
   { title: "Module 3 - Practice & Revision", lectures: 20 },
 ];
 
-const reviews = [
+const defaultReviews = [
   { name: "Priya S.", rating: 5, comment: "Excellent course! The faculty explains concepts very clearly. Highly recommended for serious students.", date: "2 weeks ago" },
   { name: "Rahul M.", rating: 5, comment: "Best investment for my CA preparation. The combo pack covers everything needed.", date: "1 month ago" },
   { name: "Sneha K.", rating: 4, comment: "Good content and great value. The doubt solving feature is very helpful.", date: "1 month ago" },
   { name: "Amit V.", rating: 5, comment: "Cleared my exam in first attempt thanks to these lectures. Quality is top notch!", date: "2 months ago" },
 ];
+
+const parseLessonDurationToSeconds = (value: unknown) => {
+  const raw = String(value || "").trim().toLowerCase();
+  if (!raw) return 0;
+
+  if (raw.includes(":")) {
+    const parts = raw.split(":").map((item) => Number(item.trim()));
+    if (parts.some((item) => !Number.isFinite(item) || item < 0)) return 0;
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    return 0;
+  }
+
+  if (/^\d+(\.\d+)?$/.test(raw)) {
+    return Math.floor(Number(raw) * 60);
+  }
+
+  const hours = Number((raw.match(/(\d+(?:\.\d+)?)\s*h/) || [])[1] || 0);
+  const minutes = Number((raw.match(/(\d+(?:\.\d+)?)\s*m/) || [])[1] || 0);
+  const seconds = Number((raw.match(/(\d+(?:\.\d+)?)\s*s/) || [])[1] || 0);
+  return Math.max(0, Math.floor(hours * 3600 + minutes * 60 + seconds));
+};
+
+const formatSecondsToHms = (seconds: number) => {
+  const total = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hrs = Math.floor(total / 3600);
+  const mins = Math.floor((total % 3600) / 60);
+  const secs = total % 60;
+  return [hrs, mins, secs].map((item) => String(item).padStart(2, "0")).join(":");
+};
+
+const formatDaysToValidityLabel = (days: number) => {
+  const normalized = Math.max(1, Math.floor(Number(days) || 1));
+  if (normalized % 30 === 0) {
+    const months = Math.max(1, normalized / 30);
+    return `${months} Month${months > 1 ? "s" : ""}`;
+  }
+  return `${normalized} Days`;
+};
 
 const CourseDetails = () => {
   const { id } = useParams<{ id: string }>();
@@ -50,9 +93,13 @@ const CourseDetails = () => {
   const { addToCart, removeFromCart, isInCart, isPurchased } = useCart();
   const { isLoggedIn } = useAuth();
   const [activeTab, setActiveTab] = useState<"content" | "ratings" | "reviews">("content");
-  const [openAccordion, setOpenAccordion] = useState<number | null>(0);
+  const [openAccordion, setOpenAccordion] = useState<number | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
+  const [selectedViews, setSelectedViews] = useState<number>(1);
+  const [selectedValidityDays, setSelectedValidityDays] = useState<number>(30);
+  const [selectedDeliveryModeIds, setSelectedDeliveryModeIds] = useState<string[]>([]);
+  const [selectedBookAddonIds, setSelectedBookAddonIds] = useState<string[]>([]);
 
   const course = courses.find((c) => c.id === id);
 
@@ -70,8 +117,9 @@ const CourseDetails = () => {
 
   const inCart = isInCart(course.id);
   const purchased = isPurchased(course.id);
+  const curriculum = useMemo(() => getCurriculumForCourse(course.id, course.title), [course.id, course.title, getCurriculumForCourse]);
+
   const content = useMemo(() => {
-    const curriculum = getCurriculumForCourse(course.id, course.title);
     if (!curriculum || curriculum.length === 0) {
       return defaultContent;
     }
@@ -80,7 +128,37 @@ const CourseDetails = () => {
       title: chapter.title,
       lectures: chapter.lessons.length,
     }));
-  }, [course.id, course.title, getCurriculumForCourse]);
+  }, [curriculum]);
+
+  const totalVideoSeconds = useMemo(() => {
+    if (!curriculum || curriculum.length === 0) {
+      return Math.max(0, Math.round(Number(course.hours || 0) * 3600));
+    }
+    return curriculum.reduce((chapterSum, chapter) => {
+      const chapterSeconds = (Array.isArray(chapter.lessons) ? chapter.lessons : []).reduce((lessonSum, lesson) => {
+        if (lesson?.type !== "video") return lessonSum;
+        return lessonSum + parseLessonDurationToSeconds(lesson.duration);
+      }, 0);
+      return chapterSum + chapterSeconds;
+    }, 0);
+  }, [curriculum, course.hours]);
+
+  const totalDurationLabel = useMemo(() => formatSecondsToHms(totalVideoSeconds), [totalVideoSeconds]);
+  const derivedCourseHours = useMemo(() => totalVideoSeconds / 3600, [totalVideoSeconds]);
+
+  const siteSettings = useSiteSettings();
+  const bunnyStreamConfig = useMemo(() => {
+    if (siteSettings?.settings?.bunnyStreamApi) {
+      return {
+        enabled: siteSettings.settings.bunnyStreamApi.enabled,
+        libraryId: siteSettings.settings.bunnyStreamApi.libraryId,
+        apiKey: siteSettings.settings.bunnyStreamApi.apiKey,
+        cdnHostname: siteSettings.settings.bunnyStreamApi.cdnHostname,
+        pullZone: siteSettings.settings.bunnyStreamApi.pullZone,
+      };
+    }
+    return { enabled: false, libraryId: "", apiKey: "", cdnHostname: "", pullZone: "" };
+  }, [siteSettings?.settings?.bunnyStreamApi]);
 
   const courseDemo = useMemo(() => {
     const dedicatedDemoUrl = decodeVideoUrl(course.demoVideoUrl || "");
@@ -88,10 +166,21 @@ const CourseDetails = () => {
       return null;
     }
 
+    // Determine the actual playback URL based on source type
+    let playbackUrl = dedicatedDemoUrl;
+    let sourceType: "youtube" | "direct" | "upload" = course.demoVideoSource || "direct";
+
+    if (sourceType === "upload" && bunnyStreamConfig.enabled && bunnyStreamConfig.cdnHostname) {
+      // For Bunny Stream uploads, construct the CDN URL from the GUID
+      playbackUrl = getBunnyStreamVideoUrl(dedicatedDemoUrl, bunnyStreamConfig);
+    }
+
     return {
       label: course.demoVideoTitle?.trim() || "Dedicated Course Demo",
       videoUrl: dedicatedDemoUrl,
-      youtubeEmbedUrl: getYouTubeEmbedUrl(dedicatedDemoUrl),
+      playbackUrl: playbackUrl,
+      sourceType: sourceType,
+      youtubeEmbedUrl: sourceType === "youtube" ? getYouTubeEmbedUrl(dedicatedDemoUrl) : null,
       thumbnailUrl: course.demoVideoThumbnailUrl?.trim() || "",
     };
   }, [
@@ -99,17 +188,185 @@ const CourseDetails = () => {
     course.demoVideoThumbnailUrl,
     course.demoVideoUrl,
     course.demoVideoVisible,
+    course.demoVideoSource,
+    bunnyStreamConfig,
   ]);
 
   const totalLectures = content.reduce((sum, c) => sum + c.lectures, 0);
-  const validityMonths = course.hours > 400 ? 18 : 12;
-  const perHourCost = course.hours > 0 ? (course.price / course.hours).toFixed(2) : "0";
+  const showRatings = course.ratingsEnabled !== false;
+  const showReviews = course.reviewsEnabled !== false;
+  const effectiveRatingValue = Math.max(0, Math.min(5, Number(course.ratingValue || 4.8)));
+  const effectiveRatingCount = Math.max(0, Number(course.ratingCount || 0));
+  const effectiveReviews = Array.isArray(course.reviews) && course.reviews.length > 0 ? course.reviews : defaultReviews;
+  const availableTabs: Array<{ key: "content" | "ratings" | "reviews"; label: string }> = [
+    { key: "content", label: "Course Content" },
+    ...(showRatings ? [{ key: "ratings" as const, label: "Ratings" }] : []),
+    ...(showReviews ? [{ key: "reviews" as const, label: "Reviews" }] : []),
+  ];
+  const viewOptions = useMemo(
+    () =>
+      (course.viewOptions && course.viewOptions.length > 0 ? course.viewOptions : [1, 2])
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value >= 1),
+    [course.viewOptions],
+  );
+  const validityOptionsDays = useMemo(
+    () =>
+      (course.validityOptionsDays && course.validityOptionsDays.length > 0
+        ? course.validityOptionsDays
+        : [30, 90, 180]
+      )
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value >= 1),
+    [course.validityOptionsDays],
+  );
+  const backendDefaultValidityDays = useMemo(() => {
+    const configured = Math.max(1, Number(course.selectedValidityDays || 0));
+    if (configured > 0) return configured;
+    return Math.max(1, Number(validityOptionsDays[0] || 30));
+  }, [course.selectedValidityDays, validityOptionsDays]);
+  const deliveryModes = useMemo(
+    () =>
+      Array.isArray(course.deliveryModes)
+        ? course.deliveryModes.filter((mode) => mode && mode.id && Number(mode.price) > 0)
+        : [],
+    [course.deliveryModes],
+  );
+  const enabledBookAddons = useMemo(
+    () =>
+      Array.isArray(course.bookAddons)
+        ? course.bookAddons.filter((addon) => addon && addon.enabled !== false)
+        : [],
+    [course.bookAddons],
+  );
+
+  useEffect(() => {
+    const defaultViews = Math.max(1, Number(course.selectedViews || viewOptions[0] || 1));
+    setSelectedViews(defaultViews);
+  }, [course.id, course.selectedViews, viewOptions]);
+
+  useEffect(() => {
+    setSelectedValidityDays(backendDefaultValidityDays);
+  }, [course.id]);
+
+  useEffect(() => {
+    const stored = Array.isArray(course.selectedDeliveryModeIds) ? course.selectedDeliveryModeIds : [];
+    const fallback = String(course.selectedDeliveryModeId || "").trim();
+    const defaults = stored.length > 0 ? stored : fallback ? [fallback] : deliveryModes[0]?.id ? [deliveryModes[0].id] : [];
+    setSelectedDeliveryModeIds(defaults);
+  }, [course.id, course.selectedDeliveryModeIds, course.selectedDeliveryModeId, deliveryModes]);
+
+  useEffect(() => {
+    const defaults = Array.isArray(course.selectedBookAddonIds) ? course.selectedBookAddonIds : [];
+    setSelectedBookAddonIds(defaults);
+  }, [course.id, course.selectedBookAddonIds]);
+
+  useEffect(() => {
+    // Keep chapter lessons hidden by default until user explicitly opens a chapter.
+    setOpenAccordion(null);
+  }, [course.id]);
+
+  const selectedDeliveryModes = course.deliveryModePricingEnabled
+    ? deliveryModes.filter((mode) => selectedDeliveryModeIds.includes(mode.id))
+    : [];
+  const modeBasePrice = selectedDeliveryModes.length > 0
+    ? selectedDeliveryModes.reduce((sum, mode) => sum + Number(mode.price || 0), 0)
+    : course.price;
+  const modeBaseOriginalPrice = selectedDeliveryModes.length > 0
+    ? selectedDeliveryModes.reduce(
+        (sum, mode) => sum + Number(mode.originalPrice || mode.price || 0),
+        0,
+      )
+    : course.originalPrice;
+  const selectedBookAddons = course.bookAddonEnabled
+    ? enabledBookAddons.filter((addon) => selectedBookAddonIds.includes(addon.id))
+    : [];
+  const bookAddOnPrice = selectedBookAddons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
+  const viewMultiplier = course.viewPricingEnabled ? selectedViews : 1;
+  const effectiveValidityDays = course.validityPricingEnabled ? selectedValidityDays : backendDefaultValidityDays;
+  const validityMultiplier = course.validityPricingEnabled ? effectiveValidityDays / 30 : 1;
+  const dynamicPrice = Math.round((modeBasePrice * viewMultiplier * validityMultiplier) + bookAddOnPrice);
+  const dynamicOriginalPrice = Math.round((modeBaseOriginalPrice * viewMultiplier * validityMultiplier) + bookAddOnPrice);
+  const effectiveHours = derivedCourseHours > 0 ? derivedCourseHours : Number(course.hours || 0);
+  const perHourCost = effectiveHours > 0 ? (dynamicPrice / effectiveHours).toFixed(2) : "0";
+  const effectiveEnrollmentCount = Math.max(0, Number(course.enrollmentCount || 0));
+  const showEnrollmentCount = course.showEnrollmentCount !== false;
+  const validityLabel = formatDaysToValidityLabel(effectiveValidityDays);
+  const sidebarMetaItems = [
+    course.showMetaLectures !== false
+      ? { icon: PlayCircle, label: `${totalLectures} Lectures` }
+      : null,
+    course.showMetaHours !== false
+      ? { icon: Clock, label: `${totalDurationLabel} on-demand video` }
+      : null,
+    course.showMetaValidity !== false
+      ? { icon: Shield, label: `Valid Upto : ${validityLabel}`, bold: validityLabel }
+      : null,
+    course.showMetaResources !== false
+      ? { icon: Download, label: "Downloadable resources" }
+      : null,
+    course.showMetaViews !== false
+      ? { icon: Eye, label: course.viewPricingEnabled ? `${selectedViews} Times Views` : "Unlimited Views" }
+      : null,
+    course.showMetaPerHour !== false
+      ? { icon: IndianRupee, label: `₹${perHourCost} / Hour` }
+      : null,
+    course.showMetaLanguage !== false
+      ? { icon: Globe, label: `${course.language}  |  Full Course`, bold: "Full Course" }
+      : null,
+  ].filter(Boolean) as Array<{ icon: typeof PlayCircle; label: string; bold?: string }>;
+
+  const buildConfiguredCourse = () => ({
+    ...course,
+    selectedViews: course.viewPricingEnabled ? selectedViews : 1,
+    selectedValidityDays: effectiveValidityDays,
+    selectedDeliveryModeId: selectedDeliveryModeIds[0] || "online",
+    selectedDeliveryModeIds: course.deliveryModePricingEnabled ? selectedDeliveryModeIds : [],
+    selectedBookAddonIds: course.bookAddonEnabled ? selectedBookAddonIds : [],
+    price: dynamicPrice,
+    originalPrice: dynamicOriginalPrice,
+  });
+
+  const aboutCourseLines = useMemo(
+    () =>
+      String(course.aboutCourseText || "")
+        .split("\n")
+        .map((line) => line.trim())
+        .filter(Boolean),
+    [course.aboutCourseText],
+  );
+
+  useEffect(() => {
+    if (!course?.id) return;
+    adminApi.trackEvent("course_view", course.id, undefined, {
+      courseTitle: course.title,
+      category: course.category,
+    }).catch(() => {
+      // Keep UX uninterrupted if analytics call fails.
+    });
+  }, [course?.id, course?.title, course?.category]);
+
+  useEffect(() => {
+    if (!course?.id || !courseDemo?.videoUrl) return;
+    adminApi.trackEvent("demo_view", course.id, undefined, {
+      source: courseDemo.youtubeEmbedUrl ? "youtube" : "direct",
+    }).catch(() => {
+      // Keep UX uninterrupted if analytics call fails.
+    });
+  }, [course?.id, courseDemo?.videoUrl, courseDemo?.youtubeEmbedUrl]);
+
+  useEffect(() => {
+    const tabExists = availableTabs.some((tab) => tab.key === activeTab);
+    if (!tabExists) {
+      setActiveTab("content");
+    }
+  }, [activeTab, availableTabs]);
 
   const handleAddToCart = (e: React.MouseEvent) => {
     if (inCart) {
       removeFromCart(course.id);
     } else {
-      addToCart(course);
+      addToCart(buildConfiguredCourse());
       const rect = (e.target as HTMLElement).getBoundingClientRect();
       confetti({
         particleCount: 60,
@@ -128,14 +385,27 @@ const CourseDetails = () => {
 
   const handleBuyNow = () => {
     if (!isLoggedIn) {
-      if (!inCart) addToCart(course);
+      addToCart(buildConfiguredCourse());
       setSignupMode(false);
       setLoginOpen(true);
       return;
     }
 
-    if (!inCart) addToCart(course);
+    addToCart(buildConfiguredCourse());
     navigate("/checkout");
+  };
+
+  const toggleDeliveryModeSelection = (modeId: string, checked: boolean) => {
+    setSelectedDeliveryModeIds((prev) => {
+      if (checked) {
+        return Array.from(new Set([...prev, modeId]));
+      }
+      // Keep at least one mode selected.
+      if (prev.includes(modeId) && prev.length === 1) {
+        return prev;
+      }
+      return prev.filter((id) => id !== modeId);
+    });
   };
 
   return (
@@ -157,69 +427,67 @@ const CourseDetails = () => {
           {/* Left Column */}
           <div className="flex-1 min-w-0">
             {/* Course Banner */}
-            <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[rgb(38,72,151)] via-[rgba(38,72,151,0.9)] to-accent/60 aspect-video mb-6 group">
-              {courseDemo ? (
-                <>
-                  {courseDemo.youtubeEmbedUrl ? (
-                    <iframe
-                      src={courseDemo.youtubeEmbedUrl}
-                      title={`${course.title} demo video`}
-                      className="w-full h-full"
-                      allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                      allowFullScreen
-                    />
-                  ) : (
-                    <video
-                      controls
-                      preload="metadata"
-                      className="w-full h-full object-cover"
-                      src={courseDemo.videoUrl}
-                      poster={courseDemo.thumbnailUrl || undefined}
-                    >
-                      Your browser does not support the video tag.
-                    </video>
-                  )}
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/25 to-transparent pointer-events-none" />
-                  <div className="absolute bottom-0 left-0 right-0 p-4 sm:p-5 pointer-events-none">
-                    <p className="inline-flex items-center rounded-full bg-accent/90 text-accent-foreground text-[10px] font-bold px-2.5 py-1 uppercase tracking-wider mb-2">
-                      Course Demo
-                    </p>
-                    <h2 className="text-primary-foreground text-lg sm:text-2xl font-bold mb-1">{course.title}</h2>
-                    <p className="text-primary-foreground/80 text-xs sm:text-sm">
-                      {courseDemo.label} • {course.professor}
-                    </p>
+            {courseDemo ? (
+              <div>
+                <VideoPlayer
+                  videoUrl={courseDemo.videoUrl}
+                  source={courseDemo.sourceType}
+                  poster={courseDemo.thumbnailUrl || undefined}
+                  aspectRatio="aspect-video"
+                  controls={true}
+                />
+                {/* Demo Info Below Video */}
+                <div className="mt-3 mb-8 rounded-xl border border-border bg-card p-4 sm:p-5 shadow-sm">
+                  <p className="inline-flex items-center rounded-full bg-accent text-accent-foreground text-[10px] font-bold px-3 py-1.5 uppercase tracking-wider mb-3">
+                    Course Demo
+                  </p>
+                  <h2 className="text-foreground text-xl sm:text-2xl font-extrabold mb-1.5 leading-tight">{course.title}</h2>
+                  <p className="text-foreground/85 text-sm sm:text-base font-medium">
+                    {courseDemo.label}
+                  </p>
+                  <p className="text-muted-foreground text-sm mt-1">
+                    Faculty: {course.professor}
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[rgb(38,72,151)] via-[rgba(38,72,151,0.9)] to-accent/60 aspect-video mb-6 group flex items-center justify-center">
+                {(course.thumbnail || course.image) && (
+                  <img
+                    src={course.thumbnail || course.image || "/placeholder.svg"}
+                    alt={course.title}
+                    className="absolute inset-0 w-full h-full object-cover"
+                    onError={(e) => {
+                      const target = e.currentTarget;
+                      if (target.src.endsWith("/placeholder.svg")) return;
+                      target.src = "/placeholder.svg";
+                    }}
+                  />
+                )}
+                <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/30 to-transparent" />
+                <div className="relative text-center p-6 z-10">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 rounded-2xl bg-primary-foreground/15 flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-500">
+                    <PlayCircle className="w-8 h-8 sm:w-10 sm:h-10 text-primary-foreground" />
                   </div>
-                </>
-              ) : (
-                <div className="absolute inset-0 flex items-center justify-center">
-                  <div className="text-center p-6">
-                    <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 rounded-2xl bg-primary-foreground/15 flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-500">
-                      <PlayCircle className="w-8 h-8 sm:w-10 sm:h-10 text-primary-foreground" />
-                    </div>
-                    <h2 className="text-primary-foreground text-lg sm:text-2xl font-bold mb-2">{course.title}</h2>
-                    <p className="text-primary-foreground/70 text-sm">{course.professor}</p>
+                  <h2 className="text-primary-foreground text-lg sm:text-2xl font-bold mb-2">{course.title}</h2>
+                  <p className="text-primary-foreground/70 text-sm">{course.professor}</p>
+                </div>
+                {course.discount > 0 && (
+                  <div className="absolute top-4 right-4 bg-accent text-accent-foreground text-xs font-bold px-3 py-1.5 rounded-lg animate-pulse shadow-lg z-20">
+                    {course.discount}% OFF
                   </div>
-                </div>
-              )}
-              {course.discount > 0 && (
-                <div className="absolute top-4 right-4 bg-accent text-accent-foreground text-xs font-bold px-3 py-1.5 rounded-lg animate-pulse shadow-lg">
-                  {course.discount}% OFF
-                </div>
-              )}
-              {course.isCombo && (
-                <div className="absolute top-4 left-4 bg-primary-foreground text-primary text-xs font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider">
-                  Combo Pack
-                </div>
-              )}
-            </div>
+                )}
+                {course.isCombo && (
+                  <div className="absolute top-4 left-4 bg-primary-foreground text-primary text-xs font-bold px-3 py-1.5 rounded-lg uppercase tracking-wider z-20">
+                    Combo Pack
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Tab Navigation */}
             <div className="flex border-b border-border mb-6 gap-0">
-              {[
-                { key: "content" as const, label: "Course Content" },
-                { key: "ratings" as const, label: "Ratings" },
-                { key: "reviews" as const, label: "Reviews" },
-              ].map((tab) => (
+              {availableTabs.map((tab) => (
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
@@ -235,43 +503,33 @@ const CourseDetails = () => {
             </div>
 
             {/* Description */}
-            <div className="bg-card rounded-xl border border-border p-5 sm:p-6 mb-6">
-              <p className="text-foreground/90 text-sm leading-relaxed mb-4">
-                Dear Students,
-              </p>
-              <p className="text-foreground/80 text-sm leading-relaxed mb-3">
-                This {course.title} course provides comprehensive coverage of all topics. 
-                The course is designed for students preparing for the upcoming examination attempts.
-              </p>
-              <ul className="space-y-2 text-sm text-foreground/80 mb-4">
-                <li className="flex items-start gap-2">
-                  <span className="text-accent mt-0.5">•</span>
-                  Soft copy of notes will be provided
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-accent mt-0.5">•</span>
-                  Online prelims and mock tests available
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-accent mt-0.5">•</span>
-                  Recorded lectures are well updated and suitable for upcoming attempts
-                </li>
-                <li className="flex items-start gap-2">
-                  <span className="text-accent mt-0.5">•</span>
-                  24/7 doubt solving support available
-                </li>
-              </ul>
-              <p className="text-muted-foreground text-xs">
-                Helpline: 1800-XXX-XXXX (Toll Free)
-              </p>
-            </div>
+            {course.aboutCourseEnabled && aboutCourseLines.length > 0 && (
+              <div className="bg-card rounded-xl border border-border p-5 sm:p-6 mb-6">
+                <h3 className="text-base font-bold text-foreground mb-3">About Course</h3>
+                <div className="space-y-2 text-sm text-foreground/85 leading-relaxed">
+                  {aboutCourseLines.map((line, index) => {
+                    const isBullet = line.startsWith("•") || line.startsWith("-") || line.startsWith("*");
+                    const content = isBullet ? line.replace(/^[•\-*]\s*/, "") : line;
+                    if (isBullet) {
+                      return (
+                        <div key={`${index}-${content.slice(0, 10)}`} className="flex items-start gap-2">
+                          <span className="text-accent mt-0.5">•</span>
+                          <span>{content}</span>
+                        </div>
+                      );
+                    }
+                    return <p key={`${index}-${content.slice(0, 10)}`}>{content}</p>;
+                  })}
+                </div>
+              </div>
+            )}
 
             {/* Tab Content */}
             {activeTab === "content" && (
               <div className="mb-6">
                 <h3 className="text-lg font-bold text-foreground mb-1">Course Content</h3>
                 <p className="text-sm text-muted-foreground mb-4">
-                  {totalLectures} Lectures • {course.hours} hrs
+                  {totalLectures} Lectures • {totalDurationLabel}
                 </p>
                 <div className="space-y-2">
                   {content.map((section, idx) => (
@@ -314,16 +572,19 @@ const CourseDetails = () => {
               </div>
             )}
 
-            {activeTab === "ratings" && (
+            {showRatings && activeTab === "ratings" && (
               <div className="mb-6">
                 <div className="bg-card rounded-xl border border-border p-6 text-center">
-                  <div className="text-5xl font-extrabold text-foreground mb-2">4.8</div>
+                  <div className="text-5xl font-extrabold text-foreground mb-2">{effectiveRatingValue.toFixed(1)}</div>
                   <div className="flex justify-center gap-1 mb-2">
                     {[1, 2, 3, 4, 5].map((s) => (
-                      <Star key={s} className={`w-5 h-5 ${s <= 5 ? "fill-yellow-400 text-yellow-400" : "text-border"}`} />
+                      <Star
+                        key={s}
+                        className={`w-5 h-5 ${s <= Math.round(effectiveRatingValue) ? "fill-yellow-400 text-yellow-400" : "text-border"}`}
+                      />
                     ))}
                   </div>
-                  <p className="text-sm text-muted-foreground mb-6">Based on {Math.floor(Math.random() * 200 + 100)} ratings</p>
+                  <p className="text-sm text-muted-foreground mb-6">Based on {effectiveRatingCount} ratings</p>
                   {[5, 4, 3, 2, 1].map((star) => {
                     const pct = star === 5 ? 72 : star === 4 ? 18 : star === 3 ? 6 : star === 2 ? 3 : 1;
                     return (
@@ -344,9 +605,9 @@ const CourseDetails = () => {
               </div>
             )}
 
-            {activeTab === "reviews" && (
+            {showReviews && activeTab === "reviews" && (
               <div className="mb-6 space-y-4">
-                {reviews.map((review, idx) => (
+                {effectiveReviews.map((review, idx) => (
                   <div key={idx} className="bg-card rounded-xl border border-border p-5">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-3">
@@ -378,79 +639,169 @@ const CourseDetails = () => {
               <div className="bg-card rounded-xl border border-border p-5 sm:p-6 shadow-sm">
                 <h1 className="text-xl font-bold text-foreground mb-3 leading-tight">{course.title}</h1>
                 
-                <div className="flex items-center gap-2 mb-4">
-                  <div className="flex -space-x-2">
-                    {["P", "R", "S", "A"].map((initial, i) => (
-                      <div key={i} className="w-8 h-8 rounded-full bg-primary/10 border-2 border-card flex items-center justify-center text-primary font-bold text-xs">
-                        {initial}
-                      </div>
-                    ))}
-                  </div>
-                  <span className="text-xs text-muted-foreground">+200 enrolled</span>
-                </div>
-
-                <div className="flex items-baseline gap-2 mb-5">
-                  <span className="text-3xl font-extrabold text-foreground">₹{course.price.toLocaleString()}</span>
-                  {course.originalPrice > course.price && (
-                    <span className="text-sm text-muted-foreground line-through">₹{course.originalPrice.toLocaleString()}</span>
-                  )}
-                </div>
-
-                {purchased ? (
-                  <Button
-                    onClick={() => navigate(`/learn/${course.id}`)}
-                    className="w-full h-11 font-semibold bg-accent text-accent-foreground hover:bg-accent/90 tap-bounce"
-                  >
-                    <PlayCircle className="w-4 h-4 mr-1" /> Start Learning
-                  </Button>
-                ) : (
-                  <div className="flex gap-2">
-                    <Button
-                      onClick={handleAddToCart}
-                      variant={inCart ? "default" : "outline"}
-                      className={`flex-1 h-11 font-semibold tap-bounce transition-all duration-300 ${
-                        inCart ? "bg-primary text-primary-foreground" : ""
-                      }`}
-                    >
-                      {inCart ? <Check className="w-4 h-4 mr-1" /> : <ShoppingCart className="w-4 h-4 mr-1" />}
-                      {inCart ? "Added" : "Add to Cart"}
-                    </Button>
-                    <Button
-                      onClick={handleBuyNow}
-                      className="flex-1 h-11 font-semibold bg-accent text-accent-foreground hover:bg-accent/90 tap-bounce"
-                    >
-                      Buy Now
-                    </Button>
+                {showEnrollmentCount && (
+                  <div className="flex items-center gap-2 mb-4">
+                    <div className="flex -space-x-2">
+                      {["P", "R", "S", "A"].map((initial, i) => (
+                        <div key={i} className="w-8 h-8 rounded-full bg-primary/10 border-2 border-card flex items-center justify-center text-primary font-bold text-xs">
+                          {initial}
+                        </div>
+                      ))}
+                    </div>
+                    <span className="text-xs text-muted-foreground">+{effectiveEnrollmentCount} enrolled</span>
                   </div>
                 )}
 
-                {/* Course Meta */}
-                <div className="space-y-3 pt-4 border-t border-border">
-                  {[
-                    { icon: PlayCircle, label: `${totalLectures} Lectures` },
-                    { icon: Clock, label: `${course.hours} hrs on-demand video` },
-                    { icon: Shield, label: `Valid Upto : ${validityMonths} Months`, bold: `${validityMonths} Months` },
-                    { icon: Download, label: "Downloadable resources" },
-                    { icon: Eye, label: "2 Times Views" },
-                    { icon: IndianRupee, label: `₹${perHourCost} / Hour` },
-                    { icon: Globe, label: `${course.language}  |  Full Course`, bold: "Full Course" },
-                  ].map((item, idx) => (
-                    <div key={idx} className="flex items-center gap-3 text-sm">
-                      <item.icon className="w-4 h-4 text-accent shrink-0" />
-                      <span className="text-foreground/80">
-                        {item.bold ? (
-                          <>
-                            {item.label.split(item.bold)[0]}
-                            <span className="font-bold text-foreground">{item.bold}</span>
-                            {item.label.split(item.bold)[1]}
-                          </>
-                        ) : (
-                          item.label
-                        )}
-                      </span>
-                    </div>
-                  ))}
+                <div className="flex items-baseline gap-2 mb-5">
+                  <span className="text-3xl font-extrabold text-foreground">₹{dynamicPrice.toLocaleString()}</span>
+                  {dynamicOriginalPrice > dynamicPrice && (
+                    <span className="text-sm text-muted-foreground line-through">₹{dynamicOriginalPrice.toLocaleString()}</span>
+                  )}
                 </div>
+
+                {(course.deliveryModePricingEnabled || course.bookAddonEnabled || course.viewPricingEnabled || course.validityPricingEnabled) && (
+                  <div className="space-y-3 mb-4 rounded-lg border border-border p-3">
+                    {course.deliveryModePricingEnabled && deliveryModes.length > 0 && (
+                      <div>
+                        {deliveryModes.length === 1 ? (
+                          <div className="rounded-md border border-accent/30 bg-accent/10 px-3 py-2">
+                            <p className="text-xs font-semibold text-accent uppercase tracking-wide">Mode</p>
+                            <p className="text-sm font-bold text-foreground">{deliveryModes[0].label}</p>
+                          </div>
+                        ) : (
+                          <>
+                            <label className="text-xs font-semibold text-muted-foreground block mb-1">Select Modes (Multiple)</label>
+                            <div className="space-y-1.5">
+                              {deliveryModes.map((mode) => {
+                                const checked = selectedDeliveryModeIds.includes(mode.id);
+                                return (
+                                  <label key={mode.id} className="flex items-center justify-between gap-2 text-sm">
+                                    <span className="flex items-center gap-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={checked}
+                                        disabled={checked && selectedDeliveryModeIds.length === 1}
+                                        onChange={(e) => toggleDeliveryModeSelection(mode.id, e.target.checked)}
+                                        className="w-4 h-4"
+                                      />
+                                      {mode.label}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">+₹{Number(mode.price || 0).toLocaleString()}</span>
+                                  </label>
+                                );
+                              })}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    )}
+
+                    {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
+                      <div>
+                        <label className="text-xs font-semibold text-muted-foreground block mb-1">Books / Notes</label>
+                        <div className="space-y-1.5">
+                          {enabledBookAddons.map((addon) => {
+                            const checked = selectedBookAddonIds.includes(addon.id);
+                            return (
+                              <label key={addon.id} className="flex items-center justify-between gap-2 text-sm">
+                                <span className="flex items-center gap-2">
+                                  <input
+                                    type="checkbox"
+                                    checked={checked}
+                                    onChange={(e) => {
+                                      setSelectedBookAddonIds((prev) => {
+                                        if (e.target.checked) return Array.from(new Set([...prev, addon.id]));
+                                        return prev.filter((id) => id !== addon.id);
+                                      });
+                                    }}
+                                    className="w-4 h-4"
+                                  />
+                                  {addon.label}
+                                </span>
+                                <span className="text-xs text-muted-foreground">+₹{Number(addon.price || 0).toLocaleString()}</span>
+                              </label>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    {course.viewPricingEnabled && (
+                      <div>
+                        <label className="text-xs font-semibold text-muted-foreground block mb-1">Select Views</label>
+                        <select
+                          value={selectedViews}
+                          onChange={(e) => setSelectedViews(Number(e.target.value) || 1)}
+                          className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        >
+                          {viewOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option} view{option > 1 ? "s" : ""}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+
+                    {course.validityPricingEnabled && (
+                      <div>
+                        <label className="text-xs font-semibold text-muted-foreground block mb-1">Select Validity</label>
+                        <select
+                          value={selectedValidityDays}
+                          onChange={(e) => setSelectedValidityDays(Number(e.target.value) || backendDefaultValidityDays)}
+                          className="w-full h-9 rounded-md border border-input bg-background px-2 text-sm"
+                        >
+                          {validityOptionsDays.map((days) => (
+                            <option key={days} value={days}>
+                              {days} days
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                <div className="flex gap-2">
+                  <Button
+                    onClick={handleAddToCart}
+                    variant={inCart ? "default" : "outline"}
+                    className={`flex-1 h-11 font-semibold tap-bounce transition-all duration-300 ${
+                      inCart ? "bg-primary text-primary-foreground" : ""
+                    }`}
+                  >
+                    {inCart ? <Check className="w-4 h-4 mr-1" /> : <ShoppingCart className="w-4 h-4 mr-1" />}
+                    {inCart ? "Added" : "Add to Cart"}
+                  </Button>
+                  <Button
+                    onClick={handleBuyNow}
+                    className="flex-1 h-11 font-semibold bg-accent text-accent-foreground hover:bg-accent/90 tap-bounce"
+                  >
+                    Buy Now
+                  </Button>
+                </div>
+
+                {/* Course Meta */}
+                {sidebarMetaItems.length > 0 && (
+                  <div className="space-y-3 pt-4 border-t border-border">
+                    {sidebarMetaItems.map((item, idx) => (
+                      <div key={idx} className="flex items-center gap-3 text-sm">
+                        <item.icon className="w-4 h-4 text-accent shrink-0" />
+                        <span className="text-foreground/80">
+                          {item.bold ? (
+                            <>
+                              {item.label.split(item.bold)[0]}
+                              <span className="font-bold text-foreground">{item.bold}</span>
+                              {item.label.split(item.bold)[1]}
+                            </>
+                          ) : (
+                            item.label
+                          )}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
 
               {/* Trust Badges */}
@@ -477,45 +828,105 @@ const CourseDetails = () => {
       <div className="fixed bottom-0 left-0 right-0 z-50 lg:hidden">
         {/* Add to Cart & Buy Now */}
         <div className="bg-card border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
-          {purchased ? (
-            <div className="flex items-center gap-3 px-4 py-2.5">
-              <div className="flex flex-col mr-auto">
-                <span className="text-sm font-semibold text-accent">✓ Purchased</span>
+          <div className="px-4 py-2.5 space-y-2">
+              {(course.deliveryModePricingEnabled || course.bookAddonEnabled || course.viewPricingEnabled || course.validityPricingEnabled) && (
+                <div className="grid grid-cols-1 gap-2">
+                  {course.deliveryModePricingEnabled && deliveryModes.length > 0 && (
+                    deliveryModes.length === 1 ? (
+                      <div className="rounded border border-accent/30 bg-accent/10 px-2 py-1.5 text-xs">
+                        <span className="font-semibold text-accent">Mode: </span>
+                        <span className="font-bold text-foreground">{deliveryModes[0].label}</span>
+                      </div>
+                    ) : (
+                      <div className="grid grid-cols-2 gap-2 text-xs">
+                        {deliveryModes.map((mode) => (
+                          <label key={mode.id} className="flex items-center gap-1.5 rounded border border-input bg-background px-2 py-1.5">
+                            <input
+                              type="checkbox"
+                              checked={selectedDeliveryModeIds.includes(mode.id)}
+                              disabled={selectedDeliveryModeIds.includes(mode.id) && selectedDeliveryModeIds.length === 1}
+                              onChange={(e) => toggleDeliveryModeSelection(mode.id, e.target.checked)}
+                              className="w-3.5 h-3.5"
+                            />
+                            <span className="truncate">{mode.label}</span>
+                          </label>
+                        ))}
+                      </div>
+                    )
+                  )}
+                  {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2 text-xs">
+                      {enabledBookAddons.map((addon) => (
+                        <label key={addon.id} className="flex items-center gap-1.5 rounded border border-input bg-background px-2 py-1.5">
+                          <input
+                            type="checkbox"
+                            checked={selectedBookAddonIds.includes(addon.id)}
+                            onChange={(e) => {
+                              setSelectedBookAddonIds((prev) => {
+                                if (e.target.checked) return Array.from(new Set([...prev, addon.id]));
+                                return prev.filter((id) => id !== addon.id);
+                              });
+                            }}
+                            className="w-3.5 h-3.5"
+                          />
+                          <span className="truncate">{addon.label}</span>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+                  {course.viewPricingEnabled && (
+                    <select
+                      value={selectedViews}
+                      onChange={(e) => setSelectedViews(Number(e.target.value) || 1)}
+                      className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    >
+                      {viewOptions.map((option) => (
+                        <option key={option} value={option}>
+                          {option} view{option > 1 ? "s" : ""}
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                  {course.validityPricingEnabled && (
+                    <select
+                      value={selectedValidityDays}
+                      onChange={(e) => setSelectedValidityDays(Number(e.target.value) || backendDefaultValidityDays)}
+                      className="h-8 rounded-md border border-input bg-background px-2 text-xs"
+                    >
+                      {validityOptionsDays.map((days) => (
+                        <option key={days} value={days}>
+                          {days} days
+                        </option>
+                      ))}
+                    </select>
+                  )}
+                </div>
+              )}
+              <div className="flex items-center gap-3">
+                <div className="flex flex-col mr-auto">
+                  <span className="text-lg font-extrabold text-foreground">₹{dynamicPrice.toLocaleString()}</span>
+                  {dynamicOriginalPrice > dynamicPrice && (
+                    <span className="text-xs text-muted-foreground line-through">₹{dynamicOriginalPrice.toLocaleString()}</span>
+                  )}
+                </div>
+                <Button
+                  onClick={handleAddToCart}
+                  variant={inCart ? "default" : "outline"}
+                  size="sm"
+                  className={`h-9 px-4 font-semibold tap-bounce ${inCart ? "bg-primary text-primary-foreground" : ""}`}
+                >
+                  {inCart ? <Check className="w-4 h-4 mr-1" /> : <ShoppingCart className="w-4 h-4 mr-1" />}
+                  {inCart ? "Added" : "Add to Cart"}
+                </Button>
+                <Button
+                  onClick={handleBuyNow}
+                  size="sm"
+                  className="h-9 px-4 font-semibold bg-accent text-accent-foreground hover:bg-accent/90 tap-bounce"
+                >
+                  Buy Now
+                </Button>
               </div>
-              <Button
-                onClick={() => navigate(`/learn/${course.id}`)}
-                size="sm"
-                className="h-9 px-6 font-semibold bg-accent text-accent-foreground hover:bg-accent/90 tap-bounce"
-              >
-                <PlayCircle className="w-4 h-4 mr-1" /> Start Learning
-              </Button>
             </div>
-          ) : (
-            <div className="flex items-center gap-3 px-4 py-2.5">
-              <div className="flex flex-col mr-auto">
-                <span className="text-lg font-extrabold text-foreground">₹{course.price.toLocaleString()}</span>
-                {course.originalPrice > course.price && (
-                  <span className="text-xs text-muted-foreground line-through">₹{course.originalPrice.toLocaleString()}</span>
-                )}
-              </div>
-              <Button
-                onClick={handleAddToCart}
-                variant={inCart ? "default" : "outline"}
-                size="sm"
-                className={`h-9 px-4 font-semibold tap-bounce ${inCart ? "bg-primary text-primary-foreground" : ""}`}
-              >
-                {inCart ? <Check className="w-4 h-4 mr-1" /> : <ShoppingCart className="w-4 h-4 mr-1" />}
-                {inCart ? "Added" : "Add to Cart"}
-              </Button>
-              <Button
-                onClick={handleBuyNow}
-                size="sm"
-                className="h-9 px-4 font-semibold bg-accent text-accent-foreground hover:bg-accent/90 tap-bounce"
-              >
-                Buy Now
-              </Button>
-            </div>
-          )}
         </div>
         {/* Footer Nav */}
         <div className="bg-[rgb(38,72,151)] flex items-center justify-around py-2 border-t border-primary-foreground/10">

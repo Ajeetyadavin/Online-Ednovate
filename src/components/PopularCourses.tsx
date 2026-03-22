@@ -5,43 +5,52 @@ import { Link } from "react-router-dom";
 import { ArrowRight } from "lucide-react";
 import { useScrollReveal } from "@/hooks/use-scroll-reveal";
 import { usePlatformData } from "@/context/PlatformDataContext";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const PopularCourses = () => {
   const { courses, categories } = usePlatformData();
+  const { settings } = useSiteSettings();
   const [activeTab, setActiveTab] = useState("all");
   const { ref: titleRef, isVisible: titleVisible } = useScrollReveal();
   const { ref: gridRef, isVisible: gridVisible } = useScrollReveal({ threshold: 0.05 });
 
-  const visibleCategoryIds = useMemo(
-    () => new Set(categories.filter((category) => category.isVisible).map((category) => category.id)),
-    [categories],
+  const visibleCourses = useMemo(
+    () => courses.filter((course) => course.isVisible),
+    [courses],
   );
 
-  const visibleCourses = useMemo(
+  const exploreCategoryIds = useMemo(
     () =>
-      courses.filter(
-        (course) =>
-          course.isVisible &&
-          (visibleCategoryIds.size === 0 || visibleCategoryIds.has(course.category)),
-      ),
-    [courses, visibleCategoryIds],
+      Array.isArray(settings.exploreCategoryIds)
+        ? settings.exploreCategoryIds.map((id) => String(id).trim()).filter(Boolean)
+        : [],
+    [settings.exploreCategoryIds],
   );
+
+  const exploreCategorySet = useMemo(() => new Set(exploreCategoryIds), [exploreCategoryIds]);
+
+  const homepageCourses = useMemo(() => {
+    if (exploreCategorySet.size === 0) return [];
+    return visibleCourses.filter(
+      (course) => exploreCategorySet.has(course.category) || exploreCategorySet.has(course.subcategory || ""),
+    );
+  }, [visibleCourses, exploreCategorySet]);
 
   const tabs = useMemo(() => {
-    const categoryTabs = categories
-      .filter((category) => category.isVisible)
-      .filter((category) => visibleCourses.some((course) => course.category === category.id || course.subcategory === category.id))
-      .sort((a, b) => a.sortOrder - b.sortOrder)
-      .slice(0, 5)
+    const orderedCategories = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
+
+    const categoryTabs = (exploreCategoryIds.length > 0
+      ? exploreCategoryIds
+          .map((id) => orderedCategories.find((category) => category.id === id))
+          .filter(Boolean)
+      : orderedCategories)
       .map((category) => ({ id: category.id, label: category.name }));
 
     return [
       { id: "all", label: "All Courses" },
-      { id: "combo", label: "Combo Packs" },
-      { id: "materials", label: "Study Materials" },
       ...categoryTabs,
     ];
-  }, [categories, visibleCourses]);
+  }, [categories, exploreCategoryIds]);
 
   useEffect(() => {
     if (!tabs.some((tab) => tab.id === activeTab)) {
@@ -50,13 +59,11 @@ const PopularCourses = () => {
   }, [activeTab, tabs]);
 
   const filtered = useMemo(() => {
-    if (activeTab === "all") return visibleCourses;
-    if (activeTab === "combo") return visibleCourses.filter((course) => course.isCombo);
-    if (activeTab === "materials") return visibleCourses.filter((course) => course.isMaterial);
-    return visibleCourses.filter(
+    if (activeTab === "all") return homepageCourses;
+    return homepageCourses.filter(
       (course) => course.category === activeTab || course.subcategory === activeTab,
     );
-  }, [activeTab, visibleCourses]);
+  }, [activeTab, homepageCourses]);
 
   return (
     <section id="courses" className="py-8 md:py-10 bg-muted/30">

@@ -34,7 +34,7 @@ const CourseCard = ({ course }: CourseCardProps) => {
       {/* Thumbnail */}
       <div className="relative h-24 sm:h-40 overflow-hidden">
         <img
-          src={course.image || "/placeholder.svg"}
+          src={course.thumbnail || course.image || "/placeholder.svg"}
           alt={course.title}
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"
@@ -73,6 +73,19 @@ const CourseCard = ({ course }: CourseCardProps) => {
         {course.discount > 0 && (
           <div className="absolute top-1.5 right-1.5 sm:top-2.5 sm:right-2.5 bg-accent text-accent-foreground text-[8px] sm:text-[10px] font-bold px-1.5 sm:px-2 py-0.5 rounded-md animate-pulse">
             {course.discount}% OFF
+          </div>
+        )}
+        {course.deliveryModes && course.deliveryModes.length > 0 && (
+          <div className="absolute bottom-1.5 right-1.5 sm:bottom-2.5 sm:right-2.5 flex flex-col gap-0.5">
+            {course.deliveryModes.slice(0, 2).map((mode) => (
+              <span
+                key={mode.id}
+                className="bg-green-500/20 text-green-700 dark:text-green-400 text-[7px] sm:text-[8px] font-bold px-1 sm:px-1.5 py-0.5 rounded-sm leading-none whitespace-nowrap"
+                title={mode.label}
+              >
+                {mode.label.length > 10 ? mode.id : mode.label}
+              </span>
+            ))}
           </div>
         )}
       </div>

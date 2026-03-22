@@ -1,10 +1,20 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 import type { Course } from "@/data/courses";
+import { useAuth } from "@/context/AuthContext";
+import {
+  SESSION_TOKEN_KEY,
+  createStudentPurchaseApi,
+  type StudentCourseAccessSelf,
+} from "@/services/authApi";
+import { isCourseAccessActive, progressFromViews } from "@/lib/studentAccess";
 
 interface OrderRecord {
   id: string;
   date: string;
-  items: { title: string; price: number }[];
+  items: { title: string; price: number; taxPercentage?: number; modeLabel?: string; bookLabel?: string }[];
+  subtotal?: number;
+  couponDiscount?: number;
+  taxAmount?: number;
   total: number;
   status: "Completed" | "Processing";
   paymentMethod?: string;
@@ -31,11 +41,14 @@ interface CartContextType {
   completePurchase: (orderData: {
     orderId: string;
     total: number;
+    subtotal?: number;
+    couponDiscount?: number;
+    taxAmount?: number;
     paymentMethod: string;
     studentName?: string;
     email?: string;
     phone?: string;
-  }) => void;
+  }) => Promise<{ ok: boolean; message: string }>;
   updateProgress: (courseId: string, progress: number) => void;
   updateOrderStatus: (orderId: string, status: OrderRecord["status"]) => void;
 }
@@ -56,11 +69,109 @@ const parseStored = <T,>(key: string, fallback: T): T => {
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
+  const { isLoggedIn } = useAuth();
+    const getModeLabel = (course: Course): string | undefined => {
+      if (!course.deliveryModePricingEnabled) return undefined;
+      const modes = Array.isArray(course.deliveryModes) ? course.deliveryModes : [];
+      const selectedId = String(course.selectedDeliveryModeId || "").trim();
+      if (!selectedId || modes.length === 0) return undefined;
+      const selected = modes.find((mode) => mode.id === selectedId);
+      return selected?.label;
+    };
+
+    const getBookLabel = (course: Course): string | undefined => {
+      if (!course.bookAddonEnabled) return undefined;
+      const addons = Array.isArray(course.bookAddons) ? course.bookAddons : [];
+      const selectedIds = Array.isArray(course.selectedBookAddonIds) ? course.selectedBookAddonIds : [];
+      if (selectedIds.length === 0 || addons.length === 0) return undefined;
+      const labels = addons.filter((addon) => selectedIds.includes(addon.id)).map((addon) => addon.label);
+      return labels.length > 0 ? labels.join(", ") : undefined;
+    };
+
   const [items, setItems] = useState<Course[]>(() => parseStored<Course[]>(CART_STORAGE_KEY, []));
   const [purchasedCourses, setPurchasedCourses] = useState<PurchasedCourse[]>(() =>
     parseStored<PurchasedCourse[]>(PURCHASED_STORAGE_KEY, [])
   );
   const [orders, setOrders] = useState<OrderRecord[]>(() => parseStored<OrderRecord[]>(ORDERS_STORAGE_KEY, []));
+
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    const token = localStorage.getItem(SESSION_TOKEN_KEY) || "";
+    if (!token) return;
+
+    const loadRemoteDashboard = async () => {
+      try {
+        const [dashboardResponse, coursesResponse] = await Promise.all([
+          fetch("/api/auth/student/dashboard", {
+            headers: { Authorization: `Bearer ${token}` },
+          }),
+          fetch("/api/courses"),
+        ]);
+
+        if (!dashboardResponse.ok || !coursesResponse.ok) {
+          return;
+        }
+
+        const dashboardPayload = await dashboardResponse.json();
+        const coursesPayload = await coursesResponse.json();
+
+        const accessItems: StudentCourseAccessSelf[] = Array.isArray(dashboardPayload?.courseAccess)
+          ? dashboardPayload.courseAccess
+          : [];
+        const activityItems: Array<{ courseId?: string; progressPercent?: number }> = Array.isArray(dashboardPayload?.videoActivity)
+          ? dashboardPayload.videoActivity
+          : [];
+        const courses: Course[] = Array.isArray(coursesPayload?.courses) ? coursesPayload.courses : [];
+
+        const progressByCourse = activityItems.reduce<Record<string, number>>((acc, item) => {
+          const courseId = String(item?.courseId || "").trim();
+          if (!courseId) return acc;
+          const value = Math.max(0, Math.min(100, Number(item?.progressPercent || 0)));
+          acc[courseId] = Math.max(acc[courseId] || 0, value);
+          return acc;
+        }, {});
+
+        const nextPurchased: PurchasedCourse[] = accessItems
+          .filter((item) => item?.courseId)
+          .filter((item) => isCourseAccessActive(item))
+          .map((item) => {
+            const base = courses.find((course) => course.id === item.courseId);
+            if (!base) {
+              return null;
+            }
+
+            return {
+              ...base,
+              purchasedOn: item.purchaseDate || new Date(item.createdAt || Date.now()).toLocaleDateString("en-IN"),
+              progress: Math.max(progressFromViews(item), progressByCourse[item.courseId] || 0),
+            };
+          })
+          .filter(Boolean) as PurchasedCourse[];
+
+        setPurchasedCourses(nextPurchased);
+
+        const serverOrders = Array.isArray(dashboardPayload?.orders) ? dashboardPayload.orders : [];
+        const nextOrders: OrderRecord[] = serverOrders.map((order: any) => ({
+          id: String(order.id || `ORD-${Date.now()}`),
+          date: String(order.date || ""),
+          items: Array.isArray(order.items)
+            ? order.items.map((item: any) => ({ title: String(item.title || "Course"), price: Number(item.price || 0) }))
+            : [],
+              subtotal: Number(order.subtotal || 0) || undefined,
+              couponDiscount: Number(order.couponDiscount || 0) || undefined,
+              taxAmount: Number(order.taxAmount || 0) || undefined,
+          total: Number(order.total || 0),
+          status: order.status === "Processing" ? "Processing" : "Completed",
+        }));
+        setOrders(nextOrders);
+      } catch {
+        // Keep local fallback state when remote sync fails.
+      }
+    };
+
+    loadRemoteDashboard();
+  }, [isLoggedIn]);
 
   useEffect(() => {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
@@ -76,7 +187,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
   const addToCart = (course: Course) => {
     setItems((prev) => {
-      if (prev.find((c) => c.id === course.id)) return prev;
+      const existingIndex = prev.findIndex((c) => c.id === course.id);
+      if (existingIndex >= 0) {
+        const next = [...prev];
+        next[existingIndex] = course;
+        return next;
+      }
       return [...prev, course];
     });
   };
@@ -88,19 +204,48 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const isInCart = (courseId: string) => items.some((c) => c.id === courseId);
   const isPurchased = (courseId: string) => purchasedCourses.some((c) => c.id === courseId);
 
-  const completePurchase = (orderData: {
+  const completePurchase = async (orderData: {
     orderId: string;
     total: number;
+    subtotal?: number;
+    couponDiscount?: number;
+    taxAmount?: number;
     paymentMethod: string;
     studentName?: string;
     email?: string;
     phone?: string;
   }) => {
+    const token = localStorage.getItem(SESSION_TOKEN_KEY) || "";
+    if (!token) {
+      return { ok: false, message: "Your session has expired. Please log in again and retry." };
+    }
+
     const now = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+    const purchaseDate = new Date().toISOString().slice(0, 10);
+    const currentCart = [...items];
+
+    const payloadItems = currentCart.map((item) => ({
+      courseId: item.id,
+      courseTitle: item.title,
+      durationDays: Math.max(1, Number(item.selectedValidityDays || 180)),
+      totalViews: Math.max(1, Number(item.selectedViews || 2)),
+      isUnlimitedViews: item.unlimitedViewsEnabled === true,
+      usedViews: 0,
+      isEnabled: true,
+    }));
+
+    const remote = await createStudentPurchaseApi({
+      items: payloadItems,
+      purchaseDate,
+    });
+
+    if (!remote.ok) {
+      return { ok: false, message: remote.message || "Failed to save your purchase. Please retry." };
+    }
 
     // Add to purchased courses (skip duplicates)
     setPurchasedCourses((prev) => {
-      const newCourses = items
+      const newCourses = currentCart
         .filter((item) => !prev.some((p) => p.id === item.id))
         .map((item) => ({ ...item, purchasedOn: now, progress: 0 }));
       return [...prev, ...newCourses];
@@ -111,7 +256,16 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       {
         id: orderData.orderId,
         date: now,
-        items: items.map((i) => ({ title: i.title, price: i.price })),
+        items: currentCart.map((i) => ({
+          title: i.title,
+          price: i.price,
+          taxPercentage: Number(i.taxPercentage || 0),
+          modeLabel: getModeLabel(i),
+          bookLabel: getBookLabel(i),
+        })),
+        subtotal: Number(orderData.subtotal || 0) || undefined,
+        couponDiscount: Number(orderData.couponDiscount || 0) || undefined,
+        taxAmount: Number(orderData.taxAmount || 0) || undefined,
         total: orderData.total,
         status: "Completed",
         paymentMethod: orderData.paymentMethod,
@@ -124,6 +278,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
     // Clear cart
     setItems([]);
+    return { ok: true, message: "Purchase saved successfully." };
   };
 
   const updateProgress = (courseId: string, progress: number) => {

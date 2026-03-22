@@ -99,3 +99,26 @@ export const detectVideoSource = (input: string): LessonVideoSource => {
   if (decoded.startsWith("data:video/")) return "upload";
   return "direct";
 };
+
+/**
+ * Get video URL based on source
+ * For Bunny Stream videos, use getBunnyStreamVideoUrl from bunnystream-api.ts
+ * @param videoUrl The video URL or path
+ * @param source The video source type
+ * @returns Properly constructed video URL
+ */
+export const getVideoUrl = (videoUrl: string, source: LessonVideoSource): string => {
+  if (!videoUrl) return "";
+
+  const decoded = decodeVideoUrl(videoUrl);
+
+  switch (source) {
+    case "youtube":
+      return getYouTubeEmbedUrl(decoded) || decoded;
+
+    case "upload":
+    case "direct":
+    default:
+      return decoded;
+  }
+};

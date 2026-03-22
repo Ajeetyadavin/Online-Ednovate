@@ -3,6 +3,7 @@ import { BookOpen, Scale, Calculator, TrendingUp, FileText, GraduationCap, Schoo
 import { useScrollReveal } from "@/hooks/use-scroll-reveal";
 import { useMemo } from "react";
 import { usePlatformData } from "@/context/PlatformDataContext";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const iconMap: Record<string, React.ElementType> = {
   ca: BookOpen,
@@ -16,16 +17,22 @@ const iconMap: Record<string, React.ElementType> = {
 
 const CategoryPills = () => {
   const { categories } = usePlatformData();
+  const { settings } = useSiteSettings();
   const { ref, isVisible } = useScrollReveal();
 
   const visibleCategories = useMemo(() => {
-    const enabled = categories
-      .filter((category) => category.isVisible)
-      .sort((a, b) => a.sortOrder - b.sortOrder);
+    const ordered = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
 
-    const parentOnly = enabled.filter((category) => !category.parentId);
-    return parentOnly.length > 0 ? parentOnly : enabled;
-  }, [categories]);
+    const selectedIds = Array.isArray(settings.exploreCategoryIds)
+      ? settings.exploreCategoryIds.map((id) => String(id).trim()).filter(Boolean)
+      : [];
+
+    if (selectedIds.length === 0) return [];
+
+    const byId = new Map(ordered.map((item) => [item.id, item]));
+    const selected = selectedIds.map((id) => byId.get(id)).filter(Boolean);
+    return selected as typeof ordered;
+  }, [categories, settings.exploreCategoryIds]);
 
   if (visibleCategories.length === 0) return null;
 

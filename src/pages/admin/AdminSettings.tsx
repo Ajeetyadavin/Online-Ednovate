@@ -1,1044 +1,372 @@
-import { useEffect, useRef, useState } from "react";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { useState, useEffect } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Palette, Type, Layout, Eye, Save, Image, RotateCcw, Upload, PanelTop, Smartphone, Plus, Trash2, Zap, MessageCircle, Phone } from "lucide-react";
-import { useSiteSettings, type SiteSettings } from "@/context/SiteSettingsContext";
-import { usePlatformData } from "@/context/PlatformDataContext";
-import { ENQUIRY_LEADS_UPDATED_EVENT, clearEnquiryLeads, deleteEnquiryLead, formatEnquiryLeadDate, getEnquiryLeads, getReadableTextColor, sanitizeHexColor, type EnquiryLead } from "@/lib/contactTools";
-import { toast } from "sonner";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { CheckCircle, Save } from "lucide-react";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
+import { adminApi } from "@/services/adminApi";
 
-const AdminSettings = () => {
-  const { settings, updateColors, updateFonts, updateSections, updateHeader, updateMobileFooter, updateFloatingContact, updateAnimations, updateLogo, resetSettings } = useSiteSettings();
-  const { resetPlatformData } = usePlatformData();
+export default function AdminSettings() {
+  const siteSettings = useSiteSettings();
+  const [settings, setSettings] = useState({
+    platformName: "Ednovate",
+    platformEmail: "info@ednovate.com",
+    platformPhone: "+91 9876543210",
+    supportEmail: "support@ednovate.com",
+    about: "Welcome to Ednovate - Your Online Learning Platform",
+    termsUrl: "https://ednovate.com/terms",
+    privacyUrl: "https://ednovate.com/privacy",
+    enableNotifications: true,
+    enableEmailVerification: true,
+    maintenanceMode: false,
+    bunnyStreamEnabled: false,
+    bunnyStreamLibraryId: "",
+    bunnyStreamApiKey: "",
+    bunnyStreamCdnHostname: "",
+    bunnyStreamPullZone: "",
+  });
+
   const [saved, setSaved] = useState(false);
-  const [enquiryLeads, setEnquiryLeads] = useState<EnquiryLead[]>(() => getEnquiryLeads());
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [error, setError] = useState<string>("");
+  const [isSaving, setIsSaving] = useState(false);
 
-  const handleSave = () => {
-    setSaved(true);
-    toast.success("Settings saved successfully!");
-    setTimeout(() => setSaved(false), 2000);
-  };
-
-  const handleReset = () => {
-    resetSettings();
-    toast.success("Settings reset to defaults!");
-  };
-
-  const handleResetPlatformData = () => {
-    resetPlatformData();
-    toast.success("Platform content reset to defaults.");
-  };
-
-  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    if (!file.type.startsWith("image/")) {
-      toast.error("Please upload an image file");
-      return;
+  // Load settings from context on mount
+  useEffect(() => {
+    if (siteSettings?.settings?.bunnyStreamApi) {
+      setSettings((prev) => ({
+        ...prev,
+        bunnyStreamEnabled: siteSettings.settings.bunnyStreamApi.enabled,
+        bunnyStreamLibraryId: siteSettings.settings.bunnyStreamApi.libraryId,
+        bunnyStreamApiKey: siteSettings.settings.bunnyStreamApi.apiKey,
+        bunnyStreamCdnHostname: siteSettings.settings.bunnyStreamApi.cdnHostname,
+        bunnyStreamPullZone: siteSettings.settings.bunnyStreamApi.pullZone,
+      }));
     }
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const result = ev.target?.result as string;
-      updateLogo(result);
-      toast.success("Logo updated!");
-    };
-    reader.readAsDataURL(file);
-  };
-
-  const fontOptions = [
-    "Plus Jakarta Sans", "Inter", "Poppins", "Roboto", "Open Sans", "Lato",
-    "Montserrat", "Raleway", "Nunito", "Source Sans Pro", "DM Sans",
-  ];
-
-  const colorLabels: Record<string, string> = {
-    primary: "Primary (Header, Buttons)",
-    accent: "Accent (CTA, Highlights)",
-    background: "Background",
-    foreground: "Text Color",
-    muted: "Muted Background",
-    card: "Card Background",
-  };
-
-  const sectionLabels: Record<string, string> = {
-    heroBanner: "Hero Banner Slider",
-    announcementBar: "Announcement Bar",
-    statsCounter: "Stats Counter",
-    howItWorks: "How It Works",
-    popularCourses: "Popular Courses",
-    whyChooseUs: "Why Choose Us",
-    testimonials: "Testimonials",
-    faq: "FAQ Section",
-    ctaBand: "CTA Band (Bottom)",
-  };
-
-  const headerStyleOptions = [
-    { value: "solid", label: "Solid" },
-    { value: "outline", label: "Outline" },
-    { value: "ghost", label: "Ghost" },
-  ];
-
-  const mobileActionOptions = [
-    { value: "link", label: "Open Link" },
-    { value: "tel", label: "Call Number" },
-    { value: "login", label: "Login / Profile" },
-    { value: "dashboard", label: "Open Dashboard" },
-  ];
-
-  const mobileIconOptions = [
-    { value: "home", label: "Home" },
-    { value: "courses", label: "Courses" },
-    { value: "phone", label: "Phone" },
-    { value: "profile", label: "Profile" },
-    { value: "login", label: "Login" },
-    { value: "support", label: "Support" },
-    { value: "settings", label: "Settings" },
-  ];
-
-  const addHeaderButton = () => {
-    updateHeader({
-      customButtons: [
-        ...settings.header.customButtons,
-        {
-          id: `header-btn-${Date.now()}`,
-          label: "New Button",
-          href: "/packages",
-          style: "outline",
-          visible: true,
-          newTab: false,
-        },
-      ],
-    });
-  };
-
-  const updateHeaderButton = (id: string, updates: Record<string, unknown>) => {
-    updateHeader({
-      customButtons: settings.header.customButtons.map((button) =>
-        button.id === id ? { ...button, ...updates } : button,
-      ),
-    });
-  };
-
-  const removeHeaderButton = (id: string) => {
-    updateHeader({
-      customButtons: settings.header.customButtons.filter((button) => button.id !== id),
-    });
-  };
-
-  const addHeaderNavLink = () => {
-    updateHeader({
-      navLinks: [
-        ...settings.header.navLinks,
-        {
-          id: `nav-link-${Date.now()}`,
-          label: "New Menu",
-          href: "/",
-          hasDropdown: false,
-          visible: true,
-        },
-      ],
-    });
-  };
-
-  const updateHeaderNavLink = (id: string, updates: Record<string, unknown>) => {
-    updateHeader({
-      navLinks: settings.header.navLinks.map((link) =>
-        link.id === id ? { ...link, ...updates } : link,
-      ),
-    });
-  };
-
-  const removeHeaderNavLink = (id: string) => {
-    updateHeader({
-      navLinks: settings.header.navLinks.filter((link) => link.id !== id),
-    });
-  };
-
-  const addMobileFooterButton = () => {
-    updateMobileFooter({
-      buttons: [
-        ...settings.mobileFooter.buttons,
-        {
-          id: `mobile-btn-${Date.now()}`,
-          label: "New Footer Button",
-          href: "/",
-          action: "link",
-          icon: "home",
-          visible: true,
-        },
-      ],
-    });
-  };
-
-  const updateMobileButton = (id: string, updates: Record<string, unknown>) => {
-    updateMobileFooter({
-      buttons: settings.mobileFooter.buttons.map((button) =>
-        button.id === id ? { ...button, ...updates } : button,
-      ),
-    });
-  };
-
-  const removeMobileButton = (id: string) => {
-    updateMobileFooter({
-      buttons: settings.mobileFooter.buttons.filter((button) => button.id !== id),
-    });
-  };
+  }, [siteSettings?.settings?.bunnyStreamApi]);
 
   useEffect(() => {
-    const syncLeads = () => {
-      setEnquiryLeads(getEnquiryLeads());
+    let isMounted = true;
+
+    const loadFromServer = async () => {
+      try {
+        const response = await adminApi.getPlatformSettings();
+        const bunny = response?.settings?.bunnyStreamApi;
+        if (!isMounted || !bunny) return;
+
+        setSettings((prev) => ({
+          ...prev,
+          bunnyStreamEnabled: bunny.enabled,
+          bunnyStreamLibraryId: bunny.libraryId || "",
+          bunnyStreamApiKey: bunny.apiKey || "",
+          bunnyStreamCdnHostname: bunny.cdnHostname || "",
+          bunnyStreamPullZone: bunny.pullZone || "",
+        }));
+
+        siteSettings.updateSettings({
+          bunnyStreamApi: {
+            enabled: bunny.enabled,
+            libraryId: bunny.libraryId || "",
+            apiKey: bunny.apiKey || "",
+            cdnHostname: bunny.cdnHostname || "",
+            pullZone: bunny.pullZone || "",
+          },
+        });
+      } catch (apiError) {
+        if (!isMounted) return;
+        setError(apiError instanceof Error ? apiError.message : "Failed to load settings from server");
+      }
     };
 
-    syncLeads();
-    window.addEventListener(ENQUIRY_LEADS_UPDATED_EVENT, syncLeads);
-    window.addEventListener("storage", syncLeads);
+    loadFromServer();
 
     return () => {
-      window.removeEventListener(ENQUIRY_LEADS_UPDATED_EVENT, syncLeads);
-      window.removeEventListener("storage", syncLeads);
+      isMounted = false;
     };
   }, []);
 
-  const updateFloatingEnquiry = (updates: Partial<SiteSettings["floatingContact"]["enquiry"]>) => {
-    updateFloatingContact({
-      enquiry: {
-        ...settings.floatingContact.enquiry,
-        ...updates,
+  const handleInputChange = (field: string, value: string | boolean) => {
+    setSettings((prev) => ({
+      ...prev,
+      [field]: value,
+    }));
+  };
+
+  const handleSave = async () => {
+    setError("");
+    setIsSaving(true);
+
+    // Save to SiteSettingsContext
+    const bunnySettings = {
+      bunnyStreamApi: {
+        enabled: settings.bunnyStreamEnabled,
+        libraryId: settings.bunnyStreamLibraryId,
+        apiKey: settings.bunnyStreamApiKey,
+        cdnHostname: settings.bunnyStreamCdnHostname,
+        pullZone: settings.bunnyStreamPullZone,
       },
-    });
-  };
+    };
 
-  const updateFloatingCall = (updates: Partial<SiteSettings["floatingContact"]["call"]>) => {
-    updateFloatingContact({
-      call: {
-        ...settings.floatingContact.call,
-        ...updates,
-      },
-    });
+    try {
+      siteSettings.updateSettings(bunnySettings);
+      await adminApi.savePlatformSettings(bunnySettings);
+      setSaved(true);
+      setTimeout(() => setSaved(false), 3000);
+    } catch (apiError) {
+      setError(apiError instanceof Error ? apiError.message : "Failed to save settings");
+    } finally {
+      setIsSaving(false);
+    }
   };
-
-  const updateFloatingWhatsapp = (updates: Partial<SiteSettings["floatingContact"]["whatsapp"]>) => {
-    updateFloatingContact({
-      whatsapp: {
-        ...settings.floatingContact.whatsapp,
-        ...updates,
-      },
-    });
-  };
-
-  const handleDeleteLead = (id: string) => {
-    deleteEnquiryLead(id);
-    toast.success("Lead removed.");
-  };
-
-  const handleClearLeads = () => {
-    clearEnquiryLeads();
-    toast.success("All enquiry leads cleared.");
-  };
-
-  const togglePreviewColor = sanitizeHexColor(settings.floatingContact.toggleColor, settings.colors.primary);
-  const enquiryPreviewColor = sanitizeHexColor(settings.floatingContact.enquiry.color, "#FFFFFF");
-  const callPreviewColor = sanitizeHexColor(settings.floatingContact.call.color, "#2563EB");
-  const whatsappPreviewColor = sanitizeHexColor(settings.floatingContact.whatsapp.color, "#22C55E");
 
   return (
-    <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-foreground">Site Settings</h1>
-          <p className="text-sm text-muted-foreground">Colors, fonts, logo & section visibility — changes apply live!</p>
-        </div>
-        <div className="flex gap-2">
-          <Button variant="outline" onClick={handleResetPlatformData} className="gap-2">
-            <RotateCcw className="w-4 h-4" /> Reset CMS Data
-          </Button>
-          <Button variant="outline" onClick={handleReset} className="gap-2">
-            <RotateCcw className="w-4 h-4" /> Reset
-          </Button>
-          <Button onClick={handleSave} className="gap-2">
-            <Save className="w-4 h-4" />
-            {saved ? "Saved ✓" : "Save Changes"}
-          </Button>
-        </div>
+    <div className="space-y-6 max-w-4xl">
+      <div>
+        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
+        <p className="text-gray-600 mt-1">Configure your platform</p>
       </div>
 
-      <Tabs defaultValue="colors">
-        <TabsList>
-          <TabsTrigger value="colors" className="gap-2"><Palette className="w-4 h-4" />Colors</TabsTrigger>
-          <TabsTrigger value="fonts" className="gap-2"><Type className="w-4 h-4" />Fonts</TabsTrigger>
-          <TabsTrigger value="logo" className="gap-2"><Image className="w-4 h-4" />Logo</TabsTrigger>
-          <TabsTrigger value="sections" className="gap-2"><Layout className="w-4 h-4" />Sections</TabsTrigger>
-          <TabsTrigger value="animations" className="gap-2"><Zap className="w-4 h-4" />Animations</TabsTrigger>
-          <TabsTrigger value="contact" className="gap-2"><MessageCircle className="w-4 h-4" />Contact</TabsTrigger>
-          <TabsTrigger value="navigation" className="gap-2"><PanelTop className="w-4 h-4" />Navigation</TabsTrigger>
-        </TabsList>
+      {saved && (
+        <Alert className="bg-green-50 border-green-200">
+          <CheckCircle className="h-4 w-4 text-green-600" />
+          <AlertDescription className="text-green-800">Settings saved successfully!</AlertDescription>
+        </Alert>
+      )}
 
-        {/* COLORS */}
-        <TabsContent value="colors">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Color Palette</CardTitle>
-              <CardDescription>Changes apply instantly to the entire site</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {Object.entries(settings.colors).map(([key, value]) => (
-                  <div key={key} className="space-y-2">
-                    <label className="text-sm font-medium">{colorLabels[key] || key}</label>
-                    <div className="flex items-center gap-3">
-                      <input
-                        type="color"
-                        value={value}
-                        onChange={(e) => updateColors({ [key]: e.target.value })}
-                        className="w-12 h-10 rounded-lg cursor-pointer border border-border"
-                      />
-                      <Input
-                        value={value}
-                        onChange={(e) => updateColors({ [key]: e.target.value })}
-                        className="flex-1 font-mono text-sm"
-                      />
-                    </div>
-                  </div>
-                ))}
-              </div>
+      {error && (
+        <Alert className="bg-red-50 border-red-200">
+          <AlertDescription className="text-red-800">{error}</AlertDescription>
+        </Alert>
+      )}
 
-              {/* Live Preview */}
-              <div className="mt-6 p-6 rounded-xl border border-border" style={{ backgroundColor: settings.colors.background }}>
-                <h3 className="font-bold text-lg mb-2" style={{ color: settings.colors.foreground }}>Live Preview</h3>
-                <p className="text-sm mb-4" style={{ color: settings.colors.foreground + "99" }}>This is how your color scheme looks on the live site.</p>
-                <div className="flex gap-3">
-                  <button className="px-4 py-2 rounded-lg text-white text-sm font-medium" style={{ backgroundColor: settings.colors.primary }}>Primary</button>
-                  <button className="px-4 py-2 rounded-lg text-white text-sm font-medium" style={{ backgroundColor: settings.colors.accent }}>Accent</button>
-                </div>
-                <div className="mt-4 p-4 rounded-lg" style={{ backgroundColor: settings.colors.muted }}>
-                  <p className="text-sm" style={{ color: settings.colors.foreground }}>Muted background area</p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+      {/* Platform Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Platform Information</CardTitle>
+          <CardDescription>Basic details about your platform</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-2">Platform Name</label>
+            <Input
+              value={settings.platformName}
+              onChange={(e) => handleInputChange("platformName", e.target.value)}
+              placeholder="Ednovate"
+            />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">Email</label>
+              <Input
+                type="email"
+                value={settings.platformEmail}
+                onChange={(e) => handleInputChange("platformEmail", e.target.value)}
+                placeholder="info@ednovate.com"
+              />
+            </div>
+            <div>
+              <label className="text-sm font-medium text-gray-700 block mb-2">Phone</label>
+              <Input
+                value={settings.platformPhone}
+                onChange={(e) => handleInputChange("platformPhone", e.target.value)}
+                placeholder="+91 9876543210"
+              />
+            </div>
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-2">Support Email</label>
+            <Input
+              type="email"
+              value={settings.supportEmail}
+              onChange={(e) => handleInputChange("supportEmail", e.target.value)}
+              placeholder="support@ednovate.com"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-2">About Platform</label>
+            <Textarea
+              value={settings.about}
+              onChange={(e) => handleInputChange("about", e.target.value)}
+              placeholder="Tell us about your platform..."
+              rows={4}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-        {/* FONTS */}
-        <TabsContent value="fonts">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Typography</CardTitle>
-              <CardDescription>Choose fonts for headings and body text</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Heading Font</label>
-                  <Select value={settings.fonts.heading} onValueChange={(v) => updateFonts({ heading: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {fontOptions.map((f) => (
-                        <SelectItem key={f} value={f}>{f}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="text-2xl font-bold mt-3" style={{ fontFamily: settings.fonts.heading }}>
-                    Heading Preview
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Body Font</label>
-                  <Select value={settings.fonts.body} onValueChange={(v) => updateFonts({ body: v })}>
-                    <SelectTrigger><SelectValue /></SelectTrigger>
-                    <SelectContent>
-                      {fontOptions.map((f) => (
-                        <SelectItem key={f} value={f}>{f}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <p className="mt-3" style={{ fontFamily: settings.fonts.body }}>
-                    Body text preview. This is how your content will look.
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+      {/* Legal Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Legal & Compliance</CardTitle>
+          <CardDescription>Terms, privacy, and compliance settings</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-2">Terms & Conditions URL</label>
+            <Input
+              value={settings.termsUrl}
+              onChange={(e) => handleInputChange("termsUrl", e.target.value)}
+              placeholder="https://ednovate.com/terms"
+            />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700 block mb-2">Privacy Policy URL</label>
+            <Input
+              value={settings.privacyUrl}
+              onChange={(e) => handleInputChange("privacyUrl", e.target.value)}
+              placeholder="https://ednovate.com/privacy"
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-        {/* LOGO */}
-        <TabsContent value="logo">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Site Logo</CardTitle>
-              <CardDescription>Upload a new logo (SVG or PNG recommended)</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex flex-col sm:flex-row items-start gap-8">
-                {/* Current Logo Preview */}
-                <div className="space-y-3">
-                  <label className="text-sm font-medium">Current Logo</label>
-                  <div className="p-6 bg-muted rounded-xl border border-border flex items-center justify-center min-w-[200px]">
-                    <img src={settings.logo} alt="Current Logo" className="h-10 max-w-[200px] object-contain" />
-                  </div>
-                  <div className="p-6 bg-primary rounded-xl flex items-center justify-center min-w-[200px]">
-                    <img src={settings.logo} alt="Logo on dark" className="h-10 max-w-[200px] object-contain" style={{ filter: "brightness(0) invert(1)" }} />
-                  </div>
-                </div>
+      {/* Feature Settings */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Features & Services</CardTitle>
+          <CardDescription>Enable or disable platform features</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200">
+            <div>
+              <p className="font-medium text-gray-900">Email Notifications</p>
+              <p className="text-sm text-gray-600">Send email updates to users</p>
+            </div>
+            <Switch
+              checked={settings.enableNotifications}
+              onCheckedChange={(value) => handleInputChange("enableNotifications", value)}
+            />
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-lg bg-gray-50 border border-gray-200">
+            <div>
+              <p className="font-medium text-gray-900">Email Verification</p>
+              <p className="text-sm text-gray-600">Require email verification on signup</p>
+            </div>
+            <Switch
+              checked={settings.enableEmailVerification}
+              onCheckedChange={(value) => handleInputChange("enableEmailVerification", value)}
+            />
+          </div>
+          <div className="flex items-center justify-between p-3 rounded-lg bg-red-50 border border-red-200">
+            <div>
+              <p className="font-medium text-gray-900">Maintenance Mode</p>
+              <p className="text-sm text-gray-600">Temporarily disable user access</p>
+            </div>
+            <Switch
+              checked={settings.maintenanceMode}
+              onCheckedChange={(value) => handleInputChange("maintenanceMode", value)}
+            />
+          </div>
+        </CardContent>
+      </Card>
 
-                {/* Upload */}
-                <div className="space-y-3 flex-1">
-                  <label className="text-sm font-medium">Upload New Logo</label>
-                  <input type="file" ref={fileInputRef} onChange={handleLogoUpload} accept="image/*" className="hidden" />
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-border rounded-xl p-8 text-center cursor-pointer hover:border-accent hover:bg-accent/5 transition-all"
-                  >
-                    <Upload className="w-8 h-8 mx-auto mb-3 text-muted-foreground" />
-                    <p className="text-sm font-medium text-foreground">Click to upload logo</p>
-                    <p className="text-xs text-muted-foreground mt-1">SVG, PNG, JPG (max 2MB)</p>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-sm font-medium">Or enter logo URL</label>
-                    <Input
-                      placeholder="https://example.com/logo.svg"
-                      value={settings.logo.startsWith("data:") ? "" : settings.logo}
-                      onChange={(e) => {
-                        if (e.target.value) updateLogo(e.target.value);
-                      }}
-                      className="font-mono text-sm"
-                    />
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
+      {/* Bunny Stream API Configuration */}
+      <Card>
+        <CardHeader>
+          <CardTitle>Bunny Stream API Configuration</CardTitle>
+          <CardDescription>Configure Bunny Stream for professional video hosting and delivery</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between p-3 rounded-lg bg-purple-50 border border-purple-200">
+            <div>
+              <p className="font-medium text-gray-900">Enable Bunny Stream</p>
+              <p className="text-sm text-gray-600">Use Bunny Stream API for video management and delivery</p>
+            </div>
+            <Switch
+              checked={settings.bunnyStreamEnabled}
+              onCheckedChange={(value) => handleInputChange("bunnyStreamEnabled", value)}
+            />
+          </div>
 
-        {/* SECTIONS */}
-        <TabsContent value="sections">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Section Visibility</CardTitle>
-              <CardDescription>Toggle homepage sections on/off instantly</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {Object.entries(settings.sections).map(([key, value]) => (
-                  <div key={key} className="flex items-center justify-between py-3 border-b border-border/50 last:border-0">
-                    <div className="flex items-center gap-3">
-                      <Eye className="w-4 h-4 text-muted-foreground" />
-                      <div>
-                        <p className="font-medium text-foreground">{sectionLabels[key] || key}</p>
-                        <p className="text-xs text-muted-foreground">
-                          {value ? "Currently visible" : "Hidden from homepage"}
-                        </p>
-                      </div>
-                    </div>
-                    <Switch
-                      checked={value}
-                      onCheckedChange={(checked) => updateSections({ [key]: checked })}
-                    />
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* ANIMATIONS */}
-        <TabsContent value="animations">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Scroll Animations</CardTitle>
-              <CardDescription>Control homepage section scroll animations — change type, speed, or disable entirely</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-
-              {/* Enable / Disable */}
-              <div className="flex items-center justify-between border border-border rounded-xl p-4">
-                <div>
-                  <p className="font-semibold text-sm">Enable Scroll Animations</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">Sections will animate as they scroll into view</p>
-                </div>
-                <Switch
-                  checked={settings.animations.enabled}
-                  onCheckedChange={(checked) => updateAnimations({ enabled: checked })}
-                />
-              </div>
-
-              {/* Animation Type */}
-              <div className={`space-y-3 transition-opacity ${settings.animations.enabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
-                <p className="font-semibold text-sm">Animation Type</p>
-                <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                  {([
-                    { value: "up",     label: "Slide Up",    emoji: "⬆️" },
-                    { value: "down",   label: "Slide Down",  emoji: "⬇️" },
-                    { value: "left",   label: "Slide Left",  emoji: "⬅️" },
-                    { value: "right",  label: "Slide Right", emoji: "➡️" },
-                    { value: "scale",  label: "Zoom In",     emoji: "🔍" },
-                    { value: "fade",   label: "Fade Only",   emoji: "✨" },
-                    { value: "zoom",   label: "Zoom Out",    emoji: "🔎" },
-                    { value: "bounce", label: "Bounce",      emoji: "🏀" },
-                  ] as const).map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => updateAnimations({ type: opt.value })}
-                      className={`flex flex-col items-center gap-2 p-3 rounded-xl border-2 transition-all text-sm font-semibold tap-bounce ${
-                        settings.animations.type === opt.value
-                          ? "border-primary bg-primary/8 text-primary"
-                          : "border-border bg-card hover:border-primary/30"
-                      }`}
-                    >
-                      <span className="text-2xl">{opt.emoji}</span>
-                      {opt.label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Speed */}
-              <div className={`space-y-3 transition-opacity ${settings.animations.enabled ? "opacity-100" : "opacity-40 pointer-events-none"}`}>
-                <p className="font-semibold text-sm">Animation Speed</p>
-                <div className="grid grid-cols-3 gap-3">
-                  {([
-                    { value: "fast",   label: "Fast",   sub: "0.28s" },
-                    { value: "normal", label: "Normal", sub: "0.6s"  },
-                    { value: "slow",   label: "Slow",   sub: "1s"    },
-                  ] as const).map((opt) => (
-                    <button
-                      key={opt.value}
-                      onClick={() => updateAnimations({ speed: opt.value })}
-                      className={`flex flex-col items-center gap-1 p-4 rounded-xl border-2 transition-all font-semibold tap-bounce ${
-                        settings.animations.speed === opt.value
-                          ? "border-primary bg-primary/8 text-primary"
-                          : "border-border bg-card hover:border-primary/30"
-                      }`}
-                    >
-                      <span className="text-base">{opt.label}</span>
-                      <span className="text-xs font-normal text-muted-foreground">{opt.sub}</span>
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              {/* Info */}
-              <div className="rounded-xl bg-muted/60 border border-border p-4 text-sm text-muted-foreground space-y-1">
-                <p className="font-semibold text-foreground">How does it work?</p>
-                <p>• Sections automatically animate when they scroll into view</p>
-                <p>• Changing the type updates direction/style across all sections globally</p>
-                <p>• Speed controls how fast or slow the animation plays — also applied globally</p>
-                <p>• Disabling animations makes all sections appear instantly without any effect</p>
-              </div>
-
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* CONTACT */}
-        <TabsContent value="contact" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Floating Contact Widget</CardTitle>
-              <CardDescription>Show, hide, edit labels and numbers, and control button colors for the right-side contact widget.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              <div className="flex items-center justify-between border border-border rounded-lg p-4">
-                <div>
-                  <p className="font-medium text-sm">Show Floating Contact Widget</p>
-                  <p className="text-xs text-muted-foreground">Right-side toggle button with enquiry, call, and WhatsApp actions.</p>
-                </div>
-                <Switch
-                  checked={settings.floatingContact.visible}
-                  onCheckedChange={(checked) => updateFloatingContact({ visible: checked })}
-                />
-              </div>
-
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium">Toggle Button Color</label>
-                  <div className="flex items-center gap-3">
-                    <input
-                      type="color"
-                      value={togglePreviewColor}
-                      onChange={(e) => updateFloatingContact({ toggleColor: e.target.value })}
-                      className="w-12 h-10 rounded-lg cursor-pointer border border-border"
-                    />
-                    <Input
-                      value={settings.floatingContact.toggleColor}
-                      onChange={(e) => updateFloatingContact({ toggleColor: e.target.value })}
-                      className="flex-1 font-mono text-sm"
-                    />
-                  </div>
-                </div>
-
-                <div className="rounded-xl border border-border bg-muted/40 p-4">
-                  <p className="text-sm font-semibold text-foreground">Quick Preview</p>
-                  <p className="text-xs text-muted-foreground mt-1">Preview of widget colors and labels before saving.</p>
-                  <div className="mt-4 flex flex-wrap items-center gap-2">
-                    {settings.floatingContact.enquiry.visible && (
-                      <div
-                        className="inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold shadow-sm border"
-                        style={{
-                          backgroundColor: enquiryPreviewColor,
-                          color: getReadableTextColor(enquiryPreviewColor),
-                          borderColor: "rgba(15, 23, 42, 0.08)",
-                        }}
-                      >
-                        {settings.floatingContact.enquiry.label}
-                      </div>
-                    )}
-                    {settings.floatingContact.call.visible && (
-                      <div
-                        className="inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
-                        style={{ backgroundColor: callPreviewColor, color: getReadableTextColor(callPreviewColor) }}
-                      >
-                        {settings.floatingContact.call.label}
-                      </div>
-                    )}
-                    {settings.floatingContact.whatsapp.visible && (
-                      <div
-                        className="inline-flex items-center rounded-full px-4 py-2 text-sm font-semibold shadow-sm"
-                        style={{ backgroundColor: whatsappPreviewColor, color: getReadableTextColor(whatsappPreviewColor) }}
-                      >
-                        {settings.floatingContact.whatsapp.label}
-                      </div>
-                    )}
-                    <div
-                      className="inline-flex h-12 w-12 items-center justify-center rounded-full shadow-sm"
-                      style={{ backgroundColor: togglePreviewColor, color: getReadableTextColor(togglePreviewColor) }}
-                    >
-                      <MessageCircle className="w-5 h-5" />
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 xl:grid-cols-3 gap-4">
-                <div className="border border-border rounded-xl p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-sm">Enquiry Button</p>
-                      <p className="text-xs text-muted-foreground">Opens the enquiry popup form.</p>
-                    </div>
-                    <Switch
-                      checked={settings.floatingContact.enquiry.visible}
-                      onCheckedChange={(checked) => updateFloatingEnquiry({ visible: checked })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Label</label>
-                    <Input
-                      value={settings.floatingContact.enquiry.label}
-                      onChange={(e) => updateFloatingEnquiry({ label: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Button Color</label>
-                    <div className="flex items-center gap-3 mt-1">
-                      <input
-                        type="color"
-                        value={enquiryPreviewColor}
-                        onChange={(e) => updateFloatingEnquiry({ color: e.target.value })}
-                        className="w-12 h-10 rounded-lg cursor-pointer border border-border"
-                      />
-                      <Input
-                        value={settings.floatingContact.enquiry.color}
-                        onChange={(e) => updateFloatingEnquiry({ color: e.target.value })}
-                        className="flex-1 font-mono text-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border border-border rounded-xl p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-sm">Call Button</p>
-                      <p className="text-xs text-muted-foreground">Show or hide the direct call action.</p>
-                    </div>
-                    <Switch
-                      checked={settings.floatingContact.call.visible}
-                      onCheckedChange={(checked) => updateFloatingCall({ visible: checked })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Label</label>
-                    <Input
-                      value={settings.floatingContact.call.label}
-                      onChange={(e) => updateFloatingCall({ label: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Phone Number</label>
-                    <Input
-                      value={settings.floatingContact.call.value}
-                      onChange={(e) => updateFloatingCall({ value: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Button Color</label>
-                    <div className="flex items-center gap-3 mt-1">
-                      <input
-                        type="color"
-                        value={callPreviewColor}
-                        onChange={(e) => updateFloatingCall({ color: e.target.value })}
-                        className="w-12 h-10 rounded-lg cursor-pointer border border-border"
-                      />
-                      <Input
-                        value={settings.floatingContact.call.color}
-                        onChange={(e) => updateFloatingCall({ color: e.target.value })}
-                        className="flex-1 font-mono text-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-
-                <div className="border border-border rounded-xl p-4 space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <p className="font-semibold text-sm">WhatsApp Button</p>
-                      <p className="text-xs text-muted-foreground">Show or hide the WhatsApp action link.</p>
-                    </div>
-                    <Switch
-                      checked={settings.floatingContact.whatsapp.visible}
-                      onCheckedChange={(checked) => updateFloatingWhatsapp({ visible: checked })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Label</label>
-                    <Input
-                      value={settings.floatingContact.whatsapp.label}
-                      onChange={(e) => updateFloatingWhatsapp({ label: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">WhatsApp Number</label>
-                    <Input
-                      value={settings.floatingContact.whatsapp.value}
-                      onChange={(e) => updateFloatingWhatsapp({ value: e.target.value })}
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs font-medium text-muted-foreground">Button Color</label>
-                    <div className="flex items-center gap-3 mt-1">
-                      <input
-                        type="color"
-                        value={whatsappPreviewColor}
-                        onChange={(e) => updateFloatingWhatsapp({ color: e.target.value })}
-                        className="w-12 h-10 rounded-lg cursor-pointer border border-border"
-                      />
-                      <Input
-                        value={settings.floatingContact.whatsapp.color}
-                        onChange={(e) => updateFloatingWhatsapp({ color: e.target.value })}
-                        className="flex-1 font-mono text-sm"
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+          {settings.bunnyStreamEnabled && (
+            <div className="space-y-4 pt-4 border-t border-gray-200">
               <div>
-                <CardTitle className="text-lg">Enquiry Leads</CardTitle>
-                <CardDescription>Leads submitted from the Enquire Now popup. These entries are stored in this browser only.</CardDescription>
+                <label className="text-sm font-medium text-gray-700 block mb-2">Library ID</label>
+                <Input
+                  value={settings.bunnyStreamLibraryId}
+                  onChange={(e) => handleInputChange("bunnyStreamLibraryId", e.target.value)}
+                  placeholder="621597"
+                  disabled={!settings.bunnyStreamEnabled}
+                />
+                <p className="text-xs text-gray-500 mt-1">Your Bunny Stream video library ID</p>
               </div>
-              {enquiryLeads.length > 0 && (
-                <Button variant="outline" onClick={handleClearLeads} className="gap-2">
-                  <Trash2 className="w-4 h-4" /> Clear All
-                </Button>
-              )}
-            </CardHeader>
-            <CardContent>
-              {enquiryLeads.length === 0 ? (
-                <div className="rounded-xl border border-dashed border-border bg-muted/30 px-5 py-8 text-center">
-                  <p className="font-medium text-foreground">No enquiry leads yet</p>
-                  <p className="text-sm text-muted-foreground mt-1">New popup submissions will appear here automatically.</p>
-                </div>
-              ) : (
-                <div className="overflow-x-auto">
-                  <table className="w-full text-sm">
-                    <thead>
-                      <tr className="border-b border-border">
-                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Name</th>
-                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Location</th>
-                        <th className="text-left py-3 px-2 text-muted-foreground font-medium">Mobile</th>
-                        <th className="text-left py-3 px-2 text-muted-foreground font-medium hidden md:table-cell">Submitted</th>
-                        <th className="text-right py-3 px-2 text-muted-foreground font-medium">Action</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {enquiryLeads.map((lead) => (
-                        <tr key={lead.id} className="border-b border-border/50 hover:bg-muted/30">
-                          <td className="py-3 px-2 font-medium text-foreground">{lead.name}</td>
-                          <td className="py-3 px-2 text-muted-foreground">{lead.location}</td>
-                          <td className="py-3 px-2 text-foreground">{lead.mobile}</td>
-                          <td className="py-3 px-2 text-muted-foreground hidden md:table-cell">{formatEnquiryLeadDate(lead.createdAt)}</td>
-                          <td className="py-3 px-2 text-right">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              className="text-destructive hover:text-destructive"
-                              onClick={() => handleDeleteLead(lead.id)}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              )}
-            </CardContent>
-          </Card>
-        </TabsContent>
-
-        {/* NAVIGATION */}
-        <TabsContent value="navigation" className="space-y-4">
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Header Controls</CardTitle>
-              <CardDescription>Top bar, auth labels, search toggle, and custom header buttons.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-5">
+              <div>
+                <label className="text-sm font-medium text-gray-700 block mb-2">API Key</label>
+                <Input
+                  value={settings.bunnyStreamApiKey}
+                  onChange={(e) => handleInputChange("bunnyStreamApiKey", e.target.value)}
+                  placeholder="your-api-key-here"
+                  type="password"
+                  disabled={!settings.bunnyStreamEnabled}
+                />
+                <p className="text-xs text-gray-500 mt-1">Your Bunny Stream API key for authentication</p>
+              </div>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div className="flex items-center justify-between border border-border rounded-lg p-3">
-                  <div>
-                    <p className="font-medium text-sm">Show Top Bar</p>
-                    <p className="text-xs text-muted-foreground">Phone/email strip above header</p>
-                  </div>
-                  <Switch checked={settings.header.topBarVisible} onCheckedChange={(checked) => updateHeader({ topBarVisible: checked })} />
-                </div>
-                <div className="flex items-center justify-between border border-border rounded-lg p-3">
-                  <div>
-                    <p className="font-medium text-sm">Show Search</p>
-                    <p className="text-xs text-muted-foreground">Desktop search input toggle</p>
-                  </div>
-                  <Switch checked={settings.header.showSearch} onCheckedChange={(checked) => updateHeader({ showSearch: checked })} />
-                </div>
-                <div className="flex items-center justify-between border border-border rounded-lg p-3 md:col-span-2">
-                  <div>
-                    <p className="font-medium text-sm">Show Login/Signup Buttons</p>
-                    <p className="text-xs text-muted-foreground">Desktop + mobile auth button visibility</p>
-                  </div>
-                  <Switch checked={settings.header.showAuthButtons} onCheckedChange={(checked) => updateHeader({ showAuthButtons: checked })} />
-                </div>
-                <div className="flex items-center justify-between border border-border rounded-lg p-3 md:col-span-2">
-                  <div>
-                    <p className="font-medium text-sm">Notice Scroll Speed</p>
-                    <p className="text-xs text-muted-foreground">
-                      Seconds for one full loop. Smaller = super fast, bigger = super slow.
-                    </p>
-                  </div>
+                <div>
+                  <label className="text-sm font-medium text-gray-700 block mb-2">CDN Hostname</label>
                   <Input
-                    type="number"
-                    min={5}
-                    max={120}
-                    value={settings.header.announcementSpeedSeconds}
-                    onChange={(e) =>
-                      updateHeader({
-                        announcementSpeedSeconds: Math.min(120, Math.max(5, Number(e.target.value) || 5)),
-                      })
-                    }
-                    className="w-24 text-right"
+                    value={settings.bunnyStreamCdnHostname}
+                    onChange={(e) => handleInputChange("bunnyStreamCdnHostname", e.target.value)}
+                    placeholder="vz-260f96eb-4e3.b-cdn.net"
+                    disabled={!settings.bunnyStreamEnabled}
                   />
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-sm font-medium">Top Bar Phone</label>
-                  <Input value={settings.header.topBarPhone} onChange={(e) => updateHeader({ topBarPhone: e.target.value })} />
+                  <p className="text-xs text-gray-500 mt-1">e.g., vz-xxxxx.b-cdn.net</p>
                 </div>
                 <div>
-                  <label className="text-sm font-medium">Top Bar Email</label>
-                  <Input value={settings.header.topBarEmail} onChange={(e) => updateHeader({ topBarEmail: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Top Bar Right Text 1</label>
-                  <Input value={settings.header.topBarPrimaryText} onChange={(e) => updateHeader({ topBarPrimaryText: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Top Bar Right Text 2</label>
-                  <Input value={settings.header.topBarSecondaryText} onChange={(e) => updateHeader({ topBarSecondaryText: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Login Button Label</label>
-                  <Input value={settings.header.loginLabel} onChange={(e) => updateHeader({ loginLabel: e.target.value })} />
-                </div>
-                <div>
-                  <label className="text-sm font-medium">Signup Button Label</label>
-                  <Input value={settings.header.signupLabel} onChange={(e) => updateHeader({ signupLabel: e.target.value })} />
+                  <label className="text-sm font-medium text-gray-700 block mb-2">Pull Zone</label>
+                  <Input
+                    value={settings.bunnyStreamPullZone}
+                    onChange={(e) => handleInputChange("bunnyStreamPullZone", e.target.value)}
+                    placeholder="vz-260f96eb-4e3"
+                    disabled={!settings.bunnyStreamEnabled}
+                  />
+                  <p className="text-xs text-gray-500 mt-1">Your pull zone identifier</p>
                 </div>
               </div>
+              <Alert className="bg-purple-50 border-purple-200">
+                <AlertDescription className="text-xs text-purple-800">
+                  <strong>How to use:</strong> Once enabled, videos can be uploaded and managed through Bunny Stream API. The video player will automatically use the CDN hostname for playback.
+                </AlertDescription>
+              </Alert>
+            </div>
+          )}
+        </CardContent>
+      </Card>
 
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-sm">Header Navigation Links</p>
-                  <Button size="sm" variant="outline" onClick={addHeaderNavLink} className="gap-1.5">
-                    <Plus className="w-3.5 h-3.5" /> Add Link
-                  </Button>
-                </div>
+      {/* Danger Zone */}
+      <Card className="border-red-200">
+        <CardHeader>
+          <CardTitle className="text-red-600">Danger Zone</CardTitle>
+          <CardDescription>Irreversible actions</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 w-full">
+            Delete All Orders
+          </Button>
+          <Button variant="outline" className="border-red-200 text-red-600 hover:bg-red-50 hover:text-red-700 w-full">
+            Reset Database
+          </Button>
+        </CardContent>
+      </Card>
 
-                {settings.header.navLinks.map((link) => (
-                  <div key={link.id} className="border border-border rounded-lg p-3 space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Menu Label</label>
-                        <Input value={link.label} onChange={(e) => updateHeaderNavLink(link.id, { label: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Menu Link</label>
-                        <Input value={link.href} onChange={(e) => updateHeaderNavLink(link.id, { href: e.target.value })} />
-                      </div>
-                      <div className="flex items-end gap-4 md:col-span-2 pb-1">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" checked={link.visible} onChange={(e) => updateHeaderNavLink(link.id, { visible: e.target.checked })} className="rounded" />
-                          Visible
-                        </label>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" checked={link.hasDropdown} onChange={(e) => updateHeaderNavLink(link.id, { hasDropdown: e.target.checked })} className="rounded" />
-                          Show Dropdown Arrow
-                        </label>
-                        <Button size="icon" variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => removeHeaderNavLink(link.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <p className="font-medium text-sm">Custom Header Buttons</p>
-                  <Button size="sm" variant="outline" onClick={addHeaderButton} className="gap-1.5">
-                    <Plus className="w-3.5 h-3.5" /> Add Button
-                  </Button>
-                </div>
-
-                {settings.header.customButtons.map((button) => (
-                  <div key={button.id} className="border border-border rounded-lg p-3 space-y-3">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Label</label>
-                        <Input value={button.label} onChange={(e) => updateHeaderButton(button.id, { label: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Link</label>
-                        <Input value={button.href} onChange={(e) => updateHeaderButton(button.id, { href: e.target.value })} />
-                      </div>
-                      <div>
-                        <label className="text-xs font-medium text-muted-foreground">Style</label>
-                        <select
-                          value={button.style}
-                          onChange={(e) => updateHeaderButton(button.id, { style: e.target.value as "solid" | "outline" | "ghost" })}
-                          className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                        >
-                          {headerStyleOptions.map((option) => (
-                            <option key={option.value} value={option.value}>{option.label}</option>
-                          ))}
-                        </select>
-                      </div>
-                      <div className="flex items-end gap-4 pb-1">
-                        <label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" checked={button.visible} onChange={(e) => updateHeaderButton(button.id, { visible: e.target.checked })} className="rounded" />
-                          Visible
-                        </label>
-                        <label className="flex items-center gap-2 text-sm">
-                          <input type="checkbox" checked={button.newTab} onChange={(e) => updateHeaderButton(button.id, { newTab: e.target.checked })} className="rounded" />
-                          Open in New Tab
-                        </label>
-                        <Button size="icon" variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => removeHeaderButton(button.id)}>
-                          <Trash2 className="w-4 h-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Mobile Footer Controls</CardTitle>
-              <CardDescription>Phone view bottom sticky buttons manage karein.</CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between border border-border rounded-lg p-3">
-                <div className="flex items-center gap-2">
-                  <Smartphone className="w-4 h-4 text-muted-foreground" />
-                  <div>
-                    <p className="font-medium text-sm">Show Mobile Footer</p>
-                    <p className="text-xs text-muted-foreground">Sticky button bar on phone screens</p>
-                  </div>
-                </div>
-                <Switch checked={settings.mobileFooter.visible} onCheckedChange={(checked) => updateMobileFooter({ visible: checked })} />
-              </div>
-
-              <div className="flex items-center justify-between">
-                <p className="font-medium text-sm">Mobile Footer Buttons</p>
-                <Button size="sm" variant="outline" onClick={addMobileFooterButton} className="gap-1.5">
-                  <Plus className="w-3.5 h-3.5" /> Add Footer Button
-                </Button>
-              </div>
-
-              {settings.mobileFooter.buttons.map((button) => (
-                <div key={button.id} className="border border-border rounded-lg p-3 space-y-3">
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground">Label</label>
-                      <Input value={button.label} onChange={(e) => updateMobileButton(button.id, { label: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground">Link / Value</label>
-                      <Input value={button.href} onChange={(e) => updateMobileButton(button.id, { href: e.target.value })} />
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground">Action</label>
-                      <select
-                        value={button.action}
-                        onChange={(e) => updateMobileButton(button.id, { action: e.target.value as "link" | "tel" | "login" | "dashboard" })}
-                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                      >
-                        {mobileActionOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div>
-                      <label className="text-xs font-medium text-muted-foreground">Icon</label>
-                      <select
-                        value={button.icon}
-                        onChange={(e) => updateMobileButton(button.id, { icon: e.target.value as "home" | "courses" | "phone" | "profile" | "login" | "support" | "settings" })}
-                        className="w-full h-10 rounded-md border border-input bg-background px-3 text-sm"
-                      >
-                        {mobileIconOptions.map((option) => (
-                          <option key={option.value} value={option.value}>{option.label}</option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="flex items-end gap-4 md:col-span-2">
-                      <label className="flex items-center gap-2 text-sm">
-                        <input type="checkbox" checked={button.visible} onChange={(e) => updateMobileButton(button.id, { visible: e.target.checked })} className="rounded" />
-                        Visible
-                      </label>
-                      <Button size="icon" variant="ghost" className="ml-auto text-destructive hover:text-destructive" onClick={() => removeMobileButton(button.id)}>
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </div>
-                </div>
-              ))}
-            </CardContent>
-          </Card>
-        </TabsContent>
-      </Tabs>
+      {/* Save Button */}
+      <div className="flex justify-end gap-3">
+        <Button
+          variant="outline"
+        >
+          Cancel
+        </Button>
+        <Button
+          onClick={handleSave}
+          disabled={isSaving}
+          className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700"
+        >
+          <Save className="w-4 h-4" />
+          {isSaving ? "Saving..." : "Save Settings"}
+        </Button>
+      </div>
     </div>
   );
-};
-
-export default AdminSettings;
+}

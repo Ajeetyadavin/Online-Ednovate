@@ -1,6 +1,7 @@
 import { useEffect, useState, useRef } from "react";
 import { stats } from "@/data/courses";
 import { ShoppingCart, Users, Video, BookOpen } from "lucide-react";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const statIcons = [ShoppingCart, Users, Video, BookOpen];
 
@@ -27,7 +28,7 @@ const StatItem = ({ label, value, suffix, inView, icon: Icon, index }: { label: 
       <div className="w-9 h-9 rounded-xl bg-primary-foreground/10 border border-primary-foreground/20 flex items-center justify-center mb-2">
         <Icon className="w-4 h-4 text-accent" />
       </div>
-      <div className="text-xl sm:text-2xl md:text-[1.75rem] font-extrabold text-primary-foreground tracking-tight leading-none">
+      <div className="text-lg sm:text-2xl md:text-[1.75rem] font-extrabold text-primary-foreground tracking-tight leading-none">
         {count.toLocaleString()}{suffix}
       </div>
       <div className="text-[11px] sm:text-xs text-primary-foreground/65 font-semibold mt-1">{label}</div>
@@ -38,6 +39,9 @@ const StatItem = ({ label, value, suffix, inView, icon: Icon, index }: { label: 
 const StatsCounter = () => {
   const ref = useRef<HTMLDivElement>(null);
   const [inView, setInView] = useState(false);
+  const { settings } = useSiteSettings();
+  const configuredStats = settings.homepageContent?.stats?.items || [];
+  const displayStats = configuredStats.length > 0 ? configuredStats : stats;
 
   useEffect(() => {
     const observer = new IntersectionObserver(
@@ -63,8 +67,8 @@ const StatsCounter = () => {
           <div className="absolute -bottom-16 -right-10 w-40 h-40 bg-primary-foreground/10 rounded-full blur-2xl" />
 
           <div className="relative z-10 grid grid-cols-2 md:grid-cols-4 divide-y divide-primary-foreground/10 md:divide-y-0 md:divide-x md:divide-primary-foreground/10">
-            {stats.map((stat, i) => (
-              <StatItem key={stat.label} {...stat} inView={inView} icon={statIcons[i]} index={i} />
+            {displayStats.map((stat, i) => (
+              <StatItem key={stat.label} {...stat} inView={inView} icon={statIcons[i % statIcons.length]} index={i} />
             ))}
           </div>
         </div>

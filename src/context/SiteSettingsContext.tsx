@@ -19,6 +19,32 @@ export interface HeaderQuickButton {
   newTab: boolean;
 }
 
+export interface HeaderCourseCollection {
+  id: string;
+  slug: string;
+  title: string;
+  description: string;
+  badge: string;
+  heroImageUrl: string;
+  ctaLabel: string;
+  visible: boolean;
+  sortOrder: number;
+  courseIds: string[];
+  enableSearch: boolean;
+  searchPlaceholder: string;
+  enableCategoryFilter: boolean;
+  categoryFilterLabel: string;
+  categoryIds: string[];
+  emptyStateText: string;
+  showInNavigation: boolean;
+  navigationLabel: string;
+  navigationOrder: number;
+  enableCourseSelector: boolean;
+  enableCourseSchedule: boolean;
+  courseVisibleFrom: string;
+  courseVisibleUntil: string;
+}
+
 export type MobileFooterAction = "link" | "tel" | "login" | "dashboard";
 export type MobileFooterIcon = "home" | "courses" | "phone" | "profile" | "login" | "support" | "settings";
 
@@ -44,6 +70,45 @@ export interface FloatingContactChannelSettings extends FloatingContactActionSet
   value: string;
 }
 
+export interface HomepageFaqItem {
+  question: string;
+  answer: string;
+}
+
+export interface HomepageStatItem {
+  label: string;
+  value: number;
+  suffix: string;
+}
+
+export interface HomepageHowItWorksStep {
+  title: string;
+  desc: string;
+  icon?: string;
+}
+
+export interface HomepageWhyChooseItem {
+  icon?: string;
+  title: string;
+  description: string;
+}
+
+export interface HomepageSection {
+  id: string;
+  type: "hero" | "text" | "courses" | "features" | "banner" | "cta" | "custom";
+  title: string;
+  subtitle?: string;
+  content?: string;
+  imageUrl?: string;
+  backgroundColor?: string;
+  textColor?: string;
+  fontSize?: string;
+  fontFamily?: string;
+  order: number;
+  visible: boolean;
+  customSettings?: Record<string, unknown>;
+}
+
 export interface SiteSettings {
   colors: {
     primary: string;
@@ -56,6 +121,7 @@ export interface SiteSettings {
   fonts: {
     heading: string;
     body: string;
+    baseSizePx: number;
   };
   logo: string;
   sections: {
@@ -80,8 +146,17 @@ export interface SiteSettings {
     loginLabel: string;
     signupLabel: string;
     announcementSpeedSeconds: number;
+    showBrandText: boolean;
+    brandTitle: string;
+    brandSubtitle: string;
+    navTextColor: string;
+    navHoverBg: string;
+    navActiveBg: string;
+    solidButtonBg: string;
+    solidButtonText: string;
     navLinks: HeaderNavLink[];
     customButtons: HeaderQuickButton[];
+    courseCollections: HeaderCourseCollection[];
   };
   mobileFooter: {
     visible: boolean;
@@ -99,6 +174,35 @@ export interface SiteSettings {
     type: AnimationType;
     speed: AnimationSpeed;
   };
+  bunnyStreamApi: {
+    enabled: boolean;
+    libraryId: string;
+    apiKey: string;
+    cdnHostname: string;
+    pullZone: string;
+  };
+  homepageContent: {
+    faq: {
+      title: string;
+      subtitle: string;
+      items: HomepageFaqItem[];
+    };
+    stats: {
+      items: HomepageStatItem[];
+    };
+    howItWorks: {
+      title: string;
+      subtitle: string;
+      steps: HomepageHowItWorksStep[];
+    };
+    whyChooseUs: {
+      title: string;
+      subtitle: string;
+      items: HomepageWhyChooseItem[];
+    };
+  };
+  exploreCategoryIds: string[];
+  customHomepageSections: HomepageSection[];
 }
 
 const createDefaultSettings = (): SiteSettings => ({
@@ -113,6 +217,7 @@ const createDefaultSettings = (): SiteSettings => ({
   fonts: {
     heading: "Plus Jakarta Sans",
     body: "Inter",
+    baseSizePx: 16,
   },
   logo: "/ednovate-logo.svg",
   sections: {
@@ -137,6 +242,14 @@ const createDefaultSettings = (): SiteSettings => ({
     loginLabel: "Login",
     signupLabel: "Sign Up Free",
     announcementSpeedSeconds: 28,
+    showBrandText: false,
+    brandTitle: "Ednovate",
+    brandSubtitle: "Exam Ready Learning",
+    navTextColor: "#000000",
+    navHoverBg: "#f5f5f5",
+    navActiveBg: "#0000000d",
+    solidButtonBg: "#E04040",
+    solidButtonText: "#FFFFFF",
     navLinks: [
       {
         id: "nav-courses",
@@ -148,14 +261,14 @@ const createDefaultSettings = (): SiteSettings => ({
       {
         id: "nav-new-releases",
         label: "New Releases",
-        href: "/#courses",
+        href: "/collections/new-releases",
         hasDropdown: false,
         visible: true,
       },
       {
         id: "nav-most-popular",
         label: "Most Popular",
-        href: "/#courses",
+        href: "/collections/most-popular",
         hasDropdown: false,
         visible: true,
       },
@@ -169,7 +282,7 @@ const createDefaultSettings = (): SiteSettings => ({
       {
         id: "nav-contact",
         label: "Contact Us",
-        href: "/#footer",
+        href: "/contact-us",
         hasDropdown: false,
         visible: true,
       },
@@ -182,6 +295,58 @@ const createDefaultSettings = (): SiteSettings => ({
         style: "outline",
         visible: true,
         newTab: false,
+      },
+    ],
+    courseCollections: [
+      {
+        id: "collection-new-releases",
+        slug: "new-releases",
+        title: "New Releases",
+        description: "Freshly launched courses with the latest updates and exam-focused strategy.",
+        badge: "Just Launched",
+        heroImageUrl: "",
+        ctaLabel: "Explore New Courses",
+        visible: true,
+        sortOrder: 1,
+        courseIds: [],
+        enableSearch: true,
+        searchPlaceholder: "Search in new releases...",
+        enableCategoryFilter: true,
+        categoryFilterLabel: "Browse by Category",
+        categoryIds: [],
+        emptyStateText: "No courses found for selected filters.",
+        showInNavigation: true,
+        navigationLabel: "New Releases",
+        navigationOrder: 1,
+        enableCourseSelector: true,
+        enableCourseSchedule: false,
+        courseVisibleFrom: "",
+        courseVisibleUntil: "",
+      },
+      {
+        id: "collection-most-popular",
+        slug: "most-popular",
+        title: "Most Popular",
+        description: "Top-picked programs trusted by students for consistent exam performance.",
+        badge: "Top Picks",
+        heroImageUrl: "",
+        ctaLabel: "View Popular Courses",
+        visible: true,
+        sortOrder: 2,
+        courseIds: [],
+        enableSearch: true,
+        searchPlaceholder: "Search in most popular...",
+        enableCategoryFilter: true,
+        categoryFilterLabel: "Filter by Category",
+        categoryIds: [],
+        emptyStateText: "No popular courses found for selected filters.",
+        showInNavigation: true,
+        navigationLabel: "Most Popular",
+        navigationOrder: 2,
+        enableCourseSelector: true,
+        enableCourseSchedule: false,
+        courseVisibleFrom: "",
+        courseVisibleUntil: "",
       },
     ],
   },
@@ -248,6 +413,66 @@ const createDefaultSettings = (): SiteSettings => ({
     type: "up",
     speed: "normal",
   },
+  bunnyStreamApi: {
+    enabled: false,
+    libraryId: "",
+    apiKey: "",
+    cdnHostname: "",
+    pullZone: "",
+  },
+  homepageContent: {
+    faq: {
+      title: "Frequently Asked Questions",
+      subtitle: "Answers to your most common questions",
+      items: [
+        {
+          question: "How long can I access the courses?",
+          answer: "You can access your enrolled courses unlimited times until the validity period ends. Most courses are valid until the exam date.",
+        },
+        {
+          question: "Are demo classes available?",
+          answer: "Yes! Free demo lectures are available for every course. Visit the course details page to watch the demo.",
+        },
+        {
+          question: "What payment options are available?",
+          answer: "We accept UPI, Credit/Debit Cards, Net Banking, and EMI options. All payments are secure and encrypted.",
+        },
+        {
+          question: "Will the courses work on mobile?",
+          answer: "Absolutely! All courses run smoothly on mobile, tablet, and desktop. Learn anytime, anywhere.",
+        },
+      ],
+    },
+    stats: {
+      items: [
+        { label: "Courses Purchased", value: 15000, suffix: "+" },
+        { label: "Students Enrolled", value: 50000, suffix: "+" },
+        { label: "Uploaded Videos", value: 25000, suffix: "+" },
+        { label: "Listed Courses", value: 500, suffix: "+" },
+      ],
+    },
+    howItWorks: {
+      title: "How It Works",
+      subtitle: "Start your learning journey in 4 simple steps",
+      steps: [
+        { title: "Browse Courses", desc: "Explore our wide range of CA, CS & CMA courses", icon: "Search" },
+        { title: "Enroll Instantly", desc: "Quick checkout with secure payment options", icon: "ShoppingCart" },
+        { title: "Start Learning", desc: "Access video lectures, notes & materials anytime", icon: "PlayCircle" },
+        { title: "Ace Your Exams", desc: "Clear exams with confidence & top ranks", icon: "Award" },
+      ],
+    },
+    whyChooseUs: {
+      title: "Everything You Need to Succeed",
+      subtitle: "A complete learning ecosystem built for serious students",
+      items: [
+        { icon: "BookOpen", title: "All Subjects Under One Roof", description: "Complete course coverage for CA, CS, CMA and more" },
+        { icon: "Monitor", title: "HD Recorded Lectures", description: "Crystal clear video quality for the best learning experience" },
+        { icon: "Users", title: "Choice of Professor", description: "Learn from your preferred faculty members" },
+      ],
+    },
+  },
+  exploreCategoryIds: [],
+  customHomepageSections: [],
 });
 
 const defaultSettings: SiteSettings = createDefaultSettings();
@@ -269,14 +494,78 @@ const normalizeHeaderButton = (
   };
 };
 
+const normalizeHeaderCollection = (
+  collection: Partial<HeaderCourseCollection>,
+  index: number,
+): HeaderCourseCollection => {
+  const fallbackSlug = `collection-${index + 1}`;
+  const slug = String(collection.slug || fallbackSlug)
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9-]/g, "-")
+    .replace(/-{2,}/g, "-")
+    .replace(/^-|-$/g, "") || fallbackSlug;
+
+  const nextCourseIds = Array.isArray(collection.courseIds)
+    ? collection.courseIds.map((item) => String(item).trim()).filter(Boolean)
+    : [];
+
+  return {
+    id: collection.id || `collection-${index + 1}`,
+    slug,
+    title: String(collection.title || `Collection ${index + 1}`),
+    description: String(collection.description || ""),
+    badge: String(collection.badge || ""),
+    heroImageUrl: String(collection.heroImageUrl || ""),
+    ctaLabel: String(collection.ctaLabel || "Explore Courses"),
+    visible: collection.visible !== false,
+    sortOrder: Number(collection.sortOrder || index + 1),
+    courseIds: nextCourseIds,
+    enableSearch: collection.enableSearch !== false,
+    searchPlaceholder: String(collection.searchPlaceholder || "Search courses..."),
+    enableCategoryFilter: collection.enableCategoryFilter !== false,
+    categoryFilterLabel: String(collection.categoryFilterLabel || "Filter by Category"),
+    categoryIds: Array.isArray(collection.categoryIds)
+      ? collection.categoryIds.map((item) => String(item).trim()).filter(Boolean)
+      : [],
+    emptyStateText: String(collection.emptyStateText || "No courses found for selected filters."),
+    showInNavigation: collection.showInNavigation !== false,
+    navigationLabel: String(collection.navigationLabel || collection.title || `Collection ${index + 1}`),
+    navigationOrder: Number(collection.navigationOrder || index + 1),
+    enableCourseSelector: collection.enableCourseSelector !== false,
+    enableCourseSchedule: collection.enableCourseSchedule === true,
+    courseVisibleFrom: String(collection.courseVisibleFrom || ""),
+    courseVisibleUntil: String(collection.courseVisibleUntil || ""),
+  };
+};
+
 const normalizeHeaderNavLink = (
   link: Partial<HeaderNavLink>,
   index: number,
 ): HeaderNavLink => {
+  const normalizedId = link.id || `nav-link-${index + 1}`;
+  const normalizedLabel = link.label || `Menu ${index + 1}`;
+  const rawHref = link.href || "/";
+  const shouldMigrateNewReleaseHref =
+    (normalizedId === "nav-new-releases" || normalizedLabel.toLowerCase() === "new releases") &&
+    (rawHref === "/#courses" || rawHref === "#courses");
+  const shouldMigrateMostPopularHref =
+    (normalizedId === "nav-most-popular" || normalizedLabel.toLowerCase() === "most popular") &&
+    (rawHref === "/#courses" || rawHref === "#courses");
+  const shouldMigrateContactHref =
+    (normalizedId === "nav-contact" || normalizedLabel.toLowerCase() === "contact us") &&
+    (rawHref === "/#footer" || rawHref === "#footer");
+
   return {
-    id: link.id || `nav-link-${index + 1}`,
-    label: link.label || `Menu ${index + 1}`,
-    href: link.href || "/",
+    id: normalizedId,
+    label: normalizedLabel,
+    href: shouldMigrateContactHref
+      ? "/contact-us"
+      : shouldMigrateNewReleaseHref
+        ? "/collections/new-releases"
+        : shouldMigrateMostPopularHref
+          ? "/collections/most-popular"
+          : rawHref,
     hasDropdown: Boolean(link.hasDropdown),
     visible: link.visible !== false,
   };
@@ -344,6 +633,10 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
     fonts: {
       ...base.fonts,
       ...(stored.fonts || {}),
+      baseSizePx:
+        typeof stored.fonts?.baseSizePx === "number" && Number.isFinite(stored.fonts.baseSizePx)
+          ? stored.fonts.baseSizePx
+          : base.fonts.baseSizePx,
     },
     sections: {
       ...base.sections,
@@ -352,12 +645,26 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
     header: {
       ...base.header,
       ...(stored.header || {}),
+      showBrandText:
+        typeof stored.header?.showBrandText === "boolean"
+          ? stored.header.showBrandText
+          : base.header.showBrandText,
+      brandTitle: String(stored.header?.brandTitle || base.header.brandTitle),
+      brandSubtitle: String(stored.header?.brandSubtitle || base.header.brandSubtitle),
+      navTextColor: String(stored.header?.navTextColor || base.header.navTextColor),
+      navHoverBg: String(stored.header?.navHoverBg || base.header.navHoverBg),
+      navActiveBg: String(stored.header?.navActiveBg || base.header.navActiveBg),
+      solidButtonBg: String(stored.header?.solidButtonBg || base.header.solidButtonBg),
+      solidButtonText: String(stored.header?.solidButtonText || base.header.solidButtonText),
       navLinks: Array.isArray(stored.header?.navLinks)
         ? stored.header!.navLinks.map((link, index) => normalizeHeaderNavLink(link, index))
         : base.header.navLinks,
       customButtons: Array.isArray(stored.header?.customButtons)
         ? stored.header!.customButtons.map((button, index) => normalizeHeaderButton(button, index))
         : base.header.customButtons,
+      courseCollections: Array.isArray(stored.header?.courseCollections)
+        ? stored.header!.courseCollections.map((collection, index) => normalizeHeaderCollection(collection, index))
+        : base.header.courseCollections,
     },
     mobileFooter: {
       ...base.mobileFooter,
@@ -377,6 +684,80 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
       ...base.animations,
       ...(stored.animations || {}),
     },
+    homepageContent: {
+      faq: {
+        title: String(stored.homepageContent?.faq?.title || base.homepageContent.faq.title),
+        subtitle: String(stored.homepageContent?.faq?.subtitle || base.homepageContent.faq.subtitle),
+        items: Array.isArray(stored.homepageContent?.faq?.items)
+          ? stored.homepageContent!.faq!.items
+              .map((item) => ({
+                question: String(item?.question || ""),
+                answer: String(item?.answer || ""),
+              }))
+              .filter((item) => item.question || item.answer)
+          : base.homepageContent.faq.items,
+      },
+      stats: {
+        items: Array.isArray(stored.homepageContent?.stats?.items)
+          ? stored.homepageContent!.stats!.items
+              .map((item) => ({
+                label: String(item?.label || ""),
+                value: Number(item?.value || 0),
+                suffix: String(item?.suffix || ""),
+              }))
+              .filter((item) => item.label)
+          : base.homepageContent.stats.items,
+      },
+      howItWorks: {
+        title: String(stored.homepageContent?.howItWorks?.title || base.homepageContent.howItWorks.title),
+        subtitle: String(stored.homepageContent?.howItWorks?.subtitle || base.homepageContent.howItWorks.subtitle),
+        steps: Array.isArray(stored.homepageContent?.howItWorks?.steps)
+          ? stored.homepageContent!.howItWorks!.steps
+              .map((step) => ({
+                title: String(step?.title || ""),
+                desc: String(step?.desc || ""),
+                icon: String(step?.icon || ""),
+              }))
+              .filter((step) => step.title || step.desc)
+          : base.homepageContent.howItWorks.steps,
+      },
+      whyChooseUs: {
+        title: String(stored.homepageContent?.whyChooseUs?.title || base.homepageContent.whyChooseUs.title),
+        subtitle: String(stored.homepageContent?.whyChooseUs?.subtitle || base.homepageContent.whyChooseUs.subtitle),
+        items: Array.isArray(stored.homepageContent?.whyChooseUs?.items)
+          ? stored.homepageContent!.whyChooseUs!.items
+              .map((item) => ({
+                icon: String(item?.icon || ""),
+                title: String(item?.title || ""),
+                description: String(item?.description || ""),
+              }))
+              .filter((item) => item.title || item.description)
+          : base.homepageContent.whyChooseUs.items,
+      },
+    },
+    exploreCategoryIds: Array.isArray(stored.exploreCategoryIds)
+      ? stored.exploreCategoryIds.map((item) => String(item).trim()).filter(Boolean)
+      : base.exploreCategoryIds,
+    customHomepageSections: Array.isArray(stored.customHomepageSections)
+      ? stored.customHomepageSections.map((section: unknown) => {
+          const s = section as Partial<HomepageSection> | undefined;
+          return {
+            id: s?.id || `section-${Date.now()}`,
+            type: (["hero", "text", "courses", "features", "banner", "cta", "custom"].includes(String(s?.type)) ? s?.type : "text") as HomepageSection["type"],
+            title: String(s?.title || "Untitled Section"),
+            subtitle: String(s?.subtitle || ""),
+            content: String(s?.content || ""),
+            imageUrl: String(s?.imageUrl || ""),
+            backgroundColor: String(s?.backgroundColor || "#FFFFFF"),
+            textColor: String(s?.textColor || "#000000"),
+            fontSize: String(s?.fontSize || "16"),
+            fontFamily: String(s?.fontFamily || "sans-serif"),
+            order: Number(s?.order || 0),
+            visible: s?.visible !== false,
+            customSettings: (s?.customSettings && typeof s.customSettings === "object") ? s.customSettings : {},
+          } as HomepageSection;
+        })
+      : base.customHomepageSections,
   };
 };
 
@@ -431,6 +812,47 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     return createDefaultSettings();
   });
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadFromBackend = async () => {
+      try {
+        const response = await fetch("/api/platform-settings");
+        if (!response.ok) return;
+        const payload = await response.json().catch(() => ({}));
+        const backendSettings = payload?.settings?.siteSettings;
+        const backendExploreIds = Array.isArray(payload?.settings?.homepage?.exploreCategoryIds)
+          ? payload.settings.homepage.exploreCategoryIds.map((item: unknown) => String(item).trim()).filter(Boolean)
+          : undefined;
+
+        if (!mounted) return;
+
+        if (!backendSettings || typeof backendSettings !== "object") {
+          if (backendExploreIds) {
+            setSettings((prev) => mergeStoredSettings({ ...prev, exploreCategoryIds: backendExploreIds }));
+          }
+          return;
+        }
+
+        setSettings((prev) =>
+          mergeStoredSettings({
+            ...prev,
+            ...(backendSettings as Partial<SiteSettings>),
+            exploreCategoryIds: backendExploreIds || (backendSettings as Partial<SiteSettings>).exploreCategoryIds,
+          }),
+        );
+      } catch {
+        // Keep local settings when backend endpoint is unavailable.
+      }
+    };
+
+    loadFromBackend();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
   // Apply CSS variables whenever colors change
   useEffect(() => {
     const root = document.documentElement;
@@ -454,6 +876,7 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     document.documentElement.style.setProperty("--font-heading", `'${settings.fonts.heading}', sans-serif`);
     document.documentElement.style.setProperty("--font-body", `'${settings.fonts.body}', sans-serif`);
+    document.documentElement.style.fontSize = `${settings.fonts.baseSizePx || 16}px`;
     document.body.style.fontFamily = `'${settings.fonts.body}', sans-serif`;
   }, [settings.fonts]);
 
@@ -492,12 +915,23 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
       header: {
         ...prev.header,
         ...header,
+        showBrandText: header.showBrandText ?? prev.header.showBrandText,
+        brandTitle: header.brandTitle ?? prev.header.brandTitle,
+        brandSubtitle: header.brandSubtitle ?? prev.header.brandSubtitle,
+        navTextColor: header.navTextColor ?? prev.header.navTextColor,
+        navHoverBg: header.navHoverBg ?? prev.header.navHoverBg,
+        navActiveBg: header.navActiveBg ?? prev.header.navActiveBg,
+        solidButtonBg: header.solidButtonBg ?? prev.header.solidButtonBg,
+        solidButtonText: header.solidButtonText ?? prev.header.solidButtonText,
         navLinks: header.navLinks
           ? header.navLinks.map((link, index) => normalizeHeaderNavLink(link, index))
           : prev.header.navLinks,
         customButtons: header.customButtons
           ? header.customButtons.map((button, index) => normalizeHeaderButton(button, index))
           : prev.header.customButtons,
+        courseCollections: header.courseCollections
+          ? header.courseCollections.map((collection, index) => normalizeHeaderCollection(collection, index))
+          : prev.header.courseCollections,
       },
     }));
   };

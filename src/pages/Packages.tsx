@@ -1,7 +1,6 @@
 import { useState, useMemo, useEffect } from "react";
 import { useSearchParams } from "react-router-dom";
 import CourseCard from "@/components/CourseCard";
-import { courseGroups } from "@/data/courses";
 import { Search, X, ChevronDown, ChevronUp, Filter, Sparkles } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { usePlatformData } from "@/context/PlatformDataContext";
@@ -108,6 +107,92 @@ const Packages = () => {
     [managedCourses, visibleCategoryIds],
   );
 
+  // ── Build dynamic parent categories from managed categories (show all visible), with course fallbacks ──────────────────
+  const dynamicCourseGroups = useMemo(() => {
+    // Step 1: Build parent->children map from visible managed categories
+    const parentMap = new Map<string, Set<string>>();
+    const categoryLabels = new Map<string, string>();
+    const categorySortOrder = new Map<string, number>();
+    const visibleCategories = managedCategories.filter((cat) => cat.isVisible);
+    const visibleCategorySet = new Set(visibleCategories.map((cat) => cat.id));
+    
+    // First pass: register all categories
+    visibleCategories.forEach((cat) => {
+      categoryLabels.set(cat.id, cat.name);
+      categorySortOrder.set(cat.id, cat.sortOrder ?? 0);
+      
+      if (cat.parentId && visibleCategorySet.has(cat.parentId)) {
+        // This is a child category
+        if (!parentMap.has(cat.parentId)) {
+          parentMap.set(cat.parentId, new Set());
+        }
+        parentMap.get(cat.parentId)!.add(cat.id);
+      } else {
+        // Root category or child whose parent is not visible
+        if (!parentMap.has(cat.id)) {
+          parentMap.set(cat.id, new Set());
+        }
+      }
+    });
+
+    // Step 2: Get all course categories
+    const courseCategoryIds = new Set(courses.map((c) => c.category));
+
+    // Step 3: Ensure course categories not present in managed categories still appear
+    for (const courseCatId of courseCategoryIds) {
+      const category = managedCategories.find((c) => c.id === courseCatId);
+      
+      if (category && category.isVisible) {
+        if (category.parentId && visibleCategorySet.has(category.parentId)) {
+          // It has a parent, ensure parent exists in map
+          if (!parentMap.has(category.parentId)) {
+            parentMap.set(category.parentId, new Set());
+          }
+          parentMap.get(category.parentId)!.add(courseCatId);
+        } else {
+          // It's a visible root category
+          if (!parentMap.has(courseCatId)) {
+            parentMap.set(courseCatId, new Set());
+          }
+        }
+      } else if (!category) {
+        // Category doesn't exist in managedCategories - treat as standalone parent
+        if (!parentMap.has(courseCatId)) {
+          parentMap.set(courseCatId, new Set());
+          categoryLabels.set(courseCatId, courseCatId);
+          categorySortOrder.set(courseCatId, 9999);
+        }
+      }
+    }
+
+    // Step 4: Build final groups from all collected parents
+    const groupsToRender = Array.from(parentMap.entries())
+      .map(([parentId, childrenIds]) => {
+        const childrenArray = Array.from(childrenIds)
+          .map((childId) => ({
+            id: childId,
+            label: categoryLabels.get(childId) || childId,
+            order: categorySortOrder.get(childId) ?? 0,
+          }))
+          .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label));
+
+        return {
+          id: parentId,
+          label: categoryLabels.get(parentId) || parentId,
+          order: categorySortOrder.get(parentId) ?? 0,
+          children: childrenArray.map(({ id, label }) => ({ id, label })),
+        };
+      })
+      .sort((a, b) => a.order - b.order || a.label.localeCompare(b.label)) as Array<{
+        id: string;
+        label: string;
+        order: number;
+        children: Array<{ id: string; label: string }>;
+      }>;
+
+    return groupsToRender;
+  }, [courses, managedCategories]);
+
   const categories = useMemo(
     () => [
       { id: "all", label: "All Courses" },
@@ -120,18 +205,20 @@ const Packages = () => {
   );
 
   // Filter states
-  const [selectedCourses, setSelectedCourses] = useState<string[]>([]);
-  const [selectedLevels, setSelectedLevels] = useState<string[]>([]);
+  const [selectedParentGroups, setSelectedParentGroups] = useState<string[]>([]);
+  const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [selectedProfessors, setSelectedProfessors] = useState<string[]>([]);
+  const [selectedDeliveryModes, setSelectedDeliveryModes] = useState<string[]>([]);
 
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
-    courses: false,
+    categories: false,
     levels: false,
     types: false,
     language: false,
     professor: false,
+    deliveryMode: false,
   });
 
   const toggleSection = (key: string) =>
@@ -148,61 +235,79 @@ const Packages = () => {
 
   useEffect(() => {
     const category = searchParams.get("category");
-    if (category && !selectedCourses.includes(category)) {
-      setSelectedCourses([category]);
-      setOpenSections((prev) => ({ ...prev, courses: true }));
+    if (category && dynamicCourseGroups.length > 0) {
+      // Find parent group for this subcategory
+      const parentGroup = dynamicCourseGroups.find((g) =>
+        g.children.some((c) => c.id === category),
+      );
+      if (parentGroup && !selectedParentGroups.includes(parentGroup.id)) {
+        setSelectedParentGroups([parentGroup.id]);
+        setSelectedSubcategories([category]);
+        setOpenSections((prev) => ({ ...prev, categories: true }));
+      }
     }
-  }, [searchParams, selectedCourses]);
+  }, [searchParams, selectedParentGroups, dynamicCourseGroups]);
 
   const activeFilterCount =
-    selectedCourses.length +
-    selectedLevels.length +
+    selectedParentGroups.length +
+    selectedSubcategories.length +
     selectedTypes.length +
     selectedLanguages.length +
-    selectedProfessors.length;
+    selectedProfessors.length +
+    selectedDeliveryModes.length;
 
   const clearAllFilters = () => {
-    setSelectedCourses([]);
-    setSelectedLevels([]);
+    setSelectedParentGroups([]);
+    setSelectedSubcategories([]);
     setSelectedTypes([]);
     setSelectedLanguages([]);
     setSelectedProfessors([]);
+    setSelectedDeliveryModes([]);
     setSearchQuery("");
     setSortBy("default");
   };
 
-  // ── Determine which courses match selected course groups ──────────
+  // ── Determine which courses match selected categories ──────────
   const coursePoolAfterCategory = useMemo(() => {
-    if (selectedCourses.length === 0) return courses;
-    return courses.filter((c) =>
-      selectedCourses.some(
-        (cat) => c.category === cat || c.category.startsWith(cat + "-")  || c.category === cat
-      )
-    );
-  }, [selectedCourses]);
+    if (selectedParentGroups.length === 0 && selectedSubcategories.length === 0) return courses;
+    const selectedSet = new Set([...selectedParentGroups, ...selectedSubcategories]);
+    return courses.filter((c) => selectedSet.has(c.category));
+  }, [selectedParentGroups, selectedSubcategories, courses]);
 
-  // ── Dynamic filter options based on selected course category ──────
-  const dynamicLevels = useMemo(() => {
-    // Get levels relevant to selected courses
-    const relevantGroups =
-      selectedCourses.length > 0
-        ? courseGroups.filter((g) =>
-            selectedCourses.some((sc) => sc === g.id || sc.startsWith(g.id + "-"))
-          )
-        : courseGroups;
-
-    const levels: { id: string; label: string }[] = [];
-    relevantGroups.forEach((g) => {
-      g.children.forEach((child) => {
-        const levelName = child.label; // Foundation, Inter, Final, Executive, Professional
-        if (!levels.find((l) => l.label === levelName)) {
-          levels.push({ id: child.id, label: levelName });
-        }
-      });
+  // ── Get available levels (children) for selected parent groups ──────────
+  const availableLevels = useMemo(() => {
+    if (selectedParentGroups.length === 0) return [];
+    const childrenArr: { id: string; label: string; count: number }[] = [];
+    const childIds = new Set<string>();
+    
+    selectedParentGroups.forEach((parentId) => {
+      const group = dynamicCourseGroups.find((g) => g.id === parentId);
+      if (group) {
+        group.children.forEach((child) => {
+          if (!childIds.has(child.id)) {
+            childIds.add(child.id);
+            const count = courses.filter((c) => c.category === child.id).length;
+            childrenArr.push({ id: child.id, label: child.label, count });
+          }
+        });
+      }
     });
-    // For groups without children (CMA, CFA etc.) don't add levels
-    return levels;
-  }, [selectedCourses]);
+    return childrenArr;
+  }, [selectedParentGroups, dynamicCourseGroups, courses]);
+
+  const dynamicDeliveryModes = useMemo(() => {
+    const pool = coursePoolAfterCategory;
+    const modesMap = new Map<string, number>();
+    pool.forEach((c) => {
+      if (Array.isArray(c.deliveryModes)) {
+        c.deliveryModes.forEach((mode) => {
+          const count = modesMap.get(mode.id) || 0;
+          modesMap.set(mode.id, count + 1);
+        });
+      }
+    });
+    return Array.from(modesMap, ([id, count]) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1), count }));
+  }, [coursePoolAfterCategory]);
 
   const dynamicTypes = useMemo(() => {
     const pool = coursePoolAfterCategory;
@@ -234,11 +339,8 @@ const Packages = () => {
     }));
   }, [coursePoolAfterCategory]);
 
-  // Keep filter selections valid as course groups change.
+  // Keep filter selections valid as filter options change.
   useEffect(() => {
-    const validLevelIds = dynamicLevels.map((l) => l.id);
-    setSelectedLevels((prev) => prev.filter((l) => validLevelIds.includes(l)));
-
     const validTypeIds = dynamicTypes.map((t) => t.id);
     setSelectedTypes((prev) => prev.filter((t) => validTypeIds.includes(t)));
 
@@ -247,17 +349,14 @@ const Packages = () => {
 
     const validProfs = dynamicProfessors.map((p) => p.label);
     setSelectedProfessors((prev) => prev.filter((p) => validProfs.includes(p)));
-  }, [dynamicLevels, dynamicTypes, dynamicLanguages, dynamicProfessors]);
+
+    const validModes = dynamicDeliveryModes.map((m) => m.id);
+    setSelectedDeliveryModes((prev) => prev.filter((m) => validModes.includes(m)));
+  }, [dynamicTypes, dynamicLanguages, dynamicProfessors, dynamicDeliveryModes]);
 
   // ── Final filtered results ────────────────────────────────────────
   const filtered = useMemo(() => {
     let result = coursePoolAfterCategory;
-
-    if (selectedLevels.length > 0) {
-      result = result.filter((c) =>
-        selectedLevels.some((level) => c.category === level)
-      );
-    }
 
     if (selectedTypes.length > 0) {
       result = result.filter((c) => {
@@ -276,6 +375,14 @@ const Packages = () => {
       result = result.filter((c) => selectedProfessors.includes(c.professor));
     }
 
+    if (selectedDeliveryModes.length > 0) {
+      result = result.filter((c) =>
+        selectedDeliveryModes.some((mode) =>
+          Array.isArray(c.deliveryModes) && c.deliveryModes.some((dm) => dm.id === mode),
+        ),
+      );
+    }
+
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase();
       result = result.filter(
@@ -290,7 +397,7 @@ const Packages = () => {
     if (sortBy === "discount") result = [...result].sort((a, b) => b.discount - a.discount);
 
     return result;
-  }, [coursePoolAfterCategory, selectedLevels, selectedTypes, selectedLanguages, selectedProfessors, searchQuery, sortBy]);
+  }, [coursePoolAfterCategory, selectedTypes, selectedLanguages, selectedProfessors, selectedDeliveryModes, searchQuery, sortBy]);
 
   // ── Sidebar content ───────────────────────────────────────────────
   const filterSidebar = (
@@ -316,23 +423,25 @@ const Packages = () => {
       {/* Active filter chips */}
       {activeFilterCount > 0 && (
         <div className="flex flex-wrap gap-1 mb-3 px-1 pb-3 border-b border-border/60">
-          {selectedCourses.map((id) => {
-            const group = courseGroups.find((g) => g.id === id);
-            const cat = categories.find((c) => c.id === id);
-            const label = group?.label || cat?.label || id;
+          {selectedParentGroups.map((id) => {
+            const group = dynamicCourseGroups.find((g) => g.id === id);
+            const label = group?.label || id;
             return (
               <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-accent text-accent-foreground text-[10px] font-bold rounded-full">
                 {label}
-                <X className="w-2.5 h-2.5 cursor-pointer hover:opacity-70" onClick={() => toggleFilter(selectedCourses, setSelectedCourses, id)} />
+                <X className="w-2.5 h-2.5 cursor-pointer hover:opacity-70" onClick={() => {
+                  toggleFilter(selectedParentGroups, setSelectedParentGroups, id);
+                  setSelectedSubcategories((prev) => prev.filter((sub) => !dynamicCourseGroups.find((g) => g.id === id)?.children.some((c) => c.id === sub)));
+                }} />
               </span>
             );
           })}
-          {selectedLevels.map((id) => {
-            const child = courseGroups.flatMap((g) => g.children).find((c) => c.id === id);
+          {selectedSubcategories.map((id) => {
+            const child = dynamicCourseGroups.flatMap((g) => g.children).find((c) => c.id === id);
             return (
               <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary text-primary-foreground text-[10px] font-bold rounded-full">
                 {child?.label || id}
-                <X className="w-2.5 h-2.5 cursor-pointer hover:opacity-70" onClick={() => toggleFilter(selectedLevels, setSelectedLevels, id)} />
+                <X className="w-2.5 h-2.5 cursor-pointer hover:opacity-70" onClick={() => toggleFilter(selectedSubcategories, setSelectedSubcategories, id)} />
               </span>
             );
           })}
@@ -354,74 +463,71 @@ const Packages = () => {
               <X className="w-2.5 h-2.5 cursor-pointer hover:opacity-70" onClick={() => toggleFilter(selectedProfessors, setSelectedProfessors, prof)} />
             </span>
           ))}
+          {selectedDeliveryModes.map((mode) => (
+            <span key={mode} className="inline-flex items-center gap-1 px-2 py-0.5 bg-green-500/20 text-green-700 dark:text-green-400 text-[10px] font-bold rounded-full">
+              {mode.charAt(0).toUpperCase() + mode.slice(1)}
+              <X className="w-2.5 h-2.5 cursor-pointer hover:opacity-70" onClick={() => toggleFilter(selectedDeliveryModes, setSelectedDeliveryModes, mode)} />
+            </span>
+          ))}
         </div>
       )}
 
-      {/* ─── 1. COURSES (parent pills) ─── */}
+      {/* ─── 1. COURSES (parent categories only) ─── */}
       <FilterSection
         title="Courses"
-        isOpen={openSections.courses}
-        onToggle={() => toggleSection("courses")}
-        badge={selectedCourses.length}
+        isOpen={openSections.categories}
+        onToggle={() => toggleSection("categories")}
+        badge={selectedParentGroups.length}
       >
-        <div className="space-y-0">
-          {courseGroups.map((group) => {
-            const isSelected = selectedCourses.includes(group.id);
-            const count = courses.filter(
-              (c) => c.category === group.id || c.category.startsWith(group.id + "-")
+        <div className="space-y-1">
+          {dynamicCourseGroups.map((group) => {
+            const parentCourseCount = courses.filter(
+              (c) => c.category === group.id || group.children.some((child) => c.category === child.id)
             ).length;
             return (
               <CheckItem
                 key={group.id}
                 label={group.label}
-                checked={isSelected}
+                checked={selectedParentGroups.includes(group.id)}
                 onChange={() => {
-                  toggleFilter(selectedCourses, setSelectedCourses, group.id);
-                  setSelectedLevels([]);
-                  setSelectedTypes([]);
+                  toggleFilter(selectedParentGroups, setSelectedParentGroups, group.id);
+                  if (!selectedParentGroups.includes(group.id)) {
+                    // When selecting parent, auto-clear any old selected types/languages to reset filters
+                    setSelectedTypes([]);
+                  }
                 }}
-                count={count}
+                count={parentCourseCount}
               />
             );
           })}
         </div>
       </FilterSection>
 
-      {/* ─── 2. LEVELS (dynamic based on course) ─── */}
-      {dynamicLevels.length > 0 && (
-        <FilterSection
-          title="Levels"
-          isOpen={openSections.levels}
-          onToggle={() => toggleSection("levels")}
-          badge={selectedLevels.length}
-        >
-          {selectedCourses.length === 0 ? (
-            <p className="text-[10px] text-muted-foreground italic flex items-center gap-1">
-              <Sparkles className="w-3 h-3" /> Select a course above to see levels
-            </p>
+      {/* ─── 2. LEVELS (children of selected parents) - ALWAYS VISIBLE ─── */}
+      <FilterSection
+        title="Levels"
+        isOpen={openSections.levels}
+        onToggle={() => toggleSection("levels")}
+        badge={selectedSubcategories.length}
+      >
+        <div className="space-y-0">
+          {availableLevels.length > 0 ? (
+            availableLevels.map((level) => (
+              <CheckItem
+                key={level.id}
+                label={level.label}
+                checked={selectedSubcategories.includes(level.id)}
+                onChange={() => toggleFilter(selectedSubcategories, setSelectedSubcategories, level.id)}
+                count={level.count}
+              />
+            ))
           ) : (
-            <div className="space-y-0">
-              {dynamicLevels.map((level) => {
-                const count = coursePoolAfterCategory.filter(
-                  (c) => c.category === level.id
-                ).length;
-                return (
-                  <CheckItem
-                    key={level.id}
-                    label={level.label}
-                    checked={selectedLevels.includes(level.id)}
-                    onChange={() => toggleFilter(selectedLevels, setSelectedLevels, level.id)}
-                    count={count}
-                    indent
-                  />
-                );
-              })}
-            </div>
+            <p className="text-xs text-muted-foreground italic">Select a course to see levels</p>
           )}
-        </FilterSection>
-      )}
+        </div>
+      </FilterSection>
 
-      {/* ─── 3. TYPES (dynamic) ─── */}
+      {/* ─── 3. TYPES ─── */}
       <FilterSection
         title="Types"
         isOpen={openSections.types}
@@ -480,6 +586,28 @@ const Packages = () => {
           ))}
         </div>
       </FilterSection>
+
+      {/* ─── 6. DELIVERY MODE (dynamic) ─── */}
+      {dynamicDeliveryModes.length > 0 && (
+        <FilterSection
+          title="Delivery Mode"
+          isOpen={openSections.deliveryMode}
+          onToggle={() => toggleSection("deliveryMode")}
+          badge={selectedDeliveryModes.length}
+        >
+          <div className="space-y-0">
+            {dynamicDeliveryModes.map((mode) => (
+              <CheckItem
+                key={mode.id}
+                label={mode.label}
+                checked={selectedDeliveryModes.includes(mode.id)}
+                onChange={() => toggleFilter(selectedDeliveryModes, setSelectedDeliveryModes, mode.id)}
+                count={mode.count}
+              />
+            ))}
+          </div>
+        </FilterSection>
+      )}
     </div>
   );
 
@@ -585,11 +713,11 @@ const Packages = () => {
           {/* Course grid */}
           <div className="flex-1 min-w-0">
             {/* Smart hint */}
-            {selectedCourses.length === 0 && (
+            {selectedParentGroups.length === 0 && selectedSubcategories.length === 0 && (
               <div className="mb-4 p-3 rounded-lg bg-accent/5 border border-accent/10 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-accent flex-shrink-0" />
                 <p className="text-[11px] text-muted-foreground">
-                  <span className="font-bold text-foreground">Tip:</span> Select a course (CA, CS, CMA...) from Filters to see relevant levels, types & professors.
+                  <span className="font-bold text-foreground">Tip:</span> Select a course category (CA, CS, CMA...) from Filters to see relevant offerings.
                 </p>
               </div>
             )}

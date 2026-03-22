@@ -22,6 +22,28 @@ const CartDrawer = () => {
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
 
+  const getModeLabel = (item: (typeof items)[number]): string | undefined => {
+    if (!item.deliveryModePricingEnabled) return undefined;
+    const modes = Array.isArray(item.deliveryModes) ? item.deliveryModes : [];
+    const selectedIds = Array.isArray(item.selectedDeliveryModeIds)
+      ? item.selectedDeliveryModeIds
+      : String(item.selectedDeliveryModeId || "").trim()
+        ? [String(item.selectedDeliveryModeId || "").trim()]
+        : [];
+    if (selectedIds.length === 0 || modes.length === 0) return undefined;
+    const labels = modes.filter((mode) => selectedIds.includes(mode.id)).map((mode) => mode.label);
+    return labels.length > 0 ? labels.join(", ") : undefined;
+  };
+
+  const getBookLabel = (item: (typeof items)[number]): string | undefined => {
+    if (!item.bookAddonEnabled) return undefined;
+    const addons = Array.isArray(item.bookAddons) ? item.bookAddons : [];
+    const selectedIds = Array.isArray(item.selectedBookAddonIds) ? item.selectedBookAddonIds : [];
+    if (selectedIds.length === 0 || addons.length === 0) return undefined;
+    const labels = addons.filter((addon) => selectedIds.includes(addon.id)).map((addon) => addon.label);
+    return labels.length > 0 ? labels.join(", ") : undefined;
+  };
+
   const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
   const totalOriginal = items.reduce((sum, item) => sum + item.originalPrice, 0);
   const totalSavings = totalOriginal - totalPrice;
@@ -77,6 +99,12 @@ const CartDrawer = () => {
                       {item.title}
                     </h4>
                     <p className="text-[10px] text-muted-foreground mb-1.5">{item.professor}</p>
+                    {getModeLabel(item) && (
+                      <p className="text-[10px] text-accent font-medium mb-1">Mode: {getModeLabel(item)}</p>
+                    )}
+                    {getBookLabel(item) && (
+                      <p className="text-[10px] text-indigo-600 font-medium mb-1">Books: {getBookLabel(item)}</p>
+                    )}
                     <div className="flex items-baseline gap-1.5">
                       <span className="text-sm font-bold text-foreground">₹{item.price.toLocaleString()}</span>
                       {item.originalPrice > item.price && (

@@ -1,5 +1,6 @@
 import { createContext, useCallback, useContext, useState, ReactNode } from "react";
 import {
+  SESSION_TOKEN_KEY,
   fetchProfileApi,
   loginWithEmailApi,
   resetPasswordByMobileApi,
@@ -18,6 +19,7 @@ interface AuthContextType {
   user: AuthUserProfile | null;
   isProfileLoading: boolean;
   login: (name?: string) => void;
+  loginAsUser: (user: AuthUserProfile) => void;
   logout: () => void;
   sendOtp: (mobileNo: string) => Promise<AuthActionResult>;
   verifyOtpCode: (mobileNo: string, otp: string) => Promise<AuthActionResult>;
@@ -74,6 +76,7 @@ const AuthContext = createContext<AuthContextType>({
   user: null,
   isProfileLoading: false,
   login: () => {},
+  loginAsUser: () => {},
   logout: () => {},
   sendOtp: async () => errorResult("Auth provider is not ready."),
   verifyOtpCode: async () => errorResult("Auth provider is not ready."),
@@ -140,6 +143,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     });
   };
 
+  const loginAsUser = (nextUser: AuthUserProfile) => {
+    applyUser(nextUser);
+  };
+
   const logout = () => {
     setIsLoggedIn(false);
     setUserName("");
@@ -147,6 +154,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem(STORAGE_KEYS.loggedIn);
     localStorage.removeItem(STORAGE_KEYS.userName);
     localStorage.removeItem(STORAGE_KEYS.user);
+    localStorage.removeItem(SESSION_TOKEN_KEY);
   };
 
   const refreshProfile = useCallback(async (): Promise<AuthActionResult> => {
@@ -331,6 +339,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
         user,
         isProfileLoading,
         login,
+        loginAsUser,
         logout,
         sendOtp,
         verifyOtpCode,

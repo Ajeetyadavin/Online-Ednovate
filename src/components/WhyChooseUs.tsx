@@ -1,6 +1,7 @@
 import { BookOpen, Monitor, Users, Globe, Wifi, Layers, Award, MessageCircle, Target } from "lucide-react";
 import { whyChooseUs } from "@/data/courses";
 import { useScrollReveal } from "@/hooks/use-scroll-reveal";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const iconMap: Record<string, React.ElementType> = {
   BookOpen, Monitor, Users, Globe, Wifi, Layers, Award, MessageCircle, Target,
@@ -9,6 +10,11 @@ const iconMap: Record<string, React.ElementType> = {
 const WhyChooseUs = () => {
   const { ref: titleRef, isVisible: titleVisible } = useScrollReveal();
   const { ref: gridRef, isVisible: gridVisible } = useScrollReveal({ threshold: 0.05 });
+  const { settings } = useSiteSettings();
+  const configured = settings.homepageContent?.whyChooseUs;
+  const displayTitle = configured?.title || "Everything You Need to Succeed";
+  const displaySubtitle = configured?.subtitle || "A complete learning ecosystem built for serious students";
+  const displayItems = configured?.items?.length ? configured.items : whyChooseUs;
 
   return (
     <section id="why-choose" className="py-8 md:py-10 bg-muted/50">
@@ -16,15 +22,15 @@ const WhyChooseUs = () => {
         <div ref={titleRef} className={`text-center mb-8 reveal-up ${titleVisible ? "visible" : ""}`}>
           <span className="text-primary text-sm font-extrabold uppercase tracking-widest">Why Ednovate</span>
           <h2 className="section-title mt-2">
-            Everything You Need to <span className="text-primary">Succeed</span>
+            {displayTitle}
           </h2>
           <p className="section-subtitle">
-            A complete learning ecosystem built for serious students
+            {displaySubtitle}
           </p>
         </div>
         <div ref={gridRef} className={`grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-5 stagger-children ${gridVisible ? "visible" : ""}`}>
-          {whyChooseUs.map((item) => {
-            const Icon = iconMap[item.icon];
+          {displayItems.map((item) => {
+            const Icon = iconMap[item.icon || ""] || BookOpen;
             return (
               <div
                 key={item.title}
@@ -35,8 +41,8 @@ const WhyChooseUs = () => {
                     <Icon className="w-5 h-5 text-primary" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-black text-base text-foreground mb-1.5">{item.title}</h3>
-                    <p className="text-sm font-semibold text-foreground leading-relaxed">{item.description}</p>
+                    <h3 className="font-black text-base text-foreground mb-1">{item.title}</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
                   </div>
                 </div>
               </div>

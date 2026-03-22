@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { ArrowLeft, ShieldCheck, CreditCard, Smartphone, Building2, Tag } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -8,21 +8,45 @@ import { Separator } from "@/components/ui/separator";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
+import { usePlatformData, type ManagedCoupon } from "@/context/PlatformDataContext";
 import LoginModal from "@/components/LoginModal";
 import { toast } from "@/hooks/use-toast";
 
 const Checkout = () => {
-  const { items, cartCount, completePurchase } = useCart();
+  const { items, cartCount, orders, completePurchase } = useCart();
   const { isLoggedIn, user } = useAuth();
+  const { coupons, markCouponUsed } = usePlatformData();
   const navigate = useNavigate();
   const [paymentMethod, setPaymentMethod] = useState("upi");
   const [coupon, setCoupon] = useState("");
-  const [couponApplied, setCouponApplied] = useState(false);
+  const [appliedCoupon, setAppliedCoupon] = useState<ManagedCoupon | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
   const [fullName, setFullName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
   const [phone, setPhone] = useState(user?.mobile || "");
+
+  const getModeLabel = (item: (typeof items)[number]): string | undefined => {
+    if (!item.deliveryModePricingEnabled) return undefined;
+    const modes = Array.isArray(item.deliveryModes) ? item.deliveryModes : [];
+    const selectedIds = Array.isArray(item.selectedDeliveryModeIds)
+      ? item.selectedDeliveryModeIds
+      : String(item.selectedDeliveryModeId || "").trim()
+        ? [String(item.selectedDeliveryModeId || "").trim()]
+        : [];
+    if (selectedIds.length === 0 || modes.length === 0) return undefined;
+    const labels = modes.filter((mode) => selectedIds.includes(mode.id)).map((mode) => mode.label);
+    return labels.length > 0 ? labels.join(", ") : undefined;
+  };
+
+  const getBookLabel = (item: (typeof items)[number]): string | undefined => {
+    if (!item.bookAddonEnabled) return undefined;
+    const addons = Array.isArray(item.bookAddons) ? item.bookAddons : [];
+    const selectedIds = Array.isArray(item.selectedBookAddonIds) ? item.selectedBookAddonIds : [];
+    if (selectedIds.length === 0 || addons.length === 0) return undefined;
+    const labels = addons.filter((addon) => selectedIds.includes(addon.id)).map((addon) => addon.label);
+    return labels.length > 0 ? labels.join(", ") : undefined;
+  };
 
   useEffect(() => {
     if (!user) return;
@@ -34,37 +58,226 @@ const Checkout = () => {
   const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
   const totalOriginal = items.reduce((sum, item) => sum + item.originalPrice, 0);
   const totalSavings = totalOriginal - totalPrice;
-  const couponDiscount = couponApplied ? Math.round(totalPrice * 0.05) : 0;
-  const finalTotal = totalPrice - couponDiscount;
-
-  const handleApplyCoupon = () => {
-    if (coupon.trim().toUpperCase() === "EDU5") {
-      setCouponApplied(true);
-      toast({ title: "🎉 Coupon Applied!", description: "5% extra discount added" });
-    } else {
-      toast({ title: "Invalid Coupon", description: "Please enter a valid coupon code" });
-    }
+  const getCouponDiscount = (candidate: ManagedCoupon): number => {
+    const eligibleAmount =
+      Array.isArray(candidate.appliesToCourseIds) && candidate.appliesToCourseIds.length > 0
+        ? items
+            .filter((item) => candidate.appliesToCourseIds?.includes(item.id))
+            .reduce((sum, item) => sum + item.price, 0)
+        : totalPrice;
+    const rawDiscount =
+      candidate.discountType === "percent"
+        ? (eligibleAmount * candidate.discountValue) / 100
+        : candidate.discountValue;
+    const cappedDiscount = candidate.maxDiscount
+      ? Math.min(rawDiscount, candidate.maxDiscount)
+      : rawDiscount;
+    return Math.max(0, Math.round(cappedDiscount));
   };
 
-  const handlePlaceOrder = () => {
+  const couponDiscount = Math.max(0, Math.min(totalPrice, appliedCoupon ? getCouponDiscount(appliedCoupon) : 0));
+  const taxTotal = useMemo(() => {
+    if (items.length === 0) return 0;
+
+    const eligibleIds = new Set<string>();
+    if (appliedCoupon) {
+      if (Array.isArray(appliedCoupon.appliesToCourseIds) && appliedCoupon.appliesToCourseIds.length > 0) {
+        appliedCoupon.appliesToCourseIds.forEach((id) => eligibleIds.add(String(id)));
+      } else {
+        items.forEach((item) => eligibleIds.add(item.id));
+      }
+    }
+
+    const eligibleItems = items.filter((item) => eligibleIds.has(item.id));
+    const eligibleSubtotal = eligibleItems.reduce((sum, item) => sum + item.price, 0);
+    const allocatedCouponByItem = new Map<string, number>();
+    let remainingCoupon = couponDiscount;
+
+    eligibleItems.forEach((item, index) => {
+      const allocated =
+        index === eligibleItems.length - 1
+          ? remainingCoupon
+          : Math.min(
+              remainingCoupon,
+              Math.round((couponDiscount * item.price) / Math.max(1, eligibleSubtotal)),
+            );
+      allocatedCouponByItem.set(item.id, Math.max(0, allocated));
+      remainingCoupon = Math.max(0, remainingCoupon - allocated);
+    });
+
+    return items.reduce((sum, item) => {
+      const discountAllocation = allocatedCouponByItem.get(item.id) || 0;
+      const taxableAmount = Math.max(0, item.price - discountAllocation);
+      const taxRate = Math.max(0, Number(item.taxPercentage || 0));
+      return sum + Math.round((taxableAmount * taxRate) / 100);
+    }, 0);
+  }, [items, appliedCoupon, couponDiscount]);
+
+  const validateCoupon = (couponCode: string): { valid: boolean; message: string; coupon?: ManagedCoupon; discount?: number } => {
+    const code = couponCode.trim().toUpperCase();
+    const candidate = coupons.find((c) => c.code.toUpperCase() === code);
+
+    if (!candidate) return { valid: false, message: "Coupon code not found" };
+    if (!candidate.isActive) return { valid: false, message: "Coupon is inactive" };
+
+    const now = new Date();
+    if (candidate.validFrom && now < new Date(candidate.validFrom)) {
+      return { valid: false, message: "Coupon is not live yet" };
+    }
+    if (candidate.validTo && now > new Date(candidate.validTo)) {
+      return { valid: false, message: "Coupon has expired" };
+    }
+
+    if (Array.isArray(candidate.allowedDaysOfWeek) && candidate.allowedDaysOfWeek.length > 0) {
+      if (!candidate.allowedDaysOfWeek.includes(now.getDay())) {
+        return { valid: false, message: "Coupon is not valid today" };
+      }
+    }
+
+    if (candidate.minPurchase && totalPrice < candidate.minPurchase) {
+      return {
+        valid: false,
+        message: `Minimum purchase should be Rs. ${candidate.minPurchase.toLocaleString()}`,
+      };
+    }
+
+    if (Array.isArray(candidate.appliesToCourseIds) && candidate.appliesToCourseIds.length > 0) {
+      const hasEligible = items.some((item) => candidate.appliesToCourseIds?.includes(item.id));
+      if (!hasEligible) {
+        return { valid: false, message: "Coupon does not apply to selected courses" };
+      }
+
+      if (candidate.singleCourseOnly && candidate.appliesToCourseIds.length !== 1) {
+        return { valid: false, message: "Coupon course rule is misconfigured" };
+      }
+
+      if (candidate.singleCourseOnly) {
+        const onlyCourseId = candidate.appliesToCourseIds[0];
+        if (!onlyCourseId || !items.some((item) => item.id === onlyCourseId)) {
+          return { valid: false, message: "Coupon is valid for only one specific course" };
+        }
+      }
+    }
+
+    const currentEmail = email.trim().toLowerCase();
+    if (Array.isArray(candidate.allowedStudentEmails) && candidate.allowedStudentEmails.length > 0) {
+      if (!currentEmail || !candidate.allowedStudentEmails.map((v) => v.toLowerCase()).includes(currentEmail)) {
+        return { valid: false, message: "Coupon is not valid for this student" };
+      }
+
+      if (candidate.singleStudentOnly && candidate.allowedStudentEmails.length !== 1) {
+        return { valid: false, message: "Coupon student rule is misconfigured" };
+      }
+    }
+
+    if (candidate.firstPurchaseOnly) {
+      const hasPriorOrders = orders.some((order) => order.email?.trim().toLowerCase() === currentEmail);
+      if (hasPriorOrders) {
+        return { valid: false, message: "Coupon is valid only on first purchase" };
+      }
+    }
+
+    if (candidate.maxTotalUses && (candidate.totalUsed || 0) >= candidate.maxTotalUses) {
+      return { valid: false, message: "Coupon usage limit reached" };
+    }
+
+    if (candidate.maxUsesPerUser && currentEmail) {
+      const usedByUser = candidate.usedBy?.[currentEmail] || 0;
+      if (usedByUser >= candidate.maxUsesPerUser) {
+        return { valid: false, message: "Per-user coupon limit reached" };
+      }
+    }
+
+    if (candidate.maxUniqueUsers && currentEmail) {
+      const usedBy = candidate.usedBy || {};
+      const existingUsers = Object.keys(usedBy).filter((key) => (usedBy[key] || 0) > 0);
+      const alreadyUsedByCurrent = (usedBy[currentEmail] || 0) > 0;
+      if (!alreadyUsedByCurrent && existingUsers.length >= candidate.maxUniqueUsers) {
+        return { valid: false, message: "Coupon unique-user limit reached" };
+      }
+    }
+
+    if (Array.isArray(candidate.allowedPaymentMethods) && candidate.allowedPaymentMethods.length > 0) {
+      if (!candidate.allowedPaymentMethods.includes(paymentMethod)) {
+        return { valid: false, message: "Coupon is not valid for this payment method" };
+      }
+    }
+
+    const discount = getCouponDiscount(candidate);
+    if (discount <= 0) {
+      return { valid: false, message: "Coupon does not produce a discount on this cart" };
+    }
+
+    return { valid: true, message: "Coupon applied", coupon: candidate, discount };
+  };
+
+  const finalTotal = totalPrice - couponDiscount + taxTotal;
+
+  const handleApplyCoupon = () => {
+    const result = validateCoupon(coupon);
+    if (!result.valid || !result.coupon || !result.discount) {
+      setAppliedCoupon(null);
+      toast({ title: "Invalid Coupon", description: result.message });
+      return;
+    }
+
+    setAppliedCoupon(result.coupon);
+    toast({ title: "Coupon Applied", description: `Rs. ${result.discount.toLocaleString()} discount added` });
+  };
+
+  const handlePlaceOrder = async () => {
     if (!fullName.trim() || !email.trim()) {
       toast({ title: "Missing Details", description: "Please enter your full name and email." });
       return;
     }
 
+    if (appliedCoupon) {
+      const recheck = validateCoupon(appliedCoupon.code);
+      if (!recheck.valid || !recheck.coupon) {
+        setAppliedCoupon(null);
+        toast({ title: "Coupon Removed", description: recheck.message });
+        return;
+      }
+    }
+
     const orderId = "EDN" + Math.random().toString(36).substring(2, 10).toUpperCase();
-    const orderItems = items.map((item) => ({ title: item.title, price: item.price }));
-    completePurchase({
+    const orderItems = items.map((item) => ({
+      title: item.title,
+      price: item.price,
+      taxPercentage: Number(item.taxPercentage || 0),
+      modeLabel: getModeLabel(item),
+      bookLabel: getBookLabel(item),
+    }));
+    const purchaseResult = await completePurchase({
       orderId,
       total: finalTotal,
+      subtotal: totalPrice,
+      couponDiscount,
+      taxAmount: taxTotal,
       paymentMethod,
       studentName: fullName.trim(),
       email: email.trim(),
       phone: phone.trim(),
     });
+
+    if (!purchaseResult.ok) {
+      toast({
+        title: "Purchase Failed",
+        description: purchaseResult.message || "We could not save your course purchase. Please retry.",
+      });
+      return;
+    }
+
+    if (appliedCoupon) {
+      markCouponUsed(appliedCoupon.code, email.trim().toLowerCase(), orderId);
+    }
+
     navigate("/order-confirmation", {
       state: {
         items: orderItems,
+        subtotal: totalPrice,
+        couponDiscount,
+        taxAmount: taxTotal,
         total: finalTotal,
         orderId,
         email: email.trim(),
@@ -252,7 +465,15 @@ const Checkout = () => {
               <div className="space-y-2.5 max-h-48 overflow-y-auto">
                 {items.map((item) => (
                   <div key={item.id} className="flex justify-between items-start gap-2">
-                    <p className="text-xs text-foreground line-clamp-2 flex-1">{item.title}</p>
+                    <div className="flex-1">
+                      <p className="text-xs text-foreground line-clamp-2">{item.title}</p>
+                      {getModeLabel(item) && (
+                        <p className="text-[10px] text-accent font-medium mt-0.5">Mode: {getModeLabel(item)}</p>
+                      )}
+                      {getBookLabel(item) && (
+                        <p className="text-[10px] text-indigo-600 font-medium mt-0.5">Books: {getBookLabel(item)}</p>
+                      )}
+                    </div>
                     <span className="text-xs font-semibold text-foreground whitespace-nowrap">₹{item.price.toLocaleString()}</span>
                   </div>
                 ))}
@@ -269,7 +490,7 @@ const Checkout = () => {
                     value={coupon}
                     onChange={(e) => setCoupon(e.target.value)}
                     className="h-8 text-xs pl-7 bg-secondary/50 border-border"
-                    disabled={couponApplied}
+                    disabled={Boolean(appliedCoupon)}
                   />
                 </div>
                 <Button
@@ -277,12 +498,12 @@ const Checkout = () => {
                   size="sm"
                   className="h-8 text-xs px-3"
                   onClick={handleApplyCoupon}
-                  disabled={couponApplied || !coupon.trim()}
+                  disabled={Boolean(appliedCoupon) || !coupon.trim()}
                 >
-                  {couponApplied ? "Applied ✓" : "Apply"}
+                  {appliedCoupon ? "Applied ✓" : "Apply"}
                 </Button>
               </div>
-              <p className="text-[10px] text-muted-foreground">Try: EDU5 for 5% off</p>
+              <p className="text-[10px] text-muted-foreground">Enter admin-created coupon code</p>
 
               <Separator />
 
@@ -297,15 +518,21 @@ const Checkout = () => {
                     <span>-₹{totalSavings.toLocaleString()}</span>
                   </div>
                 )}
-                {couponApplied && (
+                {appliedCoupon && (
                   <div className="flex justify-between text-green-600 font-medium">
-                    <span>Coupon (EDU5)</span>
+                    <span>Coupon ({appliedCoupon.code})</span>
                     <span>-₹{couponDiscount.toLocaleString()}</span>
+                  </div>
+                )}
+                {taxTotal > 0 && (
+                  <div className="flex justify-between text-foreground/80 font-medium">
+                    <span>Tax</span>
+                    <span>+₹{taxTotal.toLocaleString()}</span>
                   </div>
                 )}
                 <Separator />
                 <div className="flex justify-between text-sm font-bold text-foreground pt-1">
-                  <span>Total</span>
+                  <span>Total Payable</span>
                   <span>₹{finalTotal.toLocaleString()}</span>
                 </div>
               </div>

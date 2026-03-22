@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -16,29 +16,46 @@ import { useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import LoginModal from "@/components/LoginModal";
-import { downloadStudyMaterialPdf } from "@/lib/studyMaterial";
-
-const mockUser = {
-  name: "Rahul Sharma",
-  email: "rahul.sharma@gmail.com",
-  phone: "+91 9876543210",
-  joinedDate: "Jan 2025",
-  avatar: "",
-};
+import { changeStudentPasswordApi, updateStudentProfileApi } from "@/services/authApi";
 
 const quickActions = [
   { label: "Browse Courses", icon: BookOpen, color: "bg-primary/10 text-primary", href: "/packages" },
+  { label: "Technical Support", icon: Bell, color: "bg-rose-500/10 text-rose-600", href: "/dashboard/technical-support" },
   { label: "Notifications", icon: Bell, color: "bg-amber-500/10 text-amber-600", href: "#" },
 ];
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { purchasedCourses, orders } = useCart();
-  const { isLoggedIn, logout } = useAuth();
+  const { isLoggedIn, logout, user, refreshProfile } = useAuth();
   const [isEditing, setIsEditing] = useState(false);
-  const [profile, setProfile] = useState(mockUser);
+  const [isProfileSaving, setIsProfileSaving] = useState(false);
+  const [profile, setProfile] = useState({
+    name: "",
+    email: "",
+    phone: "",
+    joinedDate: "",
+    avatar: "",
+  });
+  const [passwordForm, setPasswordForm] = useState({
+    currentPassword: "",
+    newPassword: "",
+    confirmPassword: "",
+  });
+  const [isPasswordSaving, setIsPasswordSaving] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
+
+  useEffect(() => {
+    if (!user) return;
+    setProfile((prev) => ({
+      ...prev,
+      name: user.name || "Student",
+      email: user.email || "",
+      phone: user.mobile || "",
+      joinedDate: "",
+    }));
+  }, [user?.studentId, user?.name, user?.email, user?.mobile]);
 
   const totalHours = purchasedCourses.reduce((sum, c) => sum + (c.hours || 0), 0);
   const completedCount = purchasedCourses.filter(c => c.progress === 100).length;
@@ -49,6 +66,49 @@ const Dashboard = () => {
   const handleLogout = () => {
     logout();
     navigate("/");
+  };
+
+  const handleSaveProfile = async () => {
+    setIsProfileSaving(true);
+    try {
+      const result = await updateStudentProfileApi({
+        name: profile.name,
+        email: profile.email,
+        mobile: profile.phone,
+      });
+      if (!result.ok) {
+        alert(result.message || "Failed to update profile");
+        return;
+      }
+      await refreshProfile();
+      setIsEditing(false);
+      alert("Profile updated successfully");
+    } finally {
+      setIsProfileSaving(false);
+    }
+  };
+
+  const handleChangePassword = async () => {
+    if (!passwordForm.currentPassword || !passwordForm.newPassword) {
+      alert("Please enter current and new password");
+      return;
+    }
+    if (passwordForm.newPassword !== passwordForm.confirmPassword) {
+      alert("New password and confirm password do not match");
+      return;
+    }
+    setIsPasswordSaving(true);
+    try {
+      const result = await changeStudentPasswordApi(passwordForm.currentPassword, passwordForm.newPassword);
+      if (!result.ok) {
+        alert(result.message || "Failed to change password");
+        return;
+      }
+      setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+      alert("Password changed successfully");
+    } finally {
+      setIsPasswordSaving(false);
+    }
   };
 
   if (!isLoggedIn) {
@@ -152,7 +212,7 @@ const Dashboard = () => {
 
       {/* Quick Actions */}
       <div className="max-w-6xl mx-auto px-4 -mt-5 relative z-10 mb-6">
-        <div className="grid grid-cols-2 gap-2 sm:gap-3 max-w-xs mx-auto sm:max-w-sm">
+        <div className="grid grid-cols-3 gap-2 sm:gap-3 max-w-md mx-auto sm:max-w-xl">
           {quickActions.map(action => (
             <button
               key={action.label}
@@ -238,9 +298,9 @@ const Dashboard = () => {
                               size="sm"
                               variant="outline"
                               className="text-xs h-8 rounded-lg font-semibold"
-                              onClick={() => downloadStudyMaterialPdf(course.title)}
+                              onClick={() => navigate(`/dashboard/course/${course.id}/about`)}
                             >
-                              Study PDF
+                              About
                             </Button>
                           </div>
                         </div>
@@ -316,14 +376,25 @@ const Dashboard = () => {
                   <CardTitle className="text-lg">Profile Settings</CardTitle>
                   <p className="text-xs text-muted-foreground mt-0.5">Manage your account details</p>
                 </div>
-                <Button
-                  variant={isEditing ? "default" : "outline"}
-                  size="sm"
-                  className={isEditing ? "bg-accent hover:bg-accent/90 text-accent-foreground" : ""}
-                  onClick={() => setIsEditing(!isEditing)}
-                >
-                  {isEditing ? <><Save className="w-4 h-4 mr-1.5" /> Save</> : <><Edit2 className="w-4 h-4 mr-1.5" /> Edit</>}
-                </Button>
+                {isEditing ? (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    onClick={handleSaveProfile}
+                    disabled={isProfileSaving}
+                  >
+                    <Save className="w-4 h-4 mr-1.5" /> {isProfileSaving ? "Saving..." : "Save"}
+                  </Button>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setIsEditing(true)}
+                  >
+                    <Edit2 className="w-4 h-4 mr-1.5" /> Edit
+                  </Button>
+                )}
               </CardHeader>
               <CardContent className="space-y-5 pt-4">
                 <div className="flex items-center gap-4 p-4 rounded-xl bg-muted/50 border border-border">
@@ -361,6 +432,40 @@ const Dashboard = () => {
                       />
                     </div>
                   ))}
+                </div>
+
+                <div className="pt-2 border-t border-border space-y-3">
+                  <h4 className="text-sm font-semibold text-foreground">Change Password</h4>
+                  <div className="grid sm:grid-cols-3 gap-3">
+                    <Input
+                      type="password"
+                      placeholder="Current Password"
+                      value={passwordForm.currentPassword}
+                      onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
+                      className="h-11 text-sm rounded-lg"
+                    />
+                    <Input
+                      type="password"
+                      placeholder="New Password"
+                      value={passwordForm.newPassword}
+                      onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
+                      className="h-11 text-sm rounded-lg"
+                    />
+                    <Input
+                      type="password"
+                      placeholder="Confirm Password"
+                      value={passwordForm.confirmPassword}
+                      onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                      className="h-11 text-sm rounded-lg"
+                    />
+                  </div>
+                  <Button
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    onClick={handleChangePassword}
+                    disabled={isPasswordSaving}
+                  >
+                    {isPasswordSaving ? "Updating..." : "Update Password"}
+                  </Button>
                 </div>
               </CardContent>
             </Card>

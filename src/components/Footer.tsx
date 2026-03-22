@@ -8,7 +8,7 @@ const Footer = () => {
   const { settings } = useSiteSettings();
   return (
     <footer id="footer" className="relative mt-6 md:mt-8">
-      <div className="bg-[rgb(38,72,151)] text-white relative overflow-hidden">
+      <div className="bg-primary text-primary-foreground relative overflow-hidden">
         <div className="absolute inset-0 opacity-[0.03]" style={{
           backgroundImage: `radial-gradient(circle at 1px 1px, white 1px, transparent 0)`,
           backgroundSize: "20px 20px"
@@ -45,7 +45,7 @@ const Footer = () => {
                   { label: "All Courses", href: "/packages" },
                   { label: "New Releases", href: "/#courses" },
                   { label: "About Us", href: "/#why-choose" },
-                  { label: "Contact Us", href: "/#footer" },
+                  { label: "Contact Us", href: "/contact-us" },
                 ].map((link) => (
                   <li key={link.label}>
                     <Link to={link.href} className="text-sm text-white hover:text-white transition-colors">
@@ -80,11 +80,11 @@ const Footer = () => {
                 </li>
                 <li className="flex items-center gap-2.5 text-sm text-white">
                   <Phone className="w-4 h-4 flex-shrink-0 text-accent" />
-                  +91 98765 43210
+                  {settings.header.topBarPhone}
                 </li>
                 <li className="flex items-center gap-2.5 text-sm text-white break-all">
                   <Mail className="w-4 h-4 flex-shrink-0 text-accent" />
-                  info@ednovate.in
+                  {settings.header.topBarEmail}
                 </li>
               </ul>
               <div className="flex gap-2.5 mt-5">

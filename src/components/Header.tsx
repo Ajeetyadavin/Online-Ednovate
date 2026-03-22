@@ -20,7 +20,56 @@ const Header = () => {
   const { isLoggedIn, userName, logout } = useAuth();
   const { settings } = useSiteSettings();
   const headerSettings = settings.header;
-  const navLinks = headerSettings.navLinks.filter((link) => link.visible);
+  const isCollectionHref = (href: string) => /^\/collections\/[a-z0-9-]+$/i.test(String(href || ""));
+  const extractCollectionSlug = (href: string) => {
+    const match = String(href || "").match(/^\/collections\/([a-z0-9-]+)$/i);
+    return match?.[1] || null;
+  };
+
+  const collectionBySlug = new Map(
+    headerSettings.courseCollections.map((collection) => [collection.slug, collection]),
+  );
+
+  const orderedNavLinks = headerSettings.navLinks
+    .filter((link) => link.visible)
+    .flatMap((link) => {
+      if (!isCollectionHref(link.href)) {
+        return [link];
+      }
+
+      const slug = extractCollectionSlug(link.href);
+      if (!slug) return [];
+      const collection = collectionBySlug.get(slug);
+      if (!collection || !collection.visible || !collection.showInNavigation) {
+        return [];
+      }
+
+      return [{
+        ...link,
+        label: link.label || collection.navigationLabel || collection.title,
+        href: `/collections/${collection.slug}`,
+      }];
+    });
+
+  const collectionSlugsInOrderedNav = new Set(
+    orderedNavLinks
+      .map((link) => extractCollectionSlug(link.href))
+      .filter((slug): slug is string => Boolean(slug)),
+  );
+
+  const collectionNavLinks = headerSettings.courseCollections
+    .filter((collection) => collection.visible && collection.showInNavigation)
+    .filter((collection) => !collectionSlugsInOrderedNav.has(collection.slug))
+    .sort((a, b) => a.navigationOrder - b.navigationOrder || a.sortOrder - b.sortOrder)
+    .map((collection) => ({
+      id: `collection-nav-${collection.id}`,
+      label: collection.navigationLabel || collection.title,
+      href: `/collections/${collection.slug}`,
+      hasDropdown: false,
+      visible: true,
+    }));
+
+  const navLinks = [...orderedNavLinks, ...collectionNavLinks];
   const customHeaderButtons = headerSettings.customButtons
     .filter((button) => button.visible)
     .filter((button) => button.label.toLowerCase() !== "book demo" && button.label.toLowerCase() !== "signup for free");
@@ -31,15 +80,22 @@ const Header = () => {
     const variant = button.style === "outline" ? "outline" : button.style === "ghost" ? "ghost" : "default";
     const className = mobile
       ? `w-full justify-center h-9 rounded-xl text-xs font-semibold ${
-          button.style === "solid" ? "bg-accent hover:bg-accent/90 text-accent-foreground" : ""
+          button.style === "solid" ? "shadow-sm" : ""
         }`
       : `hidden sm:flex h-9 px-3.5 rounded-xl text-xs font-semibold ${
-          button.style === "solid" ? "bg-accent hover:bg-accent/90 text-accent-foreground shadow-sm" : ""
+          button.style === "solid" ? "shadow-sm" : ""
         }`;
+
+    const solidStyle = button.style === "solid"
+      ? {
+          backgroundColor: headerSettings.solidButtonBg || "#E04040",
+          color: headerSettings.solidButtonText || "#FFFFFF",
+        }
+      : undefined;
 
     if (isExternalHref(button.href)) {
       return (
-        <Button key={button.id} size="sm" variant={variant} className={className} asChild>
+        <Button key={button.id} size="sm" variant={variant} className={className} style={solidStyle} asChild>
           <a href={button.href} target={button.newTab ? "_blank" : undefined} rel={button.newTab ? "noreferrer" : undefined}>
             {button.label}
           </a>
@@ -48,7 +104,7 @@ const Header = () => {
     }
 
     return (
-      <Button key={button.id} size="sm" variant={variant} className={className} asChild>
+      <Button key={button.id} size="sm" variant={variant} className={className} style={solidStyle} asChild>
         <Link to={button.href}>{button.label}</Link>
       </Button>
     );
@@ -101,6 +157,16 @@ const Header = () => {
         <div className="container mx-auto px-4 flex items-center justify-between h-[60px] sm:h-[66px] gap-2">
           <Link to="/" className="flex items-center group shrink-0">
             <img src={settings.logo} alt="Ednovate - Online Learning" className="h-7 sm:h-8 w-auto max-w-[140px] sm:max-w-none" />
+            {headerSettings.showBrandText && (
+              <div className="hidden sm:block ml-2 leading-tight">
+                <p className="text-sm font-bold" style={{ color: headerSettings.navTextColor || "#000000" }}>
+                  {headerSettings.brandTitle || "Ednovate"}
+                </p>
+                {headerSettings.brandSubtitle && (
+                  <p className="text-[10px] text-muted-foreground">{headerSettings.brandSubtitle}</p>
+                )}
+              </div>
+            )}
           </Link>
 
           <nav className="hidden lg:flex items-center gap-1">
@@ -110,9 +176,25 @@ const Header = () => {
                 to={link.href}
                 className={`px-3.5 py-2 rounded-lg text-[13px] font-semibold transition-all flex items-center gap-1.5 ${
                   location.pathname === link.href
-                    ? "text-[#000000] bg-[#0000000d]"
-                    : "text-[#000000] hover:text-[#000000] hover:bg-muted"
+                    ? ""
+                    : ""
                 }`}
+                style={{
+                  color: headerSettings.navTextColor || "#000000",
+                  backgroundColor: location.pathname === link.href
+                    ? (headerSettings.navActiveBg || "#0000000d")
+                    : "transparent",
+                }}
+                onMouseEnter={(event) => {
+                  if (location.pathname !== link.href) {
+                    event.currentTarget.style.backgroundColor = headerSettings.navHoverBg || "#f5f5f5";
+                  }
+                }}
+                onMouseLeave={(event) => {
+                  event.currentTarget.style.backgroundColor = location.pathname === link.href
+                    ? (headerSettings.navActiveBg || "#0000000d")
+                    : "transparent";
+                }}
               >
                 {link.label}
                 {link.hasDropdown && <ChevronDown className="w-3 h-3" />}

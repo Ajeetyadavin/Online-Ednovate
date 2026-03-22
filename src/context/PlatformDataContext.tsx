@@ -48,6 +48,7 @@ export interface ManagedTestimonial {
   content: string;
   rating: number;
   isVisible: boolean;
+  avatarUrl?: string;
 }
 
 export interface ManagedAnnouncement {
@@ -56,6 +57,39 @@ export interface ManagedAnnouncement {
   content: string;
   link: string;
   isVisible: boolean;
+}
+
+export interface ManagedCoupon {
+  id: string;
+  code: string;
+  description?: string;
+  isActive: boolean;
+  createdAt?: string;
+  createdBy?: string;
+  updatedAt?: string;
+  discountType: "percent" | "fixed";
+  discountValue: number;
+  maxDiscount?: number;
+  minPurchase?: number;
+  appliesToCourseIds?: string[];
+  singleCourseOnly?: boolean;
+  allowedStudentEmails?: string[];
+  singleStudentOnly?: boolean;
+  validFrom?: string;
+  validTo?: string;
+  allowedDaysOfWeek?: number[];
+  firstPurchaseOnly?: boolean;
+  maxTotalUses?: number;
+  maxUsesPerUser?: number;
+  maxUniqueUsers?: number;
+  allowedPaymentMethods?: string[];
+  totalUsed?: number;
+  usedBy?: Record<string, number>;
+  usageHistory?: Array<{
+    email: string;
+    usedAt: string;
+    orderId?: string;
+  }>;
 }
 
 export interface Lesson {
@@ -87,6 +121,7 @@ interface PlatformDataState {
   banners: ManagedBanner[];
   testimonials: ManagedTestimonial[];
   announcements: ManagedAnnouncement[];
+  coupons: ManagedCoupon[];
   curricula: Record<string, Chapter[]>;
 }
 
@@ -114,6 +149,10 @@ interface PlatformDataContextType extends PlatformDataState {
   setBanners: (banners: ManagedBanner[]) => void;
   setTestimonials: (testimonials: ManagedTestimonial[]) => void;
   setAnnouncements: (announcements: ManagedAnnouncement[]) => void;
+  upsertCoupon: (coupon: ManagedCoupon) => void;
+  deleteCoupon: (couponId: string) => void;
+  toggleCouponActive: (couponId: string) => void;
+  markCouponUsed: (couponCode: string, studentEmail?: string, orderId?: string) => void;
   getCurriculumForCourse: (courseId: string, courseTitle?: string) => Chapter[];
   setCurriculumForCourse: (courseId: string, curriculum: Chapter[]) => void;
   setCourseDemoLesson: (courseId: string, lessonId?: string) => void;
@@ -260,9 +299,100 @@ const normalizeCourse = (course: Partial<ManagedCourse>, index: number): Managed
   hours: Number(course.hours || 0),
   price: Number(course.price || 0),
   originalPrice: Number(course.originalPrice || course.price || 0),
+  taxPercentage: Math.max(0, Number(course.taxPercentage || 0)),
   discount: Number(course.discount || 0),
   image: course.image || "/placeholder.svg",
+  thumbnail: String(course.thumbnail || "").trim(),
   professor: course.professor || "Ednovate Faculty",
+  viewPricingEnabled: Boolean(course.viewPricingEnabled),
+  unlimitedViewsEnabled: Boolean(course.unlimitedViewsEnabled),
+  validityPricingEnabled: Boolean(course.validityPricingEnabled),
+  viewOptions: Array.isArray(course.viewOptions)
+    ? course.viewOptions
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value >= 1)
+    : [1, 2],
+  validityOptionsDays: Array.isArray(course.validityOptionsDays)
+    ? course.validityOptionsDays
+        .map((value) => Number(value))
+        .filter((value) => Number.isFinite(value) && value >= 1)
+    : [30, 90, 180],
+  selectedViews: Math.max(1, Number(course.selectedViews || 1)),
+  selectedValidityDays: Math.max(1, Number(course.selectedValidityDays || 30)),
+  deliveryModePricingEnabled: Boolean(course.deliveryModePricingEnabled),
+  deliveryModes: Array.isArray(course.deliveryModes)
+    ? course.deliveryModes
+        .map((mode) => {
+          const raw = mode as {
+            id?: string;
+            label?: string;
+            price?: number;
+            originalPrice?: number;
+          };
+          const id = String(raw.id || "").trim();
+          const label = String(raw.label || "").trim();
+          const price = Number(raw.price || 0);
+          const originalPrice = Number(raw.originalPrice || 0);
+          if (!id || !label || !Number.isFinite(price) || price <= 0) return null;
+          return {
+            id,
+            label,
+            price,
+            originalPrice: Number.isFinite(originalPrice) && originalPrice > 0 ? originalPrice : undefined,
+          };
+        })
+        .filter(Boolean)
+    : [],
+  selectedDeliveryModeId: String(course.selectedDeliveryModeId || "online"),
+  selectedDeliveryModeIds: Array.isArray(course.selectedDeliveryModeIds)
+    ? course.selectedDeliveryModeIds.map((id) => String(id)).filter(Boolean)
+    : String(course.selectedDeliveryModeId || "").trim()
+      ? [String(course.selectedDeliveryModeId || "").trim()]
+      : ["online"],
+  bookAddonEnabled: Boolean(course.bookAddonEnabled),
+  bookAddons: Array.isArray(course.bookAddons)
+    ? course.bookAddons
+        .map((addon) => {
+          const raw = addon as { id?: string; label?: string; price?: number; enabled?: boolean };
+          const id = String(raw.id || "").trim();
+          const label = String(raw.label || "").trim();
+          const price = Number(raw.price || 0);
+          if (!id || !label || !Number.isFinite(price) || price < 0) return null;
+          return { id, label, price, enabled: raw.enabled !== false };
+        })
+        .filter(Boolean)
+    : [],
+  selectedBookAddonIds: Array.isArray(course.selectedBookAddonIds)
+    ? course.selectedBookAddonIds.map((id) => String(id)).filter(Boolean)
+    : [],
+  aboutCourseEnabled: Boolean(course.aboutCourseEnabled),
+  aboutCourseText: String(course.aboutCourseText || "").trim(),
+  ratingsEnabled: course.ratingsEnabled !== false,
+  reviewsEnabled: course.reviewsEnabled !== false,
+  ratingValue: Math.max(0, Math.min(5, Number(course.ratingValue || 4.8))),
+  ratingCount: Math.max(0, Number(course.ratingCount || 0)),
+  reviews: Array.isArray(course.reviews)
+    ? course.reviews
+        .map((review) => {
+          const raw = review as { name?: string; rating?: number; comment?: string; date?: string };
+          const name = String(raw.name || "").trim();
+          const comment = String(raw.comment || "").trim();
+          const rating = Math.max(1, Math.min(5, Number(raw.rating || 5)));
+          const date = String(raw.date || "").trim();
+          if (!name || !comment) return null;
+          return { name, rating, comment, date };
+        })
+        .filter(Boolean)
+    : [],
+  enrollmentCount: Math.max(0, Number(course.enrollmentCount || 0)),
+  showEnrollmentCount: course.showEnrollmentCount !== false,
+  showMetaLectures: course.showMetaLectures !== false,
+  showMetaHours: course.showMetaHours !== false,
+  showMetaValidity: course.showMetaValidity !== false,
+  showMetaResources: course.showMetaResources !== false,
+  showMetaViews: course.showMetaViews !== false,
+  showMetaPerHour: course.showMetaPerHour !== false,
+  showMetaLanguage: course.showMetaLanguage !== false,
   isCombo: Boolean(course.isCombo),
   isMaterial: Boolean(course.isMaterial),
   isVisible: course.isVisible !== false,
@@ -296,6 +426,7 @@ const normalizeTestimonial = (
   content: testimonial.content || "Great learning experience.",
   rating: Math.max(1, Math.min(5, Number(testimonial.rating || 5))),
   isVisible: testimonial.isVisible !== false,
+  avatarUrl: String(testimonial.avatarUrl || "").trim(),
 });
 
 const normalizeAnnouncement = (
@@ -308,6 +439,65 @@ const normalizeAnnouncement = (
   link: announcement.link || "/packages",
   isVisible: announcement.isVisible !== false,
 });
+
+const normalizeCoupon = (coupon: Partial<ManagedCoupon>, index: number): ManagedCoupon => {
+  const discountType = coupon.discountType === "fixed" ? "fixed" : "percent";
+  const code = String(coupon.code || `COUPON${index + 1}`).trim().toUpperCase();
+
+  return {
+    id: String(coupon.id || `coupon-${index + 1}`),
+    code,
+    description: String(coupon.description || "").trim(),
+    isActive: coupon.isActive !== false,
+    createdAt: String(coupon.createdAt || "").trim() || new Date().toISOString(),
+    createdBy: String(coupon.createdBy || "").trim() || "Admin",
+    updatedAt: String(coupon.updatedAt || "").trim() || undefined,
+    discountType,
+    discountValue: Math.max(0, Number(coupon.discountValue || 0)),
+    maxDiscount: coupon.maxDiscount ? Math.max(0, Number(coupon.maxDiscount)) : undefined,
+    minPurchase: coupon.minPurchase ? Math.max(0, Number(coupon.minPurchase)) : undefined,
+    appliesToCourseIds: Array.isArray(coupon.appliesToCourseIds)
+      ? coupon.appliesToCourseIds.map((id) => String(id).trim()).filter(Boolean)
+      : [],
+    singleCourseOnly: Boolean(coupon.singleCourseOnly),
+    allowedStudentEmails: Array.isArray(coupon.allowedStudentEmails)
+      ? coupon.allowedStudentEmails.map((email) => String(email).trim().toLowerCase()).filter(Boolean)
+      : [],
+    singleStudentOnly: Boolean(coupon.singleStudentOnly),
+    validFrom: String(coupon.validFrom || "").trim() || undefined,
+    validTo: String(coupon.validTo || "").trim() || undefined,
+    allowedDaysOfWeek: Array.isArray(coupon.allowedDaysOfWeek)
+      ? coupon.allowedDaysOfWeek
+          .map((day) => Number(day))
+          .filter((day) => Number.isInteger(day) && day >= 0 && day <= 6)
+      : [],
+    firstPurchaseOnly: Boolean(coupon.firstPurchaseOnly),
+    maxTotalUses: coupon.maxTotalUses ? Math.max(0, Number(coupon.maxTotalUses)) : undefined,
+    maxUsesPerUser: coupon.maxUsesPerUser ? Math.max(0, Number(coupon.maxUsesPerUser)) : undefined,
+    maxUniqueUsers: coupon.maxUniqueUsers ? Math.max(0, Number(coupon.maxUniqueUsers)) : undefined,
+    allowedPaymentMethods: Array.isArray(coupon.allowedPaymentMethods)
+      ? coupon.allowedPaymentMethods.map((method) => String(method).trim()).filter(Boolean)
+      : [],
+    totalUsed: Math.max(0, Number(coupon.totalUsed || 0)),
+    usedBy: coupon.usedBy && typeof coupon.usedBy === "object"
+      ? Object.fromEntries(
+          Object.entries(coupon.usedBy).map(([email, count]) => [String(email).toLowerCase(), Math.max(0, Number(count || 0))]),
+        )
+      : {},
+    usageHistory: Array.isArray(coupon.usageHistory)
+      ? coupon.usageHistory
+          .map((entry) => {
+            const item = entry as { email?: string; usedAt?: string; orderId?: string };
+            return {
+              email: String(item.email || "").trim().toLowerCase(),
+              usedAt: String(item.usedAt || "").trim() || new Date().toISOString(),
+              orderId: String(item.orderId || "").trim() || undefined,
+            };
+          })
+          .filter((entry) => Boolean(entry.email))
+      : [],
+  };
+};
 
 const normalizeCurriculum = (curriculum: unknown): Chapter[] => {
   if (!Array.isArray(curriculum)) {
@@ -354,8 +544,9 @@ const normalizeCurriculum = (curriculum: unknown): Chapter[] => {
         description: ch.description || "",
         lessons,
       } satisfies Chapter;
-    })
-    .filter((chapter) => chapter.lessons.length > 0);
+    });
+    // Removed the filter that was removing chapters with no lessons
+    // Chapters can be created empty and have lessons added later
 };
 
 const pickCourseDemoLessonId = (chapters: Chapter[], preferredLessonId?: string): string | null => {
@@ -447,6 +638,7 @@ const createDefaultState = (): PlatformDataState => {
     banners,
     testimonials,
     announcements: defaultAnnouncements,
+    coupons: [],
     curricula: ensureCourseScopedDemos(curricula),
   };
 };
@@ -481,6 +673,10 @@ const loadInitialState = (): PlatformDataState => {
       ? parsed.announcements.map((announcement, index) => normalizeAnnouncement(announcement, index))
       : fallback.announcements;
 
+    const coupons = Array.isArray(parsed.coupons)
+      ? parsed.coupons.map((coupon, index) => normalizeCoupon(coupon, index))
+      : fallback.coupons;
+
     const parsedCurricula = parsed.curricula || {};
     const curricula: Record<string, Chapter[]> = {};
     courses.forEach((course) => {
@@ -494,6 +690,7 @@ const loadInitialState = (): PlatformDataState => {
       banners,
       testimonials,
       announcements,
+      coupons,
       curricula: ensureCourseScopedDemos(curricula),
     };
   } catch {
@@ -509,6 +706,59 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
   }, [state]);
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const syncFromApi = async () => {
+      try {
+        const response = await fetch("/api/courses");
+        if (!response.ok) return;
+        const data = (await response.json()) as {
+          courses?: unknown[];
+          curricula?: Record<string, unknown>;
+        };
+
+        if (!isMounted) return;
+
+        setState((prev) => {
+          const apiCourses = Array.isArray(data.courses)
+            ? data.courses.map((course, index) => normalizeCourse(course as Partial<ManagedCourse>, index))
+            : prev.courses;
+
+          const nextCourses = apiCourses.length > 0 ? apiCourses : prev.courses;
+          const nextCurricula: Record<string, Chapter[]> = { ...prev.curricula };
+
+          nextCourses.forEach((course) => {
+            const raw = data.curricula?.[course.id];
+            const parsed = normalizeCurriculum(raw);
+
+            if (parsed.length > 0) {
+              nextCurricula[course.id] = parsed;
+            } else if (!nextCurricula[course.id]) {
+              nextCurricula[course.id] = createFallbackCurriculum(course.title);
+            }
+          });
+
+          return {
+            ...prev,
+            courses: nextCourses,
+            coupons: prev.coupons,
+            curricula: ensureCourseScopedDemos(nextCurricula),
+          };
+        });
+      } catch {
+        // Keep local storage as fallback when API is unavailable.
+        console.error('[PlatformDataProvider] Error syncing from API');
+      }
+    };
+
+    syncFromApi();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   const value = useMemo<PlatformDataContextType>(() => {
     const upsertCourse = (course: ManagedCourse) => {
@@ -646,6 +896,77 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
       }));
     };
 
+    const upsertCoupon = (coupon: ManagedCoupon) => {
+      setState((prev) => {
+        const normalized = normalizeCoupon(coupon, prev.coupons.length);
+        const existing = prev.coupons.find((item) => item.id === normalized.id);
+        const nextCoupon: ManagedCoupon = {
+          ...normalized,
+          createdAt: existing?.createdAt || normalized.createdAt || new Date().toISOString(),
+          createdBy: existing?.createdBy || normalized.createdBy || "Admin",
+          updatedAt: new Date().toISOString(),
+          usageHistory: existing?.usageHistory || normalized.usageHistory || [],
+        };
+
+        const exists = prev.coupons.some((item) => item.id === nextCoupon.id);
+        const nextCoupons = exists
+          ? prev.coupons.map((item) => (item.id === nextCoupon.id ? nextCoupon : item))
+          : [...prev.coupons, nextCoupon];
+        return { ...prev, coupons: nextCoupons };
+      });
+    };
+
+    const deleteCoupon = (couponId: string) => {
+      setState((prev) => ({
+        ...prev,
+        coupons: prev.coupons.filter((coupon) => coupon.id !== couponId),
+      }));
+    };
+
+    const toggleCouponActive = (couponId: string) => {
+      setState((prev) => ({
+        ...prev,
+        coupons: prev.coupons.map((coupon) =>
+          coupon.id === couponId ? { ...coupon, isActive: !coupon.isActive } : coupon,
+        ),
+      }));
+    };
+
+    const markCouponUsed = (couponCode: string, studentEmail?: string, orderId?: string) => {
+      const normalizedCode = String(couponCode || "").trim().toUpperCase();
+      const email = String(studentEmail || "").trim().toLowerCase();
+      if (!normalizedCode) return;
+
+      setState((prev) => ({
+        ...prev,
+        coupons: prev.coupons.map((coupon) => {
+          if (coupon.code.toUpperCase() !== normalizedCode) return coupon;
+
+          const nextUsedBy = { ...(coupon.usedBy || {}) };
+          if (email) {
+            nextUsedBy[email] = Math.max(0, Number(nextUsedBy[email] || 0)) + 1;
+          }
+
+          const nextHistory = Array.isArray(coupon.usageHistory) ? [...coupon.usageHistory] : [];
+          if (email) {
+            nextHistory.unshift({
+              email,
+              usedAt: new Date().toISOString(),
+              orderId: String(orderId || "").trim() || undefined,
+            });
+          }
+
+          return {
+            ...coupon,
+            totalUsed: Math.max(0, Number(coupon.totalUsed || 0)) + 1,
+            usedBy: nextUsedBy,
+            usageHistory: nextHistory,
+            updatedAt: new Date().toISOString(),
+          };
+        }),
+      }));
+    };
+
     const getCurriculumForCourse = (courseId: string, courseTitle?: string): Chapter[] => {
       const existing = state.curricula[courseId];
       if (existing && existing.length > 0) {
@@ -655,13 +976,17 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
     };
 
     const setCurriculumForCourse = (courseId: string, curriculum: Chapter[]) => {
-      setState((prev) => ({
-        ...prev,
-        curricula: {
-          ...prev.curricula,
-          [courseId]: withCourseDemoSelection(normalizeCurriculum(curriculum)),
-        },
-      }));
+      setState((prev) => {
+        const normalized = normalizeCurriculum(curriculum);
+        const withDemo = withCourseDemoSelection(normalized);
+        return {
+          ...prev,
+          curricula: {
+            ...prev.curricula,
+            [courseId]: withDemo,
+          },
+        };
+      });
     };
 
     const setCourseDemoLesson = (courseId: string, lessonId?: string) => {
@@ -698,6 +1023,10 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
       setBanners,
       setTestimonials,
       setAnnouncements,
+      upsertCoupon,
+      deleteCoupon,
+      toggleCouponActive,
+      markCouponUsed,
       getCurriculumForCourse,
       setCurriculumForCourse,
       setCourseDemoLesson,

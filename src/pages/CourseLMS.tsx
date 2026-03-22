@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -7,11 +7,12 @@ import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/
 import {
   PlayCircle, CheckCircle2, Lock, Clock, FileText, ChevronLeft,
   BookOpen, BarChart3, MessageSquare, Download, Menu, X,
-  Award, SkipForward, SkipBack
+  Award, SkipForward, SkipBack, Maximize2, Minimize2, ChevronDown
 } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
+import VideoPlayer from "@/components/VideoPlayer";
 import LoginModal from "@/components/LoginModal";
 import { downloadStudyMaterialPdf } from "@/lib/studyMaterial";
 import {
@@ -19,7 +20,16 @@ import {
   type Chapter,
   type Lesson,
 } from "@/context/PlatformDataContext";
-import { decodeVideoUrl, getYouTubeEmbedUrl } from "@/lib/video-utils";
+import { decodeVideoUrl } from "@/lib/video-utils";
+import { isCourseAccessActive } from "@/lib/studentAccess";
+import { adminApi } from "@/services/adminApi";
+import {
+  completeStudentLessonApi,
+  getStudentCourseAccessApi,
+  recordStudentVideoActivityApi,
+  syncStudentWatchProgressApi,
+  type StudentCourseAccessSelf,
+} from "@/services/authApi";
 
 const fallbackVideoUrl = "https://www.w3schools.com/html/mov_bbb.mp4";
 
@@ -27,15 +37,31 @@ const CourseLMS = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { courses, getCurriculumForCourse, setCurriculumForCourse } = usePlatformData();
-  const { isLoggedIn } = useAuth();
-  const { isPurchased } = useCart();
+  const { isLoggedIn, user } = useAuth();
+  const { addToCart, updateProgress } = useCart();
   const course = courses.find((c) => c.id === id);
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [hasCourseAccess, setHasCourseAccess] = useState(false);
+  const [accessItem, setAccessItem] = useState<StudentCourseAccessSelf | null>(null);
+  const [accessMessage, setAccessMessage] = useState("");
+  const [currentTimeSec, setCurrentTimeSec] = useState(0);
+  const [durationSec, setDurationSec] = useState(0);
+  const [nowTick, setNowTick] = useState(Date.now());
+  const completionInFlightRef = useRef<Set<string>>(new Set());
+  const lastCompletionAtRef = useRef<Record<string, number>>({});
+  const watchBufferSecondsRef = useRef(0);
+  const watchSyncInFlightRef = useRef(false);
+  const lastObservedSecondRef = useRef<number | null>(null);
+  const [pendingWatchSeconds, setPendingWatchSeconds] = useState(0);
 
   const [curriculum, setCurriculum] = useState<Chapter[]>([]);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const playerShellRef = useRef<HTMLDivElement | null>(null);
+  const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
+  const [isContentExpanded, setIsContentExpanded] = useState(false);
 
   useEffect(() => {
     if (!course) {
@@ -55,6 +81,273 @@ const CourseLMS = () => {
       return stillExists || nextCurriculum[0]?.lessons[0] || null;
     });
   }, [course, getCurriculumForCourse]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !course?.id) {
+      setHasCourseAccess(false);
+      return;
+    }
+
+    const loadAccess = async () => {
+      setAccessLoading(true);
+      try {
+        const response = await getStudentCourseAccessApi();
+        if (!response.ok || !response.data) {
+          setAccessItem(null);
+          setAccessMessage("Course access not found.");
+          setHasCourseAccess(false);
+          return;
+        }
+
+        const item = response.data.find((entry) => entry.courseId === course.id);
+        setAccessItem(item || null);
+
+        if (!item) {
+          setAccessMessage("Course access not found.");
+          setHasCourseAccess(false);
+          return;
+        }
+
+        if (item.isEnabled === false) {
+          setAccessMessage("Course access is disabled by admin.");
+          setHasCourseAccess(false);
+          return;
+        }
+
+        if (item.expiresAt && new Date(item.expiresAt).getTime() <= Date.now()) {
+          setAccessMessage("Course validity expired.");
+          setHasCourseAccess(false);
+          return;
+        }
+
+        const remainingViews = Math.max(0, Number(item.remainingViews ?? (item.totalViews - item.usedViews)));
+        if (!item.isUnlimitedViews && remainingViews <= 0) {
+          setAccessMessage("Course views exhausted.");
+          setHasCourseAccess(false);
+          return;
+        }
+
+        setAccessMessage("");
+        setHasCourseAccess(isCourseAccessActive(item));
+      } finally {
+        setAccessLoading(false);
+      }
+    };
+
+    loadAccess();
+  }, [isLoggedIn, course?.id]);
+
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowTick(Date.now()), 30000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    const onFullscreenChange = () => {
+      setIsPlayerFullscreen(document.fullscreenElement === playerShellRef.current);
+    };
+    document.addEventListener("fullscreenchange", onFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", onFullscreenChange);
+  }, []);
+
+  const allLessons = curriculum.flatMap((ch) => ch.lessons);
+  const currentLessonId = activeLesson?.id || allLessons[0]?.id || "";
+  const currentChapter = curriculum.find((ch) => ch.lessons.some((l) => l.id === currentLessonId));
+
+  useEffect(() => {
+    if (!course?.id || !activeLesson?.id) return;
+    watchBufferSecondsRef.current = 0;
+    setPendingWatchSeconds(0);
+    lastObservedSecondRef.current = null;
+
+    adminApi.trackEvent("lesson_view", course.id, undefined, {
+      lessonId: activeLesson.id,
+      lessonTitle: activeLesson.title,
+      type: activeLesson.type,
+    }).catch(() => {
+      // Ignore analytics network failures.
+    });
+
+    recordStudentVideoActivityApi({
+      courseId: course.id,
+      chapterTitle: currentChapter?.title || "",
+      lessonTitle: activeLesson.title,
+      progressPercent: activeLesson.completed ? 100 : 10,
+      viewedSeconds: 0,
+    }).catch(() => {
+      // Ignore activity logging failures.
+    });
+  }, [course?.id, activeLesson?.id, activeLesson?.title, activeLesson?.type, activeLesson?.completed, currentChapter?.title]);
+
+  const totalLessons = curriculum.reduce((sum, ch) => sum + ch.lessons.length, 0);
+  const completedLessons = curriculum.reduce(
+    (sum, ch) => sum + ch.lessons.filter((l) => l.completed).length, 0
+  );
+  const progressPercent = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+
+  const currentIndex = allLessons.findIndex((l) => l.id === currentLessonId);
+  const isLessonAccessible = (lesson: Lesson) => !lesson.locked || Boolean(lesson.isPreview);
+
+  const handleLessonClick = (lesson: Lesson) => {
+    if (!isLessonAccessible(lesson)) return;
+    setActiveLesson(lesson);
+    setSidebarOpen(false);
+  };
+
+  const goToNextLesson = () => {
+    for (let index = currentIndex + 1; index < allLessons.length; index += 1) {
+      const candidate = allLessons[index];
+      if (isLessonAccessible(candidate)) {
+        setActiveLesson(candidate);
+        break;
+      }
+    }
+  };
+
+  const goToPrevLesson = () => {
+    for (let index = currentIndex - 1; index >= 0; index -= 1) {
+      const candidate = allLessons[index];
+      if (isLessonAccessible(candidate)) {
+        setActiveLesson(candidate);
+        break;
+      }
+    }
+  };
+
+  const syncWatchProgress = async (force = false) => {
+    if (!course?.id || !activeLesson || !hasCourseAccess) return;
+    if (watchSyncInFlightRef.current) return;
+
+    const bufferedSeconds = Math.floor(watchBufferSecondsRef.current);
+    if (bufferedSeconds <= 0) return;
+    if (!force && bufferedSeconds < 5) return;
+
+    watchBufferSecondsRef.current = 0;
+    setPendingWatchSeconds(0);
+    watchSyncInFlightRef.current = true;
+
+    const response = await syncStudentWatchProgressApi({
+      courseId: course.id,
+      chapterTitle: currentChapter?.title || "",
+      lessonTitle: activeLesson.title,
+      progressPercent: durationSec > 0 ? Math.round((currentTimeSec / durationSec) * 100) : 0,
+      watchedSeconds: bufferedSeconds,
+    });
+
+    watchSyncInFlightRef.current = false;
+
+    if (!response.ok || !response.data) {
+      watchBufferSecondsRef.current += bufferedSeconds;
+      setPendingWatchSeconds(Math.floor(watchBufferSecondsRef.current));
+      if ((response.message || "").toLowerCase().includes("budget") || (response.message || "").toLowerCase().includes("expired")) {
+        setHasCourseAccess(false);
+        setAccessMessage(response.message || "Course access expired.");
+      }
+      return;
+    }
+
+    setAccessItem(response.data.access);
+    setHasCourseAccess(Boolean(response.data.accessActive));
+    if (!response.data.accessActive) {
+      setAccessMessage("Your course access has expired because watch-time budget is finished.");
+      return;
+    }
+    setAccessMessage("");
+  };
+
+  useEffect(() => {
+    if (!hasCourseAccess) return;
+    const timer = window.setInterval(() => {
+      void syncWatchProgress(false);
+    }, 5000);
+
+    return () => {
+      window.clearInterval(timer);
+      void syncWatchProgress(true);
+    };
+  }, [hasCourseAccess, course?.id, activeLesson?.id, currentChapter?.title]);
+
+  const markComplete = async () => {
+    if (!activeLesson || !course) return;
+
+    const now = Date.now();
+    const lastCompletionAt = Number(lastCompletionAtRef.current[activeLesson.id] || 0);
+    if (now - lastCompletionAt < 8000) return;
+
+    if (completionInFlightRef.current.has(activeLesson.id)) return;
+    completionInFlightRef.current.add(activeLesson.id);
+
+    if (activeLesson.type === "video") {
+      await syncWatchProgress(true);
+
+      const completeResponse = await completeStudentLessonApi({
+        courseId: course.id,
+        lessonId: activeLesson.id,
+        chapterTitle: currentChapter?.title || "",
+        lessonTitle: activeLesson.title,
+        viewedSeconds: Math.floor(currentTimeSec),
+      });
+
+      if (!completeResponse.ok) {
+        setAccessMessage(completeResponse.message || "Unable to complete lesson.");
+        completionInFlightRef.current.delete(activeLesson.id);
+        return;
+      }
+
+      if (completeResponse.data) {
+        lastCompletionAtRef.current[activeLesson.id] = now;
+        setAccessItem(completeResponse.data.access);
+        setHasCourseAccess(Boolean(completeResponse.data.accessActive));
+        if (!completeResponse.data.accessActive) {
+          setAccessMessage("Your course access has expired due to validity/watch-time budget.");
+        } else {
+          setAccessMessage("");
+        }
+      }
+    }
+
+    const next = curriculum.map((ch) => ({
+      ...ch,
+      lessons: ch.lessons.map((l) => (l.id === activeLesson.id ? { ...l, completed: true } : l)),
+    }));
+
+    setCurriculum(next);
+    setCurriculumForCourse(course.id, next);
+    setActiveLesson((prev) => (prev ? { ...prev, completed: true } : prev));
+
+    const nextTotal = next.reduce((sum, ch) => sum + ch.lessons.length, 0);
+    const nextCompleted = next.reduce((sum, ch) => sum + ch.lessons.filter((l) => l.completed).length, 0);
+    const nextProgressPercent = nextTotal > 0 ? Math.round((nextCompleted / nextTotal) * 100) : 0;
+    updateProgress(course.id, nextProgressPercent);
+
+    recordStudentVideoActivityApi({
+      courseId: course.id,
+      chapterTitle: currentChapter?.title || "",
+      lessonTitle: activeLesson.title,
+      progressPercent: 100,
+      viewedSeconds: Math.floor(currentTimeSec),
+    }).catch(() => {
+      // Ignore completion sync failures.
+    });
+
+    completionInFlightRef.current.delete(activeLesson.id);
+  };
+
+  const formatHms = (seconds: number) => {
+    const safe = Math.max(0, Math.floor(seconds));
+    const hours = Math.floor(safe / 3600);
+    const minutes = Math.floor((safe % 3600) / 60);
+    const secs = safe % 60;
+    return `${String(hours).padStart(2, "0")}:${String(minutes).padStart(2, "0")}:${String(secs).padStart(2, "0")}`;
+  };
+
+  const getLessonIcon = (lesson: Lesson) => {
+    if (lesson.completed) return <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />;
+    if (lesson.locked) return <Lock className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />;
+    if (lesson.type === "video") return <PlayCircle className="w-4 h-4 text-primary shrink-0" />;
+    if (lesson.type === "pdf") return <FileText className="w-4 h-4 text-muted-foreground shrink-0" />;
+    return <BarChart3 className="w-4 h-4 text-accent shrink-0" />;
+  };
 
   if (!course) {
     return (
@@ -108,83 +401,52 @@ const CourseLMS = () => {
     );
   }
 
-  if (!isPurchased(course.id)) {
+  if (accessLoading) {
     return (
       <div className="min-h-screen bg-background flex items-center justify-center p-4">
         <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
-          <h2 className="text-xl font-bold text-foreground">Course Not Purchased</h2>
-          <p className="text-sm text-muted-foreground mt-2 mb-5">
-            Purchase this course to unlock videos, PDFs, and study materials.
-          </p>
-          <Button className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => navigate(`/course/${course.id}`)}>
-            Buy This Course
-          </Button>
+          <h2 className="text-xl font-bold text-foreground">Checking course access...</h2>
+          <p className="text-sm text-muted-foreground mt-2">Please wait.</p>
         </div>
       </div>
     );
   }
 
-  const totalLessons = curriculum.reduce((sum, ch) => sum + ch.lessons.length, 0);
-  const completedLessons = curriculum.reduce(
-    (sum, ch) => sum + ch.lessons.filter((l) => l.completed).length, 0
-  );
-  const progressPercent = totalLessons > 0 ? Math.round((completedLessons / totalLessons) * 100) : 0;
+  if (!hasCourseAccess) {
+    const canRepurchase = Boolean(accessItem);
 
-  const allLessons = curriculum.flatMap((ch) => ch.lessons);
-  const currentLessonId = activeLesson?.id || allLessons[0]?.id || "";
-  const currentIndex = allLessons.findIndex((l) => l.id === currentLessonId);
-  const isLessonAccessible = (lesson: Lesson) => !lesson.locked || Boolean(lesson.isPreview);
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center p-4">
+        <div className="w-full max-w-md rounded-2xl border border-border bg-card p-6 text-center shadow-sm">
+          <h2 className="text-xl font-bold text-foreground">Course Access Unavailable</h2>
+          <p className="text-sm text-muted-foreground mt-2 mb-5">
+            {accessMessage || "Purchase this course to unlock videos, PDFs, and study materials."}
+          </p>
+          <div className="space-y-2">
+            {canRepurchase ? (
+              <Button
+                className="w-full bg-accent hover:bg-accent/90 text-accent-foreground"
+                onClick={() => {
+                  addToCart(course);
+                  navigate("/checkout");
+                }}
+              >
+                Repurchase / Renew Access
+              </Button>
+            ) : (
+              <Button className="w-full bg-accent hover:bg-accent/90 text-accent-foreground" onClick={() => navigate(`/course/${course.id}`)}>
+                Buy This Course
+              </Button>
+            )}
 
-  const handleLessonClick = (lesson: Lesson) => {
-    if (!isLessonAccessible(lesson)) return;
-    setActiveLesson(lesson);
-    setSidebarOpen(false);
-  };
-
-  const goToNextLesson = () => {
-    for (let index = currentIndex + 1; index < allLessons.length; index += 1) {
-      const candidate = allLessons[index];
-      if (isLessonAccessible(candidate)) {
-        setActiveLesson(candidate);
-        break;
-      }
-    }
-  };
-
-  const goToPrevLesson = () => {
-    for (let index = currentIndex - 1; index >= 0; index -= 1) {
-      const candidate = allLessons[index];
-      if (isLessonAccessible(candidate)) {
-        setActiveLesson(candidate);
-        break;
-      }
-    }
-  };
-
-  const markComplete = () => {
-    if (!activeLesson || !course) return;
-    setCurriculum((prev) => {
-      const next = prev.map((ch) => ({
-        ...ch,
-        lessons: ch.lessons.map((l) =>
-          l.id === activeLesson.id ? { ...l, completed: true } : l,
-        ),
-      }));
-      setCurriculumForCourse(course.id, next);
-      return next;
-    });
-    setActiveLesson((prev) => (prev ? { ...prev, completed: true } : prev));
-  };
-
-  const getLessonIcon = (lesson: Lesson) => {
-    if (lesson.completed) return <CheckCircle2 className="w-4 h-4 text-accent shrink-0" />;
-    if (lesson.locked) return <Lock className="w-3.5 h-3.5 text-muted-foreground/40 shrink-0" />;
-    if (lesson.type === "video") return <PlayCircle className="w-4 h-4 text-primary shrink-0" />;
-    if (lesson.type === "pdf") return <FileText className="w-4 h-4 text-muted-foreground shrink-0" />;
-    return <BarChart3 className="w-4 h-4 text-accent shrink-0" />;
-  };
-
-  const currentChapter = curriculum.find((ch) => ch.lessons.some((l) => l.id === currentLessonId));
+            <Button variant="outline" className="w-full" onClick={() => navigate(`/course/${course.id}`)}>
+              View Course Options
+            </Button>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   if (!activeLesson) {
     return (
@@ -194,10 +456,40 @@ const CourseLMS = () => {
     );
   }
 
-  const resolvedLessonVideoUrl = decodeVideoUrl(activeLesson.videoUrl || "") || fallbackVideoUrl;
-  const youtubeEmbedUrl = getYouTubeEmbedUrl(resolvedLessonVideoUrl);
-  const shouldRenderYouTube =
-    activeLesson.type === "video" && (activeLesson.videoSource === "youtube" || Boolean(youtubeEmbedUrl));
+  const lessonVideoUrl = decodeVideoUrl(activeLesson.videoUrl || "") || fallbackVideoUrl;
+  const lessonVideoSource = activeLesson.videoSource || "direct";
+  const isUnlimitedViews = accessItem?.isUnlimitedViews === true;
+  const baseRemainingWatchSeconds = Math.max(
+    0,
+    Number(accessItem?.remainingWatchSeconds ?? ((accessItem?.allowedWatchSeconds || 0) - (accessItem?.usedWatchSeconds || 0))),
+  );
+  const remainingWatchSeconds = Math.max(0, baseRemainingWatchSeconds - pendingWatchSeconds);
+  const validityLeftLabel = accessItem?.expiresAt
+    ? (() => {
+        const diff = new Date(accessItem.expiresAt).getTime() - nowTick;
+        if (diff <= 0) return "Expired";
+        const days = Math.floor(diff / (1000 * 60 * 60 * 24));
+        const hours = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+        return `${days}d ${hours}h left`;
+      })()
+    : "No expiry";
+
+  const watermarkEmail = user?.email?.trim() || "";
+
+  const togglePlayerFullscreen = async () => {
+    const container = playerShellRef.current;
+    if (!container) return;
+
+    try {
+      if (document.fullscreenElement === container) {
+        await document.exitFullscreen();
+        return;
+      }
+      await container.requestFullscreen();
+    } catch {
+      // Ignore fullscreen API failures and keep normal mode.
+    }
+  };
 
   return (
     <div className="min-h-screen bg-background flex flex-col">
@@ -206,16 +498,16 @@ const CourseLMS = () => {
         <Button variant="ghost" size="icon" className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 rounded-full" onClick={() => navigate("/dashboard")}>
           <ChevronLeft className="w-5 h-5" />
         </Button>
-        
+
         <div className="flex-1 min-w-0">
           <h1 className="text-sm font-bold truncate">{course.title}</h1>
           <div className="flex items-center gap-2 mt-0.5">
             <div className="flex-1 max-w-[120px] h-1.5 bg-primary-foreground/15 rounded-full overflow-hidden">
-              <div 
+              <div
                 className="h-full rounded-full transition-all duration-500"
-                style={{ 
+                style={{
                   width: `${progressPercent}%`,
-                  background: 'linear-gradient(90deg, hsl(var(--accent)), hsl(4 90% 65%))'
+                  background: "linear-gradient(90deg, hsl(var(--accent)), hsl(4 90% 65%))",
                 }}
               />
             </div>
@@ -349,91 +641,109 @@ const CourseLMS = () => {
         {/* Main Content */}
         <main className="flex-1 flex flex-col overflow-y-auto bg-secondary/20">
           {/* Video Player Area */}
-          <div className="bg-gradient-to-b from-black via-black to-foreground/95 aspect-video w-full max-h-[60vh] relative group/player">
-            {activeLesson.type === "video" ? (
-              <>
-                {shouldRenderYouTube && youtubeEmbedUrl ? (
-                  <iframe
-                    key={activeLesson.id}
-                    src={youtubeEmbedUrl}
-                    className="w-full h-full"
-                    title={activeLesson.title}
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    allowFullScreen
-                  />
-                ) : (
-                  <video
-                    key={activeLesson.id}
+          <div className="w-full bg-background border-b border-border px-2 sm:px-3 lg:px-4 pt-2 sm:pt-3 lg:pt-4">
+            <div ref={playerShellRef} className="relative group/player w-full aspect-video lg:max-w-[1100px] lg:mx-auto lg:aspect-[16/9] bg-black">
+              {activeLesson.type === "video" ? (
+                <>
+                  <Button
+                    type="button"
+                    size="icon"
+                    variant="secondary"
+                    className="absolute right-2 top-2 z-30 h-8 w-8 bg-black/55 text-white border border-white/20 hover:bg-black/75"
+                    onClick={togglePlayerFullscreen}
+                  >
+                    {isPlayerFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                  </Button>
+                  <div className="w-full" key={activeLesson.id}>
+                  <VideoPlayer
+                    videoUrl={lessonVideoUrl}
+                    source={lessonVideoSource}
+                    autoplay
                     controls
-                    autoPlay
-                    className="w-full h-full object-contain"
-                    src={resolvedLessonVideoUrl}
-                  >
-                    Your browser does not support the video tag.
-                  </video>
-                )}
-                {/* Floating lesson nav buttons */}
-                <div className="absolute bottom-4 left-4 right-4 flex items-center justify-between opacity-0 group-hover/player:opacity-100 transition-opacity pointer-events-none">
-                  <Button 
-                    variant="ghost" 
-                    size="sm" 
-                    onClick={goToPrevLesson}
-                    disabled={currentIndex === 0}
-                    className="pointer-events-auto bg-black/60 hover:bg-black/80 text-white rounded-full h-8 px-3 text-[11px] backdrop-blur-sm disabled:opacity-30"
-                  >
-                    <SkipBack className="w-3.5 h-3.5 mr-1" /> Previous
-                  </Button>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    onClick={goToNextLesson}
-                    disabled={currentIndex >= allLessons.length - 1}
-                    className="pointer-events-auto bg-black/60 hover:bg-black/80 text-white rounded-full h-8 px-3 text-[11px] backdrop-blur-sm disabled:opacity-30"
-                  >
-                    Next <SkipForward className="w-3.5 h-3.5 ml-1" />
-                  </Button>
-                </div>
-              </>
-            ) : (
-              <div className="w-full h-full flex flex-col items-center justify-center gap-4">
-                <div className={`w-20 h-20 rounded-2xl flex items-center justify-center
+                    disableNativeFullscreen
+                    aspectRatio="aspect-video"
+                    onProgress={({ currentTime, duration, progressPercent }) => {
+                      setCurrentTimeSec(currentTime);
+                      setDurationSec(duration);
+
+                      const previousObserved = lastObservedSecondRef.current;
+                      if (previousObserved !== null) {
+                        const rawDelta = Math.max(0, currentTime - previousObserved);
+                        const boundedDelta = Math.min(rawDelta, 2);
+                        if (boundedDelta > 0) {
+                          watchBufferSecondsRef.current += boundedDelta;
+                          setPendingWatchSeconds(Math.floor(watchBufferSecondsRef.current));
+                        }
+                      }
+                      lastObservedSecondRef.current = currentTime;
+
+                      if (watchBufferSecondsRef.current >= 5) {
+                        void syncWatchProgress(false);
+                      }
+
+                      if (
+                        activeLesson?.id &&
+                        progressPercent >= 99.5
+                      ) {
+                        void markComplete();
+                      }
+                    }}
+                    onEnded={() => {
+                      if (!activeLesson?.id) return;
+                      void markComplete();
+                    }}
+                  />
+                  </div>
+
+                  {watermarkEmail && (
+                    <div className="pointer-events-none absolute inset-0 select-none">
+                      <span className="absolute left-[6%] top-[14%] text-white/35 text-[10px] sm:text-xs font-semibold tracking-wide max-w-[70%] truncate">{watermarkEmail}</span>
+                      <span className="absolute right-[8%] top-[48%] text-white/30 text-[10px] sm:text-xs font-semibold tracking-wide max-w-[70%] truncate">{watermarkEmail}</span>
+                      <span className="absolute left-[24%] bottom-[12%] text-white/30 text-[10px] sm:text-xs font-semibold tracking-wide max-w-[70%] truncate">{watermarkEmail}</span>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="w-full h-full flex flex-col items-center justify-center gap-4 rounded-xl border border-border bg-card">
+                  <div className={`w-20 h-20 rounded-2xl flex items-center justify-center
                   ${activeLesson.type === "pdf" ? "bg-muted" : "bg-accent/20"}
                 `}>
-                  {activeLesson.type === "pdf" ? (
-                    <FileText className="w-10 h-10 text-muted-foreground" />
-                  ) : (
-                    <BarChart3 className="w-10 h-10 text-accent" />
-                  )}
-                </div>
-                <div className="text-center">
-                  <p className="text-white text-lg font-bold">{activeLesson.title}</p>
-                  <p className="text-white/50 text-sm mt-1">{activeLesson.type === "pdf" ? "Download and study" : "Test your knowledge"}</p>
-                </div>
-                <Button
-                  className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-full px-6 h-10 font-semibold shadow-lg"
-                  onClick={() => {
-                    if (activeLesson.type === "pdf") {
-                      if (activeLesson.resourceUrl) {
-                        window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer");
+                    {activeLesson.type === "pdf" ? (
+                      <FileText className="w-10 h-10 text-muted-foreground" />
+                    ) : (
+                      <BarChart3 className="w-10 h-10 text-accent" />
+                    )}
+                  </div>
+                  <div className="text-center">
+                    <p className="text-foreground text-lg font-bold">{activeLesson.title}</p>
+                    <p className="text-muted-foreground text-sm mt-1">{activeLesson.type === "pdf" ? "Download and study" : "Test your knowledge"}</p>
+                  </div>
+                  <Button
+                    className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-full px-6 h-10 font-semibold shadow-lg"
+                    onClick={() => {
+                      if (activeLesson.type === "pdf") {
+                        if (activeLesson.resourceUrl) {
+                          window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer");
+                          return;
+                        }
+                        downloadStudyMaterialPdf(`${course.title}-${activeLesson.title}`);
                         return;
                       }
-                      downloadStudyMaterialPdf(`${course.title}-${activeLesson.title}`);
-                      return;
-                    }
 
-                    if (activeLesson.type === "quiz" && activeLesson.resourceUrl) {
-                      window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer");
-                    }
-                  }}
-                >
-                  {activeLesson.type === "pdf" ? (
-                    <><Download className="w-4 h-4 mr-2" /> Download PDF</>
-                  ) : (
-                    <>Start Quiz</>
-                  )}
-                </Button>
-              </div>
-            )}
+                      if (activeLesson.type === "quiz" && activeLesson.resourceUrl) {
+                        window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer");
+                      }
+                    }}
+                  >
+                    {activeLesson.type === "pdf" ? (
+                      <><Download className="w-4 h-4 mr-2" /> Download PDF</>
+                    ) : (
+                      <>Start Quiz</>
+                    )}
+                  </Button>
+                </div>
+              )}
+            </div>
           </div>
 
           {/* Lesson Info Bar */}
@@ -456,6 +766,14 @@ const CourseLMS = () => {
                   {activeLesson.isPreview && (
                     <Badge className="bg-green-100 text-green-700 text-[10px] border-0">Preview</Badge>
                   )}
+                  {!isUnlimitedViews && (
+                    <Badge className="bg-rose-100 text-rose-700 text-[10px] border-0">
+                      Watch Time: {formatHms(remainingWatchSeconds)}
+                    </Badge>
+                  )}
+                  <Badge className="bg-indigo-100 text-indigo-700 text-[10px] border-0">
+                    Validity: {validityLeftLabel}
+                  </Badge>
                 </div>
                 <div className="min-w-0">
                   <h2 className="text-sm md:text-base font-bold text-foreground truncate">{activeLesson.title}</h2>
@@ -498,64 +816,75 @@ const CourseLMS = () => {
               </TabsList>
 
               <TabsContent value="overview" className="mt-0">
-                <div className="bg-card rounded-xl border border-border p-5 space-y-4">
-                  <div>
-                    <h3 className="text-sm font-bold text-foreground mb-2">About this Lesson</h3>
-                    <p className="text-sm text-foreground/70 leading-relaxed">
-                      {activeLesson.description?.trim()
-                        ? activeLesson.description
-                        : (
-                          <>
-                            This lecture covers the essential concepts of <strong className="text-foreground">{activeLesson.title}</strong> as part of the {course.title} course. Pay close attention to the key concepts discussed.
-                          </>
-                        )}
-                    </p>
-                  </div>
-                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {[
-                      { label: "Subject", value: course.subcategory || course.category, icon: BookOpen },
-                      { label: "Instructor", value: course.professor, icon: Award },
-                      { label: "Duration", value: activeLesson.duration, icon: Clock },
-                      { label: "Language", value: course.language, icon: MessageSquare },
-                    ].map((item) => (
-                      <div key={item.label} className="bg-secondary/50 rounded-lg p-3 text-center">
-                        <item.icon className="w-4 h-4 mx-auto text-primary mb-1.5" />
-                        <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{item.label}</p>
-                        <p className="text-xs font-semibold text-foreground mt-0.5 truncate">{item.value}</p>
+                <div className="bg-card rounded-xl border border-border space-y-4">
+                  {/* About this Lesson - Collapsible */}
+                  <div className="border-b border-border">
+                    <button
+                      onClick={() => setIsContentExpanded(!isContentExpanded)}
+                      className="w-full flex items-center justify-between p-5 hover:bg-secondary/30 transition-colors text-left group"
+                    >
+                      <h3 className="text-sm font-bold text-foreground">About this Lesson</h3>
+                      <ChevronDown className={`w-4 h-4 text-muted-foreground transition-transform duration-200 ${isContentExpanded ? 'rotate-180' : ''}`} />
+                    </button>
+                    {isContentExpanded && (
+                      <div className="px-5 pb-4 space-y-4 border-t border-border/50">
+                        <p className="text-sm text-foreground/70 leading-relaxed">
+                          {activeLesson.description?.trim()
+                            ? activeLesson.description
+                            : (
+                              <>
+                                This lecture covers the essential concepts of <strong className="text-foreground">{activeLesson.title}</strong> as part of the {course.title} course. Pay close attention to the key concepts discussed.
+                              </>
+                            )}
+                        </p>
+                        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                          {[
+                            { label: "Subject", value: course.subcategory || course.category, icon: BookOpen },
+                            { label: "Instructor", value: course.professor, icon: Award },
+                            { label: "Duration", value: activeLesson.duration, icon: Clock },
+                            { label: "Language", value: course.language, icon: MessageSquare },
+                          ].map((item) => (
+                            <div key={item.label} className="bg-secondary/50 rounded-lg p-3 text-center">
+                              <item.icon className="w-4 h-4 mx-auto text-primary mb-1.5" />
+                              <p className="text-[10px] text-muted-foreground uppercase tracking-wide">{item.label}</p>
+                              <p className="text-xs font-semibold text-foreground mt-0.5 truncate">{item.value}</p>
+                            </div>
+                          ))}
+                        </div>
+                        {/* Resources */}
+                        <div>
+                          <h3 className="text-sm font-bold text-foreground mb-2">Resources</h3>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full text-xs h-8 gap-1.5"
+                              onClick={() => downloadStudyMaterialPdf(`${course.title}-lecture-notes`)}
+                            >
+                              <Download className="w-3.5 h-3.5" /> Lecture Notes
+                            </Button>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="rounded-full text-xs h-8 gap-1.5"
+                              onClick={() => downloadStudyMaterialPdf(`${course.title}-practice-sheet`)}
+                            >
+                              <FileText className="w-3.5 h-3.5" /> Practice Sheet
+                            </Button>
+                            {activeLesson.resourceUrl && (
+                              <Button
+                                variant="outline"
+                                size="sm"
+                                className="rounded-full text-xs h-8 gap-1.5"
+                                onClick={() => window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer")}
+                              >
+                                <Download className="w-3.5 h-3.5" /> Custom Resource
+                              </Button>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                    ))}
-                  </div>
-                  {/* Resources */}
-                  <div>
-                    <h3 className="text-sm font-bold text-foreground mb-2">Resources</h3>
-                    <div className="flex flex-wrap gap-2">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="rounded-full text-xs h-8 gap-1.5"
-                        onClick={() => downloadStudyMaterialPdf(`${course.title}-lecture-notes`)}
-                      >
-                        <Download className="w-3.5 h-3.5" /> Lecture Notes
-                      </Button>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="rounded-full text-xs h-8 gap-1.5"
-                        onClick={() => downloadStudyMaterialPdf(`${course.title}-practice-sheet`)}
-                      >
-                        <FileText className="w-3.5 h-3.5" /> Practice Sheet
-                      </Button>
-                      {activeLesson.resourceUrl && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="rounded-full text-xs h-8 gap-1.5"
-                          onClick={() => window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer")}
-                        >
-                          <Download className="w-3.5 h-3.5" /> Custom Resource
-                        </Button>
-                      )}
-                    </div>
+                    )}
                   </div>
                 </div>
               </TabsContent>
