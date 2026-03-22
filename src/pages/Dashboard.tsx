@@ -264,7 +264,11 @@ const Dashboard = () => {
                   <Card key={course.id} className="overflow-hidden hover:shadow-lg transition-all group border-border">
                     <div className="flex">
                       <div className="w-28 sm:w-36 shrink-0 overflow-hidden relative">
-                        <img src={course.image} alt={course.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300" />
+                        <img
+                          src={course.thumbnail || course.image || "/placeholder.svg"}
+                          alt={course.title}
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        />
                         {course.progress === 100 && (
                           <div className="absolute inset-0 bg-emerald-600/80 flex items-center justify-center">
                             <Star className="w-8 h-8 text-white" />

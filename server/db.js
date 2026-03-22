@@ -11,7 +11,7 @@ const getConnectionConfig = () => {
   if (databaseUrl) {
     return {
       connectionString: databaseUrl,
-      ssl: parseBoolean(process.env.PGSSL) ? { rejectUnauthorized: false } : undefined,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
     };
   }
 
@@ -346,9 +346,11 @@ export async function ensureSchema() {
     `
     INSERT INTO admin_accounts (id, name, email, password_hash, role, is_active, permissions, created_by)
     VALUES ($1, $2, $3, $4, 'super_admin', TRUE, '{}'::jsonb, 'system')
-    ON CONFLICT (email)
+    ON CONFLICT (id)
     DO UPDATE SET
       name = EXCLUDED.name,
+      email = EXCLUDED.email,
+      password_hash = EXCLUDED.password_hash,
       role = 'super_admin',
       is_active = TRUE,
       updated_at = NOW()
