@@ -18,6 +18,7 @@ import {
   User,
   Shield,
   Gauge,
+  GraduationCap,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -35,6 +36,7 @@ const navItems = [
   { to: "/admin/course-content", icon: BookOpen, label: "Course Content", moduleKey: "course-content" as const },
   { to: "/admin/categories", icon: FolderTree, label: "Categories", moduleKey: "categories" as const },
   { to: "/admin/coupons", icon: Tags, label: "Coupons", moduleKey: "coupons" as const },
+  { to: "/admin/faculty", icon: GraduationCap, label: "Faculty", moduleKey: "faculty" as const },
   { to: "/admin/homepage", icon: Settings, label: "Homepage Content", moduleKey: "homepage" as const },
   { to: "/admin/header", icon: AppWindow, label: "Header Module", moduleKey: "homepage" as const },
   { to: "/admin/users", icon: Users, label: "Students", moduleKey: "users" as const },

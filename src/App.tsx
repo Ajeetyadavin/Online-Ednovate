@@ -45,7 +45,9 @@ import AdminCoupons from "./pages/admin/AdminCoupons";
 import AdminSubAdmins from "./pages/admin/AdminSubAdmins";
 import AdminStudentAccess from "./pages/admin/AdminStudentAccess";
 import AdminMarketing from "./pages/admin/AdminMarketing";
+import AdminFaculty from "./pages/admin/AdminFaculty";
 import CourseCollection from "./pages/CourseCollection";
+import FacultyDetail from "./pages/FacultyDetail";
 
 const queryClient = new QueryClient();
 
@@ -77,6 +79,7 @@ const AppContent = () => (
                     <Route path="/dashboard/technical-support" element={<TechnicalSupport />} />
                     <Route path="/dashboard/course/:id/about" element={<CourseAbout />} />
                     <Route path="/collections/:slug" element={<CourseCollection />} />
+                    <Route path="/faculty/:id" element={<FacultyDetail />} />
                     <Route path="/contact-us" element={<ContactUs />} />
                     <Route path="/api-test" element={<ApiTest />} />
                   </Route>
@@ -90,6 +93,7 @@ const AppContent = () => (
                     <Route path="course-content" element={<AdminCourseContent />} />
                     <Route path="categories" element={<AdminCategories />} />
                     <Route path="coupons" element={<AdminCoupons />} />
+                    <Route path="faculty" element={<AdminFaculty />} />
                     <Route path="users" element={<AdminUsers />} />
                     <Route path="student-access" element={<AdminStudentAccess />} />
                     <Route path="orders" element={<AdminOrders />} />

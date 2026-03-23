@@ -11,6 +11,14 @@ export interface BunnyStreamConfig {
   pullZone: string;
 }
 
+const resolveBunnyHostname = (config: BunnyStreamConfig): string => {
+  const cdnHost = String(config.cdnHostname || "").trim();
+  if (cdnHost) return cdnHost;
+
+  const pullZone = String(config.pullZone || "").trim();
+  return pullZone ? `${pullZone}.b-cdn.net` : "";
+};
+
 /**
  * Bunny Stream Video response
  */
@@ -33,12 +41,13 @@ export interface BunnyStreamVideo {
  * @returns Full CDN URL for the video
  */
 export const getBunnyStreamVideoUrl = (videoId: string, config: BunnyStreamConfig): string => {
-  if (!config.enabled || !config.cdnHostname || !videoId) {
+  const hostname = resolveBunnyHostname(config);
+  if (!hostname || !videoId) {
     return videoId;
   }
 
   // Bunny Stream CDN URL format: https://[CDN-HOSTNAME]/[VIDEO-GUID]/playlist.m3u8
-  return `https://${config.cdnHostname}/${videoId}/playlist.m3u8`;
+  return `https://${hostname}/${videoId}/playlist.m3u8`;
 };
 
 /**
@@ -48,11 +57,12 @@ export const getBunnyStreamVideoUrl = (videoId: string, config: BunnyStreamConfi
  * @returns Thumbnail URL
  */
 export const getBunnyStreamThumbnailUrl = (videoGuid: string, config: BunnyStreamConfig): string => {
-  if (!config.enabled || !config.cdnHostname || !videoGuid) {
+  const hostname = resolveBunnyHostname(config);
+  if (!hostname || !videoGuid) {
     return "";
   }
 
-  return `https://${config.cdnHostname}/${videoGuid}/thumbnail.jpg`;
+  return `https://${hostname}/${videoGuid}/thumbnail.jpg`;
 };
 
 /**
@@ -234,11 +244,12 @@ export const listVideos = async (
  * @returns Signed playback URL
  */
 export const getSignedPlaybackUrl = (videoId: string, config: BunnyStreamConfig, expiryHours?: number): string => {
-  if (!config.enabled || !config.cdnHostname || !videoId) {
+  const hostname = resolveBunnyHostname(config);
+  if (!hostname || !videoId) {
     return videoId;
   }
 
-  const baseUrl = `https://${config.cdnHostname}/${videoId}/playlist.m3u8`;
+  const baseUrl = `https://${hostname}/${videoId}/playlist.m3u8`;
 
   // For token-based access, would need additional implementation
   // This is a simplified version

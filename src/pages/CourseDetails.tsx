@@ -94,6 +94,7 @@ const CourseDetails = () => {
   const { isLoggedIn } = useAuth();
   const [activeTab, setActiveTab] = useState<"content" | "ratings" | "reviews">("content");
   const [openAccordion, setOpenAccordion] = useState<number | null>(null);
+  const [openPackageCourseId, setOpenPackageCourseId] = useState<string | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
   const [selectedViews, setSelectedViews] = useState<number>(1);
@@ -129,6 +130,43 @@ const CourseDetails = () => {
       lectures: chapter.lessons.length,
     }));
   }, [curriculum]);
+
+  const bundledCourses = useMemo(() => {
+    if (!course.isCombo || !Array.isArray(course.packageCourseIds) || course.packageCourseIds.length === 0) {
+      return [];
+    }
+    return course.packageCourseIds
+      .map((courseId) => courses.find((item) => item.id === courseId))
+      .filter((item): item is NonNullable<typeof item> => Boolean(item));
+  }, [course.isCombo, course.packageCourseIds, courses]);
+
+  const packageContent = useMemo(() => {
+    if (!course.isCombo) return [];
+    return bundledCourses.map((bundled) => {
+      const bundledCurriculum = getCurriculumForCourse(bundled.id, bundled.title);
+      const chapters = Array.isArray(bundledCurriculum) ? bundledCurriculum : [];
+      const lessons = chapters.flatMap((chapter) =>
+        (Array.isArray(chapter.lessons) ? chapter.lessons : []).map((lesson, idx) => ({
+          chapterTitle: chapter.title,
+          title: String(lesson?.title || `Lesson ${idx + 1}`),
+          duration: String(lesson?.duration || "").trim(),
+          type: String(lesson?.type || "video").toLowerCase(),
+        })),
+      );
+      const totalSeconds = lessons.reduce((sum, lesson) => {
+        if (lesson.type !== "video") return sum;
+        return sum + parseLessonDurationToSeconds(lesson.duration);
+      }, 0);
+
+      return {
+        id: bundled.id,
+        title: bundled.title,
+        lessons,
+        totalLectures: lessons.length,
+        totalDurationLabel: formatSecondsToHms(totalSeconds),
+      };
+    });
+  }, [course.isCombo, bundledCourses, getCurriculumForCourse]);
 
   const totalVideoSeconds = useMemo(() => {
     if (!curriculum || curriculum.length === 0) {
@@ -193,13 +231,25 @@ const CourseDetails = () => {
   ]);
 
   const totalLectures = content.reduce((sum, c) => sum + c.lectures, 0);
+  const totalPackageLectures = useMemo(
+    () => packageContent.reduce((sum, item) => sum + item.totalLectures, 0),
+    [packageContent],
+  );
+  const totalPackageSeconds = useMemo(
+    () => packageContent.reduce((sum, item) => sum + parseLessonDurationToSeconds(item.totalDurationLabel), 0),
+    [packageContent],
+  );
+  const totalPackageDurationLabel = useMemo(
+    () => formatSecondsToHms(totalPackageSeconds),
+    [totalPackageSeconds],
+  );
   const showRatings = course.ratingsEnabled !== false;
   const showReviews = course.reviewsEnabled !== false;
   const effectiveRatingValue = Math.max(0, Math.min(5, Number(course.ratingValue || 4.8)));
   const effectiveRatingCount = Math.max(0, Number(course.ratingCount || 0));
   const effectiveReviews = Array.isArray(course.reviews) && course.reviews.length > 0 ? course.reviews : defaultReviews;
   const availableTabs: Array<{ key: "content" | "ratings" | "reviews"; label: string }> = [
-    { key: "content", label: "Course Content" },
+    { key: "content", label: course.isCombo ? "Package Content" : "Course Content" },
     ...(showRatings ? [{ key: "ratings" as const, label: "Ratings" }] : []),
     ...(showReviews ? [{ key: "reviews" as const, label: "Reviews" }] : []),
   ];
@@ -264,6 +314,7 @@ const CourseDetails = () => {
   useEffect(() => {
     // Keep chapter lessons hidden by default until user explicitly opens a chapter.
     setOpenAccordion(null);
+    setOpenPackageCourseId(null);
   }, [course.id]);
 
   const selectedDeliveryModes = course.deliveryModePricingEnabled
@@ -527,48 +578,104 @@ const CourseDetails = () => {
             {/* Tab Content */}
             {activeTab === "content" && (
               <div className="mb-6">
-                <h3 className="text-lg font-bold text-foreground mb-1">Course Content</h3>
-                <p className="text-sm text-muted-foreground mb-4">
-                  {totalLectures} Lectures • {totalDurationLabel}
-                </p>
-                <div className="space-y-2">
-                  {content.map((section, idx) => (
-                    <div key={idx} className="border border-border rounded-lg overflow-hidden">
-                      <button
-                        onClick={() => setOpenAccordion(openAccordion === idx ? null : idx)}
-                        className="w-full flex items-center justify-between p-4 bg-secondary/30 hover:bg-secondary/50 transition-colors tap-bounce"
-                      >
-                        <span className="font-semibold text-sm text-foreground text-left">{section.title}</span>
-                        <div className="flex items-center gap-3">
-                          <span className="text-xs text-muted-foreground">{section.lectures} lectures</span>
-                          {openAccordion === idx ? (
-                            <ChevronUp className="w-4 h-4 text-muted-foreground" />
-                          ) : (
-                            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-                          )}
+                <h3 className="text-lg font-bold text-foreground mb-1">{course.isCombo ? "Package Content" : "Course Content"}</h3>
+                {course.isCombo ? (
+                  <>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {bundledCourses.length} Courses • {totalPackageLectures} Lessons • {totalPackageDurationLabel}
+                    </p>
+                    <div className="space-y-2">
+                      {packageContent.length === 0 ? (
+                        <div className="rounded-lg border border-border bg-secondary/20 p-4 text-sm text-muted-foreground">
+                          Package me abhi bundled courses add nahi hain.
                         </div>
-                      </button>
-                      {openAccordion === idx && (
-                        <div className="p-4 bg-card space-y-2.5 animate-in slide-in-from-top-2 duration-200">
-                          {Array.from({ length: Math.min(section.lectures, 5) }, (_, i) => (
-                            <div key={i} className="flex items-center gap-3 text-sm text-foreground/80">
-                              <PlayCircle className="w-4 h-4 text-accent/60 shrink-0" />
-                              <span>Lecture {i + 1}</span>
-                              <span className="ml-auto text-xs text-muted-foreground">
-                                {Math.floor(Math.random() * 40 + 30)} min
-                              </span>
-                            </div>
-                          ))}
-                          {section.lectures > 5 && (
-                            <p className="text-xs text-muted-foreground pt-1">
-                              + {section.lectures - 5} more lectures
-                            </p>
-                          )}
-                        </div>
+                      ) : (
+                        packageContent.map((item) => (
+                          <div key={item.id} className="border border-border rounded-lg overflow-hidden">
+                            <button
+                              onClick={() => setOpenPackageCourseId(openPackageCourseId === item.id ? null : item.id)}
+                              className="w-full flex items-center justify-between p-4 bg-secondary/30 hover:bg-secondary/50 transition-colors tap-bounce"
+                            >
+                              <span className="font-semibold text-sm text-foreground text-left">{item.title}</span>
+                              <div className="flex items-center gap-3">
+                                <span className="text-xs text-muted-foreground">{item.totalLectures} lessons</span>
+                                {openPackageCourseId === item.id ? (
+                                  <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                                ) : (
+                                  <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                                )}
+                              </div>
+                            </button>
+                            {openPackageCourseId === item.id && (
+                              <div className="p-4 bg-card space-y-2.5 animate-in slide-in-from-top-2 duration-200">
+                                {item.lessons.length === 0 ? (
+                                  <p className="text-xs text-muted-foreground">Is course ka curriculum abhi add nahi hai.</p>
+                                ) : (
+                                  item.lessons.map((lesson, lessonIdx) => (
+                                    <div key={`${item.id}-${lesson.chapterTitle}-${lessonIdx}`} className="flex items-start gap-3 text-sm text-foreground/80">
+                                      <PlayCircle className="w-4 h-4 text-accent/60 shrink-0 mt-0.5" />
+                                      <div className="min-w-0 flex-1">
+                                        <p className="font-medium text-foreground/90">{lesson.title}</p>
+                                        <p className="text-xs text-muted-foreground mt-0.5">{lesson.chapterTitle}</p>
+                                      </div>
+                                      <span className="text-xs text-muted-foreground shrink-0">
+                                        {lesson.duration || "--"}
+                                      </span>
+                                    </div>
+                                  ))
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        ))
                       )}
                     </div>
-                  ))}
-                </div>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-muted-foreground mb-4">
+                      {totalLectures} Lectures • {totalDurationLabel}
+                    </p>
+                    <div className="space-y-2">
+                      {content.map((section, idx) => (
+                        <div key={idx} className="border border-border rounded-lg overflow-hidden">
+                          <button
+                            onClick={() => setOpenAccordion(openAccordion === idx ? null : idx)}
+                            className="w-full flex items-center justify-between p-4 bg-secondary/30 hover:bg-secondary/50 transition-colors tap-bounce"
+                          >
+                            <span className="font-semibold text-sm text-foreground text-left">{section.title}</span>
+                            <div className="flex items-center gap-3">
+                              <span className="text-xs text-muted-foreground">{section.lectures} lectures</span>
+                              {openAccordion === idx ? (
+                                <ChevronUp className="w-4 h-4 text-muted-foreground" />
+                              ) : (
+                                <ChevronDown className="w-4 h-4 text-muted-foreground" />
+                              )}
+                            </div>
+                          </button>
+                          {openAccordion === idx && (
+                            <div className="p-4 bg-card space-y-2.5 animate-in slide-in-from-top-2 duration-200">
+                              {Array.from({ length: Math.min(section.lectures, 5) }, (_, i) => (
+                                <div key={i} className="flex items-center gap-3 text-sm text-foreground/80">
+                                  <PlayCircle className="w-4 h-4 text-accent/60 shrink-0" />
+                                  <span>Lecture {i + 1}</span>
+                                  <span className="ml-auto text-xs text-muted-foreground">
+                                    {Math.floor(Math.random() * 40 + 30)} min
+                                  </span>
+                                </div>
+                              ))}
+                              {section.lectures > 5 && (
+                                <p className="text-xs text-muted-foreground pt-1">
+                                  + {section.lectures - 5} more lectures
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             )}
 

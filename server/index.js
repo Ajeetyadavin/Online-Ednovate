@@ -62,6 +62,110 @@ const mapStudentCourseAccess = (row) => ({
   updatedAt: row.updated_at,
 });
 
+const mapStudentOrderLine = (row) => ({
+  id: Number(row.id),
+  orderId: String(row.order_id || ""),
+  studentId: String(row.student_id || ""),
+  customerName: String(row.customer_name || ""),
+  customerEmail: String(row.customer_email || ""),
+  customerPhone: String(row.customer_phone || ""),
+  shippingAddressLine1: String(row.shipping_address_line1 || ""),
+  shippingAddressLine2: String(row.shipping_address_line2 || ""),
+  shippingCity: String(row.shipping_city || ""),
+  shippingState: String(row.shipping_state || ""),
+  shippingCountry: String(row.shipping_country || ""),
+  shippingPincode: String(row.shipping_pincode || ""),
+  courseId: String(row.course_id || ""),
+  courseTitle: String(row.course_title || ""),
+  parentPackageId: String(row.parent_package_id || ""),
+  parentPackageTitle: String(row.parent_package_title || ""),
+  packageCourseIds: Array.isArray(row.package_course_ids)
+    ? row.package_course_ids.map((item) => String(item || "")).filter(Boolean)
+    : [],
+  orderDate: row.order_date,
+  paymentMethod: String(row.payment_method || ""),
+  amount: Number(row.amount || 0),
+  currency: String(row.currency || "INR"),
+  status: String(row.status || "completed"),
+  itemType: String(row.item_type || "course"),
+  modeLabel: String(row.mode_label || ""),
+  bookLabel: String(row.book_label || ""),
+  isEbook: row.is_ebook === true,
+  dispatchStatus: String(row.dispatch_status || "pending"),
+  trackingId: String(row.tracking_id || ""),
+  dispatchNote: String(row.dispatch_note || ""),
+  dispatchedAt: row.dispatched_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const groupStudentOrders = (rows) => {
+  const grouped = new Map();
+  rows.forEach((row) => {
+    const line = mapStudentOrderLine(row);
+    const key = line.orderId || `ORDER-${line.id}`;
+    const existing = grouped.get(key);
+    if (existing) {
+      existing.items.push({
+        id: line.id,
+        courseId: line.courseId,
+        title: line.courseTitle,
+        price: line.amount,
+        itemType: line.itemType,
+        modeLabel: line.modeLabel,
+        bookLabel: line.bookLabel,
+        isEbook: line.isEbook,
+        dispatchStatus: line.dispatchStatus,
+        trackingId: line.trackingId,
+      });
+      existing.total += line.amount;
+      existing.updatedAt = existing.updatedAt > line.updatedAt ? existing.updatedAt : line.updatedAt;
+      if (line.dispatchStatus !== "delivered") {
+        existing.dispatchStatus = line.dispatchStatus;
+      }
+      if (line.trackingId) {
+        existing.trackingId = line.trackingId;
+      }
+      if (line.dispatchNote) {
+        existing.dispatchNote = line.dispatchNote;
+      }
+      return;
+    }
+
+    grouped.set(key, {
+      id: key,
+      date: line.orderDate || (line.createdAt ? new Date(line.createdAt).toISOString().slice(0, 10) : ""),
+      status: line.status,
+      dispatchStatus: line.dispatchStatus,
+      trackingId: line.trackingId,
+      dispatchNote: line.dispatchNote,
+      paymentMethod: line.paymentMethod,
+      total: line.amount,
+      updatedAt: line.updatedAt,
+      items: [
+        {
+          id: line.id,
+          courseId: line.courseId,
+          title: line.courseTitle,
+          price: line.amount,
+          itemType: line.itemType,
+          modeLabel: line.modeLabel,
+          bookLabel: line.bookLabel,
+          isEbook: line.isEbook,
+          dispatchStatus: line.dispatchStatus,
+          trackingId: line.trackingId,
+        },
+      ],
+    });
+  });
+
+  return Array.from(grouped.values()).sort((a, b) => {
+    const ad = new Date(a.date || a.updatedAt || 0).getTime();
+    const bd = new Date(b.date || b.updatedAt || 0).getTime();
+    return bd - ad;
+  });
+};
+
 const mapStudentLoginLog = (row) => ({
   id: Number(row.id),
   studentId: row.student_id,
@@ -412,6 +516,7 @@ const ADMIN_MODULES = [
   "course-content",
   "categories",
   "coupons",
+  "faculty",
   "homepage",
   "users",
   "orders",
@@ -660,6 +765,7 @@ const getModuleFromPath = (pathName) => {
   if (pathName.startsWith("/api/students") || pathName.startsWith("/api/admin/quick-login")) return "users";
   if (pathName.startsWith("/api/auth/student/support") || pathName.startsWith("/api/admin/technical-support")) return "technical-support";
   if (pathName.startsWith("/api/admin/marketing")) return "marketing";
+  if (pathName.startsWith("/api/admin/faculty")) return "faculty";
   if (pathName.startsWith("/api/courses/")) return "courses";
   if (pathName === "/api/courses/upsert") return "courses";
   if (pathName.startsWith("/api/homepage")) return "homepage";
@@ -1119,12 +1225,13 @@ app.post("/api/auth/student/change-password", requireStudentSession, async (requ
 app.get("/api/auth/student/dashboard", requireStudentSession, async (request, response) => {
   try {
     const studentId = request.studentSession.studentId;
-    const [studentResult, accessResult, loginResult, notificationResult, videoResult] = await Promise.all([
+    const [studentResult, accessResult, loginResult, notificationResult, videoResult, orderResult] = await Promise.all([
       pool.query("SELECT * FROM students WHERE id = $1", [studentId]),
       pool.query("SELECT * FROM student_course_access WHERE student_id = $1 ORDER BY created_at DESC", [studentId]),
       pool.query("SELECT * FROM student_login_logs WHERE student_id = $1 ORDER BY created_at DESC LIMIT 30", [studentId]),
       pool.query("SELECT * FROM student_notifications WHERE student_id = $1 ORDER BY created_at DESC LIMIT 30", [studentId]),
       pool.query("SELECT * FROM student_video_activity WHERE student_id = $1 ORDER BY last_viewed_at DESC LIMIT 200", [studentId]),
+      pool.query("SELECT * FROM student_orders WHERE student_id = $1 ORDER BY created_at DESC LIMIT 500", [studentId]),
     ]);
 
     const student = studentResult.rows[0];
@@ -1134,13 +1241,32 @@ app.get("/api/auth/student/dashboard", requireStudentSession, async (request, re
     }
 
     const courseAccess = accessResult.rows.map(mapStudentCourseAccess);
-    const orders = courseAccess.map((item) => ({
-      id: `ORD-${item.studentId}-${item.courseId}`,
-      date: item.purchaseDate || (item.createdAt ? new Date(item.createdAt).toISOString().slice(0, 10) : ""),
-      total: 0,
-      status: item.isEnabled ? "Completed" : "Processing",
-      items: [{ title: item.courseTitle, price: 0 }],
-    }));
+    const orders = orderResult.rows.length > 0
+      ? groupStudentOrders(orderResult.rows)
+      : courseAccess.map((item) => ({
+          id: `ORD-${item.studentId}-${item.courseId}`,
+          date: item.purchaseDate || (item.createdAt ? new Date(item.createdAt).toISOString().slice(0, 10) : ""),
+          total: 0,
+          status: item.isEnabled ? "completed" : "processing",
+          dispatchStatus: item.isEnabled ? "delivered" : "processing",
+          trackingId: "",
+          dispatchNote: "",
+          paymentMethod: "",
+          items: [
+            {
+              id: item.id,
+              courseId: item.courseId,
+              title: item.courseTitle,
+              price: 0,
+              itemType: "course",
+              modeLabel: "",
+              bookLabel: "",
+              isEbook: false,
+              dispatchStatus: item.isEnabled ? "delivered" : "processing",
+              trackingId: "",
+            },
+          ],
+        }));
 
     response.json({
       student: mapStudentSelf(student),
@@ -1152,6 +1278,38 @@ app.get("/api/auth/student/dashboard", requireStudentSession, async (request, re
     });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load dashboard" });
+  }
+});
+
+app.get("/api/auth/student/orders", requireStudentSession, async (request, response) => {
+  try {
+    const studentId = request.studentSession.studentId;
+    const courseId = String(request.query.courseId || "").trim();
+
+    const params = [studentId];
+    let whereClause = "WHERE student_id = $1";
+    if (courseId) {
+      params.push(courseId);
+      whereClause += ` AND (course_id = $${params.length} OR package_course_ids @> to_jsonb(ARRAY[$${params.length}]::text[]))`;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM student_orders
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT 500
+      `,
+      params,
+    );
+
+    response.json({
+      lines: result.rows.map(mapStudentOrderLine),
+      grouped: groupStudentOrders(result.rows),
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load order history" });
   }
 });
 
@@ -1428,6 +1586,17 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
     const studentId = request.studentSession.studentId;
     const items = Array.isArray(request.body?.items) ? request.body.items : [];
     const purchaseDate = String(request.body?.purchaseDate || "").trim() || new Date().toISOString().slice(0, 10);
+    const orderId = String(request.body?.orderId || `EDN-${Date.now()}`).trim();
+    const paymentMethod = String(request.body?.paymentMethod || "").trim();
+    const customerName = String(request.body?.customerName || "").trim();
+    const customerEmail = String(request.body?.customerEmail || "").trim();
+    const customerPhone = String(request.body?.customerPhone || "").trim();
+    const shippingAddressLine1 = String(request.body?.shippingAddressLine1 || "").trim();
+    const shippingAddressLine2 = String(request.body?.shippingAddressLine2 || "").trim();
+    const shippingCity = String(request.body?.shippingCity || "").trim();
+    const shippingState = String(request.body?.shippingState || "").trim();
+    const shippingCountry = String(request.body?.shippingCountry || "").trim();
+    const shippingPincode = String(request.body?.shippingPincode || "").trim();
 
     if (items.length === 0) {
       response.status(400).json({ message: "items are required" });
@@ -1437,11 +1606,26 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
     for (const rawItem of items) {
       const courseId = String(rawItem?.courseId || "").trim();
       const courseTitle = String(rawItem?.courseTitle || "").trim();
+      const parentPackageId = String(rawItem?.parentPackageId || "").trim();
+      const parentPackageTitle = String(rawItem?.parentPackageTitle || "").trim();
+      const packageCourseIds = Array.isArray(rawItem?.packageCourseIds)
+        ? rawItem.packageCourseIds.map((value) => String(value || "").trim()).filter(Boolean)
+        : [];
       const durationDays = Math.max(1, Number(rawItem?.durationDays || 180));
       const explicitUnlimited = typeof rawItem?.isUnlimitedViews === "boolean" ? rawItem.isUnlimitedViews : null;
       const totalViews = Math.max(1, Number(rawItem?.totalViews || 2));
       const usedViews = Math.max(0, Number(rawItem?.usedViews || 0));
       const isEnabled = rawItem?.isEnabled !== false;
+      const amount = Math.max(0, Number(rawItem?.amount || 0));
+      const modeLabel = String(rawItem?.modeLabel || "").trim();
+      const bookLabel = String(rawItem?.bookLabel || "").trim();
+      const itemType = String(rawItem?.itemType || "course").trim().toLowerCase() || "course";
+      const isEbook = rawItem?.isEbook === true
+        || /e\s*-?book/i.test(modeLabel)
+        || /e\s*-?book/i.test(bookLabel)
+        || itemType === "ebook";
+      const grantAccess = rawItem?.grantAccess !== false;
+      const createOrderLine = rawItem?.createOrderLine !== false;
 
       if (!courseId) continue;
 
@@ -1455,56 +1639,126 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
       }
 
       const title = courseTitle || courseId;
-      const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
-      const courseDurationSeconds = await getCourseDurationSeconds(pool, courseId);
-      const allowedWatchSeconds = isUnlimitedViews ? 0 : Math.max(0, courseDurationSeconds) * totalViews;
-      const usedWatchSeconds = isUnlimitedViews ? 0 : Math.min(allowedWatchSeconds, Math.max(0, courseDurationSeconds) * usedViews);
 
-      await pool.query(
-        `
-        INSERT INTO student_course_access
-        (student_id, course_id, course_title, purchase_date, duration_days, expires_at, total_views, is_unlimited_views, used_views, course_duration_seconds, allowed_watch_seconds, used_watch_seconds, is_enabled, notes, updated_at)
-        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
-        ON CONFLICT (student_id, course_id)
-        DO UPDATE SET
-          course_title = EXCLUDED.course_title,
-          purchase_date = EXCLUDED.purchase_date,
-          duration_days = GREATEST(student_course_access.duration_days, EXCLUDED.duration_days),
-          expires_at = GREATEST(COALESCE(student_course_access.expires_at, NOW()), EXCLUDED.expires_at),
-          is_unlimited_views = (student_course_access.is_unlimited_views OR EXCLUDED.is_unlimited_views),
-          total_views = GREATEST(student_course_access.total_views, EXCLUDED.total_views),
-          course_duration_seconds = GREATEST(student_course_access.course_duration_seconds, EXCLUDED.course_duration_seconds),
-          allowed_watch_seconds = CASE
-            WHEN (student_course_access.is_unlimited_views OR EXCLUDED.is_unlimited_views) THEN 0
-            ELSE GREATEST(student_course_access.allowed_watch_seconds, EXCLUDED.allowed_watch_seconds)
-          END,
-          used_watch_seconds = CASE
-            WHEN (student_course_access.is_unlimited_views OR EXCLUDED.is_unlimited_views) THEN 0
-            ELSE LEAST(
-              GREATEST(student_course_access.allowed_watch_seconds, EXCLUDED.allowed_watch_seconds),
-              GREATEST(student_course_access.used_watch_seconds, EXCLUDED.used_watch_seconds)
-            )
-          END,
-          is_enabled = TRUE,
-          updated_at = NOW()
-        `,
-        [
-          studentId,
-          courseId,
-          title,
-          purchaseDate,
-          durationDays,
-          expiresAt,
-          totalViews,
-          isUnlimitedViews,
-          usedViews,
-          courseDurationSeconds,
-          allowedWatchSeconds,
-          usedWatchSeconds,
-          isEnabled,
-          "Purchased via checkout",
-        ],
-      );
+      if (grantAccess) {
+        const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+        const courseDurationSeconds = await getCourseDurationSeconds(pool, courseId);
+        const allowedWatchSeconds = isUnlimitedViews ? 0 : Math.max(0, courseDurationSeconds) * totalViews;
+        const usedWatchSeconds = isUnlimitedViews ? 0 : Math.min(allowedWatchSeconds, Math.max(0, courseDurationSeconds) * usedViews);
+
+        await pool.query(
+          `
+          INSERT INTO student_course_access
+          (student_id, course_id, course_title, purchase_date, duration_days, expires_at, total_views, is_unlimited_views, used_views, course_duration_seconds, allowed_watch_seconds, used_watch_seconds, is_enabled, notes, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,NOW())
+          ON CONFLICT (student_id, course_id)
+          DO UPDATE SET
+            course_title = EXCLUDED.course_title,
+            purchase_date = EXCLUDED.purchase_date,
+            duration_days = GREATEST(student_course_access.duration_days, EXCLUDED.duration_days),
+            expires_at = GREATEST(COALESCE(student_course_access.expires_at, NOW()), EXCLUDED.expires_at),
+            is_unlimited_views = (student_course_access.is_unlimited_views OR EXCLUDED.is_unlimited_views),
+            total_views = GREATEST(student_course_access.total_views, EXCLUDED.total_views),
+            course_duration_seconds = GREATEST(student_course_access.course_duration_seconds, EXCLUDED.course_duration_seconds),
+            allowed_watch_seconds = CASE
+              WHEN (student_course_access.is_unlimited_views OR EXCLUDED.is_unlimited_views) THEN 0
+              ELSE GREATEST(student_course_access.allowed_watch_seconds, EXCLUDED.allowed_watch_seconds)
+            END,
+            used_watch_seconds = CASE
+              WHEN (student_course_access.is_unlimited_views OR EXCLUDED.is_unlimited_views) THEN 0
+              ELSE LEAST(
+                GREATEST(student_course_access.allowed_watch_seconds, EXCLUDED.allowed_watch_seconds),
+                GREATEST(student_course_access.used_watch_seconds, EXCLUDED.used_watch_seconds)
+              )
+            END,
+            is_enabled = TRUE,
+            updated_at = NOW()
+          `,
+          [
+            studentId,
+            courseId,
+            title,
+            purchaseDate,
+            durationDays,
+            expiresAt,
+            totalViews,
+            isUnlimitedViews,
+            usedViews,
+            courseDurationSeconds,
+            allowedWatchSeconds,
+            usedWatchSeconds,
+            isEnabled,
+            parentPackageTitle ? `Purchased via package: ${parentPackageTitle}` : "Purchased via checkout",
+          ],
+        );
+      }
+
+      if (createOrderLine) {
+        const initialDispatchStatus = isEbook ? "pending" : itemType === "package" ? "processing" : "delivered";
+        await pool.query(
+          `
+          INSERT INTO student_orders
+          (order_id, student_id, customer_name, customer_email, customer_phone, shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_country, shipping_pincode, course_id, course_title, parent_package_id, parent_package_title, package_course_ids, order_date, payment_method, amount, currency, status, item_type, mode_label, book_label, is_ebook, dispatch_status, dispatch_note, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19,'INR','completed',$20,$21,$22,$23,$24,$25,NOW())
+          ON CONFLICT (order_id, student_id, course_id)
+          DO UPDATE SET
+            customer_name = EXCLUDED.customer_name,
+            customer_email = EXCLUDED.customer_email,
+            customer_phone = EXCLUDED.customer_phone,
+            shipping_address_line1 = EXCLUDED.shipping_address_line1,
+            shipping_address_line2 = EXCLUDED.shipping_address_line2,
+            shipping_city = EXCLUDED.shipping_city,
+            shipping_state = EXCLUDED.shipping_state,
+            shipping_country = EXCLUDED.shipping_country,
+            shipping_pincode = EXCLUDED.shipping_pincode,
+            course_title = EXCLUDED.course_title,
+            parent_package_id = EXCLUDED.parent_package_id,
+            parent_package_title = EXCLUDED.parent_package_title,
+            package_course_ids = EXCLUDED.package_course_ids,
+            payment_method = EXCLUDED.payment_method,
+            amount = EXCLUDED.amount,
+            status = EXCLUDED.status,
+            item_type = EXCLUDED.item_type,
+            mode_label = EXCLUDED.mode_label,
+            book_label = EXCLUDED.book_label,
+            is_ebook = EXCLUDED.is_ebook,
+            dispatch_status = EXCLUDED.dispatch_status,
+            dispatch_note = EXCLUDED.dispatch_note,
+            updated_at = NOW()
+          `,
+          [
+            orderId,
+            studentId,
+            customerName || null,
+            customerEmail || null,
+            customerPhone || null,
+            shippingAddressLine1 || null,
+            shippingAddressLine2 || null,
+            shippingCity || null,
+            shippingState || null,
+            shippingCountry || null,
+            shippingPincode || null,
+            courseId,
+            title,
+            parentPackageId || null,
+            parentPackageTitle || null,
+            JSON.stringify(packageCourseIds),
+            purchaseDate,
+            paymentMethod || null,
+            amount,
+            itemType,
+            modeLabel || null,
+            bookLabel || null,
+            isEbook,
+            initialDispatchStatus,
+            itemType === "package"
+              ? `Package order placed (${packageCourseIds.length} courses included)`
+              : isEbook
+                ? "Awaiting dispatch"
+                : "Access delivered online",
+          ],
+        );
+      }
     }
 
     await pool.query(
@@ -1934,6 +2188,213 @@ app.get("/api/admin/student-access-summary", requireAdminPermission("users", "re
     });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load access summary" });
+  }
+});
+
+app.get("/api/admin/orders", requireAdminPermission("orders", "read"), async (request, response) => {
+  try {
+    const search = String(request.query.search || "").trim().toLowerCase();
+    const dispatchStatus = String(request.query.dispatchStatus || "all").trim().toLowerCase();
+    const itemType = String(request.query.itemType || "all").trim().toLowerCase();
+    const limit = Math.max(10, Math.min(1000, Number(request.query.limit || 300)));
+
+    const where = [];
+    const params = [];
+    let idx = 1;
+
+    if (search) {
+      where.push(`(
+        LOWER(o.order_id) LIKE $${idx}
+        OR LOWER(s.name) LIKE $${idx}
+        OR LOWER(s.email) LIKE $${idx}
+        OR LOWER(o.course_title) LIKE $${idx}
+        OR LOWER(COALESCE(o.tracking_id, '')) LIKE $${idx}
+      )`);
+      params.push(`%${search}%`);
+      idx += 1;
+    }
+
+    if (dispatchStatus !== "all") {
+      where.push(`LOWER(o.dispatch_status) = $${idx}`);
+      params.push(dispatchStatus);
+      idx += 1;
+    }
+
+    if (itemType === "ebook") {
+      where.push("o.is_ebook = TRUE");
+    } else if (itemType === "package") {
+      where.push("LOWER(o.item_type) = 'package'");
+    } else if (itemType === "course") {
+      where.push("o.is_ebook = FALSE AND LOWER(o.item_type) <> 'package'");
+    }
+
+    const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+    params.push(limit);
+
+    const result = await pool.query(
+      `
+      SELECT
+        o.*,
+        s.name AS student_name,
+        s.email AS student_email,
+        s.mobile AS student_mobile
+      FROM student_orders o
+      JOIN students s ON s.id = o.student_id
+      ${whereClause}
+      ORDER BY o.created_at DESC
+      LIMIT $${idx}
+      `,
+      params,
+    );
+
+    const items = result.rows.map((row) => ({
+      ...mapStudentOrderLine(row),
+      studentName: String(row.student_name || ""),
+      studentEmail: String(row.student_email || ""),
+      studentMobile: String(row.student_mobile || ""),
+    }));
+
+    response.json({ items });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load orders" });
+  }
+});
+
+app.get("/api/admin/orders/student/:studentId", requireAdminPermission("orders", "read"), async (request, response) => {
+  try {
+    const studentId = String(request.params.studentId || "").trim();
+    if (!studentId) {
+      response.status(400).json({ message: "studentId is required" });
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT
+        o.*,
+        s.name AS student_name,
+        s.email AS student_email,
+        s.mobile AS student_mobile
+      FROM student_orders o
+      JOIN students s ON s.id = o.student_id
+      WHERE o.student_id = $1
+      ORDER BY o.created_at DESC
+      LIMIT 1000
+      `,
+      [studentId],
+    );
+
+    const lines = result.rows.map((row) => ({
+      ...mapStudentOrderLine(row),
+      studentName: String(row.student_name || ""),
+      studentEmail: String(row.student_email || ""),
+      studentMobile: String(row.student_mobile || ""),
+    }));
+
+    response.json({ lines, grouped: groupStudentOrders(result.rows) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load student order history" });
+  }
+});
+
+app.patch("/api/admin/orders/:id/dispatch", requireAdminPermission("orders", "edit"), async (request, response) => {
+  try {
+    const orderLineId = Number(request.params.id || 0);
+    if (!orderLineId || Number.isNaN(orderLineId)) {
+      response.status(400).json({ message: "Valid order line id is required" });
+      return;
+    }
+
+    const rawStatus = String(request.body?.dispatchStatus || "").trim().toLowerCase();
+    const allowedStatuses = ["pending", "processing", "dispatched", "delivered", "cancelled"];
+    const dispatchStatus = allowedStatuses.includes(rawStatus) ? rawStatus : "pending";
+    const trackingId = String(request.body?.trackingId || "").trim();
+    const dispatchNote = String(request.body?.dispatchNote || "").trim();
+    const status = String(request.body?.status || "completed").trim().toLowerCase() || "completed";
+
+    const updateResult = await pool.query(
+      `
+      UPDATE student_orders
+      SET
+        dispatch_status = $2,
+        tracking_id = $3,
+        dispatch_note = $4,
+        status = $5,
+        dispatched_at = CASE WHEN $2 = 'dispatched' OR $2 = 'delivered' THEN NOW() ELSE dispatched_at END,
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [orderLineId, dispatchStatus, trackingId || null, dispatchNote || null, status],
+    );
+
+    if (updateResult.rowCount === 0) {
+      response.status(404).json({ message: "Order line not found" });
+      return;
+    }
+
+    const updated = updateResult.rows[0];
+    const notificationSubject = `Order Update: ${String(updated.course_title || "Course")}`;
+    const notificationMessage = [
+      `Your order ${String(updated.order_id || "")} is now ${dispatchStatus}.`,
+      trackingId ? `Tracking ID: ${trackingId}.` : "",
+      dispatchNote ? `Note: ${dispatchNote}` : "",
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    await pool.query(
+      `
+      INSERT INTO student_notifications (student_id, channel, subject, message, status, sent_by)
+      VALUES ($1, 'in_app', $2, $3, 'sent', 'admin')
+      `,
+      [String(updated.student_id || ""), notificationSubject, notificationMessage || "Your order details have been updated."],
+    );
+
+    response.json({ item: mapStudentOrderLine(updated) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to update dispatch status" });
+  }
+});
+
+app.delete("/api/admin/orders/:id", requireAdminPermission("orders", "edit"), async (request, response) => {
+  try {
+    const orderLineId = Number(request.params.id || 0);
+    if (!orderLineId || Number.isNaN(orderLineId)) {
+      response.status(400).json({ message: "Valid order line id is required" });
+      return;
+    }
+
+    const deletedResult = await pool.query(
+      `
+      DELETE FROM student_orders
+      WHERE id = $1
+      RETURNING *
+      `,
+      [orderLineId],
+    );
+
+    if (deletedResult.rowCount === 0) {
+      response.status(404).json({ message: "Order line not found" });
+      return;
+    }
+
+    const deleted = deletedResult.rows[0];
+    await pool.query(
+      `
+      INSERT INTO student_notifications (student_id, channel, subject, message, status, sent_by)
+      VALUES ($1, 'in_app', $2, $3, 'sent', 'admin')
+      `,
+      [
+        String(deleted.student_id || ""),
+        `Order Removed: ${String(deleted.course_title || "Course")}`,
+        `Order ${String(deleted.order_id || "")} has been removed by admin support. Contact support if this was unexpected.`,
+      ],
+    );
+
+    response.json({ ok: true, item: mapStudentOrderLine(deleted) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete order" });
   }
 });
 
@@ -3362,6 +3823,165 @@ app.post("/api/courses/:id/curriculum", requireAdminPermission("course-content",
     response.json({ ok: true });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save curriculum" });
+  }
+});
+
+const buildCourseLookup = async () => {
+  const courseResult = await pool.query("SELECT id, payload FROM courses");
+  return courseResult.rows.reduce((acc, row) => {
+    const payload = row.payload || {};
+    const courseId = String(row.id || "");
+    if (!courseId) return acc;
+    acc[courseId] = {
+      id: courseId,
+      title: String(payload.title || "Untitled Course"),
+      thumbnail: String(payload.thumbnail || payload.image || ""),
+    };
+    return acc;
+  }, {});
+};
+
+const mapFacultyProfile = (row, courseLookup = {}) => {
+  const courseIds = normalizeStringList(row.course_ids);
+  return {
+    id: String(row.id),
+    name: String(row.name || ""),
+    photoUrl: String(row.photo_url || ""),
+    about: String(row.about || ""),
+    courseIds,
+    courses: courseIds
+      .map((courseId) => courseLookup[courseId])
+      .filter(Boolean),
+    isActive: row.is_active !== false,
+    sortOrder: Number(row.sort_order || 0),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
+
+app.get("/api/admin/faculty", requireAdminPermission("faculty", "read"), async (_request, response) => {
+  try {
+    const [facultyResult, courseLookup] = await Promise.all([
+      pool.query("SELECT * FROM faculty_profiles ORDER BY sort_order ASC, created_at DESC"),
+      buildCourseLookup(),
+    ]);
+
+    response.json({
+      items: facultyResult.rows.map((row) => mapFacultyProfile(row, courseLookup)),
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load faculty" });
+  }
+});
+
+app.post("/api/admin/faculty", requireAdminPermission("faculty", "create"), async (request, response) => {
+  try {
+    const name = String(request.body?.name || "").trim();
+    const photoUrl = String(request.body?.photoUrl || "").trim();
+    const about = String(request.body?.about || "").trim();
+    const courseIds = normalizeStringList(request.body?.courseIds);
+    const isActive = request.body?.isActive !== false;
+    const sortOrder = Number(request.body?.sortOrder || Date.now());
+
+    if (!name) {
+      response.status(400).json({ message: "Faculty name is required" });
+      return;
+    }
+
+    const id = String(request.body?.id || `faculty-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+
+    await pool.query(
+      `
+      INSERT INTO faculty_profiles (id, name, photo_url, about, course_ids, is_active, sort_order, updated_at)
+      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW())
+      `,
+      [id, name, photoUrl || null, about || null, JSON.stringify(courseIds), isActive, sortOrder],
+    );
+
+    const [itemResult, courseLookup] = await Promise.all([
+      pool.query("SELECT * FROM faculty_profiles WHERE id = $1", [id]),
+      buildCourseLookup(),
+    ]);
+
+    response.status(201).json({ item: mapFacultyProfile(itemResult.rows[0], courseLookup) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to create faculty" });
+  }
+});
+
+app.put("/api/admin/faculty/:id", requireAdminPermission("faculty", "edit"), async (request, response) => {
+  try {
+    const id = String(request.params.id);
+    const name = String(request.body?.name || "").trim();
+    const photoUrl = String(request.body?.photoUrl || "").trim();
+    const about = String(request.body?.about || "").trim();
+    const courseIds = normalizeStringList(request.body?.courseIds);
+    const isActive = request.body?.isActive !== false;
+    const sortOrder = Number(request.body?.sortOrder || 0);
+
+    if (!name) {
+      response.status(400).json({ message: "Faculty name is required" });
+      return;
+    }
+
+    const existing = await pool.query("SELECT id FROM faculty_profiles WHERE id = $1", [id]);
+    if (!existing.rows[0]) {
+      response.status(404).json({ message: "Faculty not found" });
+      return;
+    }
+
+    await pool.query(
+      `
+      UPDATE faculty_profiles
+      SET name = $2,
+          photo_url = $3,
+          about = $4,
+          course_ids = $5::jsonb,
+          is_active = $6,
+          sort_order = $7,
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [id, name, photoUrl || null, about || null, JSON.stringify(courseIds), isActive, sortOrder],
+    );
+
+    const [itemResult, courseLookup] = await Promise.all([
+      pool.query("SELECT * FROM faculty_profiles WHERE id = $1", [id]),
+      buildCourseLookup(),
+    ]);
+
+    response.json({ item: mapFacultyProfile(itemResult.rows[0], courseLookup) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to update faculty" });
+  }
+});
+
+app.delete("/api/admin/faculty/:id", requireAdminPermission("faculty", "delete"), async (request, response) => {
+  try {
+    const id = String(request.params.id);
+    const result = await pool.query("DELETE FROM faculty_profiles WHERE id = $1", [id]);
+    if (result.rowCount === 0) {
+      response.status(404).json({ message: "Faculty not found" });
+      return;
+    }
+    response.json({ ok: true });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete faculty" });
+  }
+});
+
+app.get("/api/faculty", async (_request, response) => {
+  try {
+    const [facultyResult, courseLookup] = await Promise.all([
+      pool.query("SELECT * FROM faculty_profiles WHERE is_active = TRUE ORDER BY sort_order ASC, created_at DESC"),
+      buildCourseLookup(),
+    ]);
+
+    response.json({
+      items: facultyResult.rows.map((row) => mapFacultyProfile(row, courseLookup)),
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load faculty" });
   }
 });
 

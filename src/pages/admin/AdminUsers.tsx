@@ -305,20 +305,25 @@ export default function AdminUsers() {
     <div className="space-y-5 font-['Inter']">
 
       {/* ─── Header ────────────────────────────────────────────── */}
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900">Students</h1>
-        <p className="mt-0.5 text-sm text-slate-500">Manage profiles, course access, activity logs and communication.</p>
+      <div className="flex items-center gap-3">
+        <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-violet-600 shadow-lg shadow-violet-500/25">
+          <Users className="h-6 w-6 text-white" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Students</h1>
+          <p className="mt-0.5 text-xs text-slate-500">Manage profiles, course access, activity logs and communication.</p>
+        </div>
       </div>
 
       {/* ─── Stat Row ──────────────────────────────────────────── */}
       <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
         {[
-          { label: "Total", value: students.length, icon: Users, color: "text-slate-700", bg: "bg-slate-100" },
-          { label: "Active", value: activeCount, icon: Shield, color: "text-emerald-700", bg: "bg-emerald-50" },
-          { label: "Inactive", value: students.length - activeCount, icon: ToggleLeft, color: "text-slate-500", bg: "bg-slate-50" },
-          { label: "Enrollments", value: courseAccess.length, icon: GraduationCap, color: "text-blue-700", bg: "bg-blue-50" },
+          { label: "Total", value: students.length, icon: Users, color: "text-slate-700", bg: "bg-gradient-to-br from-slate-100 to-slate-50", border: "border-slate-200" },
+          { label: "Active", value: activeCount, icon: Shield, color: "text-emerald-700", bg: "bg-gradient-to-br from-emerald-50 to-emerald-100/50", border: "border-emerald-200" },
+          { label: "Inactive", value: students.length - activeCount, icon: ToggleLeft, color: "text-slate-500", bg: "bg-gradient-to-br from-slate-50 to-slate-100/50", border: "border-slate-200" },
+          { label: "Enrollments", value: courseAccess.length, icon: GraduationCap, color: "text-blue-700", bg: "bg-gradient-to-br from-blue-50 to-blue-100/50", border: "border-blue-200" },
         ].map((stat) => (
-          <div key={stat.label} className="flex items-center gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div key={stat.label} className={`flex items-center gap-3 rounded-2xl border ${stat.border} bg-white p-4 shadow-sm`}>
             <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl ${stat.bg}`}>
               <stat.icon className={`h-5 w-5 ${stat.color}`} />
             </div>
@@ -333,11 +338,16 @@ export default function AdminUsers() {
       {/* ─── Student Table Card ─────────────────────────────────── */}
       <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
         {/* Toolbar */}
-        <div className="border-b border-slate-100 bg-slate-50/60 px-5 py-4 space-y-3">
+        <div className="border-b border-slate-100 bg-gradient-to-r from-slate-50 to-slate-50/50 px-5 py-4 space-y-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h2 className="text-sm font-bold text-slate-800">Student Directory</h2>
-              <p className="text-xs text-slate-500">{filteredStudents.length} records</p>
+            <div className="flex items-center gap-2">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                <Users className="h-4 w-4 text-primary" />
+              </div>
+              <div>
+                <h2 className="text-sm font-bold text-slate-800">Student Directory</h2>
+                <p className="text-xs text-slate-500">{filteredStudents.length} records</p>
+              </div>
             </div>
             <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl border-slate-200 text-xs" onClick={() => loadStudents(searchTerm)}>
               <RefreshCcw className="h-3.5 w-3.5" /> Refresh

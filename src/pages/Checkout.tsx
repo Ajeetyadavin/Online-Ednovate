@@ -25,6 +25,12 @@ const Checkout = () => {
   const [fullName, setFullName] = useState(user?.name || "");
   const [email, setEmail] = useState(user?.email || "");
   const [phone, setPhone] = useState(user?.mobile || "");
+  const [addressLine1, setAddressLine1] = useState("");
+  const [addressLine2, setAddressLine2] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [country, setCountry] = useState("India");
+  const [pincode, setPincode] = useState("");
 
   const getModeLabel = (item: (typeof items)[number]): string | undefined => {
     if (!item.deliveryModePricingEnabled) return undefined;
@@ -213,6 +219,16 @@ const Checkout = () => {
 
   const finalTotal = totalPrice - couponDiscount + taxTotal;
 
+  const requiresShippingAddress = useMemo(() => {
+    return items.some((item) => {
+      const mode = String(getModeLabel(item) || "").toLowerCase();
+      const books = String(getBookLabel(item) || "").toLowerCase();
+      const hasPenDrive = /pen\s*-?drive/.test(mode);
+      const hasPhysicalBook = /physical|hard\s*copy|printed|book/.test(books) && !/ebook|e\s*-?notes|enotes/.test(books);
+      return hasPenDrive || hasPhysicalBook;
+    });
+  }, [items]);
+
   const handleApplyCoupon = () => {
     const result = validateCoupon(coupon);
     if (!result.valid || !result.coupon || !result.discount) {
@@ -229,6 +245,16 @@ const Checkout = () => {
     if (!fullName.trim() || !email.trim()) {
       toast({ title: "Missing Details", description: "Please enter your full name and email." });
       return;
+    }
+
+    if (requiresShippingAddress) {
+      if (!phone.trim() || !addressLine1.trim() || !city.trim() || !state.trim() || !pincode.trim()) {
+        toast({
+          title: "Address Required",
+          description: "For book/pendrive dispatch, please fill phone, address, city, state and pincode.",
+        });
+        return;
+      }
     }
 
     if (appliedCoupon) {
@@ -258,6 +284,12 @@ const Checkout = () => {
       studentName: fullName.trim(),
       email: email.trim(),
       phone: phone.trim(),
+      addressLine1: addressLine1.trim(),
+      addressLine2: addressLine2.trim(),
+      city: city.trim(),
+      state: state.trim(),
+      country: country.trim(),
+      pincode: pincode.trim(),
     });
 
     if (!purchaseResult.ok) {
@@ -394,6 +426,71 @@ const Checkout = () => {
                     className="h-9 text-sm bg-secondary/50 border-border"
                     value={phone}
                     onChange={(e) => setPhone(e.target.value)}
+                  />
+                </div>
+              </div>
+            </div>
+
+            <div className="bg-background rounded-xl border border-border p-4 space-y-3">
+              <div className="flex items-center justify-between gap-2">
+                <h2 className="text-sm font-bold text-foreground">Shipping Address</h2>
+                {requiresShippingAddress && (
+                  <span className="rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-semibold text-amber-700">Required for dispatch</span>
+                )}
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Address Line 1</Label>
+                  <Input
+                    placeholder="House no, street, area"
+                    className="h-9 text-sm bg-secondary/50 border-border"
+                    value={addressLine1}
+                    onChange={(e) => setAddressLine1(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5 sm:col-span-2">
+                  <Label className="text-xs">Address Line 2 (Optional)</Label>
+                  <Input
+                    placeholder="Landmark, apartment, etc"
+                    className="h-9 text-sm bg-secondary/50 border-border"
+                    value={addressLine2}
+                    onChange={(e) => setAddressLine2(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">City</Label>
+                  <Input
+                    placeholder="City"
+                    className="h-9 text-sm bg-secondary/50 border-border"
+                    value={city}
+                    onChange={(e) => setCity(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">State</Label>
+                  <Input
+                    placeholder="State"
+                    className="h-9 text-sm bg-secondary/50 border-border"
+                    value={state}
+                    onChange={(e) => setState(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Country</Label>
+                  <Input
+                    placeholder="Country"
+                    className="h-9 text-sm bg-secondary/50 border-border"
+                    value={country}
+                    onChange={(e) => setCountry(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs">Pincode</Label>
+                  <Input
+                    placeholder="Pincode"
+                    className="h-9 text-sm bg-secondary/50 border-border"
+                    value={pincode}
+                    onChange={(e) => setPincode(e.target.value)}
                   />
                 </div>
               </div>

@@ -11,7 +11,19 @@ import { isCourseAccessActive, progressFromViews } from "@/lib/studentAccess";
 interface OrderRecord {
   id: string;
   date: string;
-  items: { title: string; price: number; taxPercentage?: number; modeLabel?: string; bookLabel?: string }[];
+  items: {
+    id?: number;
+    courseId?: string;
+    title: string;
+    price: number;
+    taxPercentage?: number;
+    modeLabel?: string;
+    bookLabel?: string;
+    itemType?: string;
+    isEbook?: boolean;
+    dispatchStatus?: string;
+    trackingId?: string;
+  }[];
   subtotal?: number;
   couponDiscount?: number;
   taxAmount?: number;
@@ -21,6 +33,9 @@ interface OrderRecord {
   studentName?: string;
   email?: string;
   phone?: string;
+  dispatchStatus?: string;
+  trackingId?: string;
+  dispatchNote?: string;
 }
 
 interface PurchasedCourse extends Course {
@@ -48,6 +63,12 @@ interface CartContextType {
     studentName?: string;
     email?: string;
     phone?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    pincode?: string;
   }) => Promise<{ ok: boolean; message: string }>;
   updateProgress: (courseId: string, progress: number) => void;
   updateOrderStatus: (orderId: string, status: OrderRecord["status"]) => void;
@@ -86,6 +107,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       if (selectedIds.length === 0 || addons.length === 0) return undefined;
       const labels = addons.filter((addon) => selectedIds.includes(addon.id)).map((addon) => addon.label);
       return labels.length > 0 ? labels.join(", ") : undefined;
+    };
+
+    const isEbookSelection = (course: Course): boolean => {
+      const modeLabel = getModeLabel(course) || "";
+      const bookLabel = getBookLabel(course) || "";
+      return /e\s*-?book/i.test(modeLabel) || /e\s*-?book/i.test(bookLabel);
     };
 
   const [items, setItems] = useState<Course[]>(() => parseStored<Course[]>(CART_STORAGE_KEY, []));
@@ -156,13 +183,28 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           id: String(order.id || `ORD-${Date.now()}`),
           date: String(order.date || ""),
           items: Array.isArray(order.items)
-            ? order.items.map((item: any) => ({ title: String(item.title || "Course"), price: Number(item.price || 0) }))
+            ? order.items.map((item: any) => ({
+                id: Number(item.id || 0) || undefined,
+                courseId: String(item.courseId || "") || undefined,
+                title: String(item.title || "Course"),
+                price: Number(item.price || 0),
+                itemType: String(item.itemType || "") || undefined,
+                modeLabel: String(item.modeLabel || "") || undefined,
+                bookLabel: String(item.bookLabel || "") || undefined,
+                isEbook: item.isEbook === true,
+                dispatchStatus: String(item.dispatchStatus || "") || undefined,
+                trackingId: String(item.trackingId || "") || undefined,
+              }))
             : [],
               subtotal: Number(order.subtotal || 0) || undefined,
               couponDiscount: Number(order.couponDiscount || 0) || undefined,
               taxAmount: Number(order.taxAmount || 0) || undefined,
           total: Number(order.total || 0),
-          status: order.status === "Processing" ? "Processing" : "Completed",
+          status: String(order.status || "").toLowerCase() === "processing" ? "Processing" : "Completed",
+          paymentMethod: String(order.paymentMethod || ""),
+          dispatchStatus: String(order.dispatchStatus || ""),
+          trackingId: String(order.trackingId || ""),
+          dispatchNote: String(order.dispatchNote || ""),
         }));
         setOrders(nextOrders);
       } catch {
@@ -214,6 +256,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     studentName?: string;
     email?: string;
     phone?: string;
+    addressLine1?: string;
+    addressLine2?: string;
+    city?: string;
+    state?: string;
+    country?: string;
+    pincode?: string;
   }) => {
     const token = localStorage.getItem(SESSION_TOKEN_KEY) || "";
     if (!token) {
@@ -223,18 +271,76 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     const now = new Date().toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
     const purchaseDate = new Date().toISOString().slice(0, 10);
     const currentCart = [...items];
+    let courseCatalogById = new Map<string, Course>();
 
-    const payloadItems = currentCart.map((item) => ({
-      courseId: item.id,
-      courseTitle: item.title,
-      durationDays: Math.max(1, Number(item.selectedValidityDays || 180)),
-      totalViews: Math.max(1, Number(item.selectedViews || 2)),
-      isUnlimitedViews: item.unlimitedViewsEnabled === true,
-      usedViews: 0,
-      isEnabled: true,
-    }));
+    try {
+      const coursesResponse = await fetch("/api/courses");
+      if (coursesResponse.ok) {
+        const coursesPayload = await coursesResponse.json();
+        const coursesList: Course[] = Array.isArray(coursesPayload?.courses) ? coursesPayload.courses : [];
+        courseCatalogById = new Map(coursesList.map((course) => [course.id, course]));
+      }
+    } catch {
+      // Best-effort lookup only.
+    }
+
+    const payloadItems = currentCart.flatMap((item) => {
+      const base = {
+        courseId: item.id,
+        courseTitle: item.title,
+        durationDays: Math.max(1, Number(item.selectedValidityDays || 180)),
+        totalViews: Math.max(1, Number(item.selectedViews || 2)),
+        isUnlimitedViews: item.unlimitedViewsEnabled === true,
+        usedViews: 0,
+        isEnabled: true,
+        amount: Number(item.price || 0),
+        modeLabel: getModeLabel(item) || "",
+        bookLabel: getBookLabel(item) || "",
+        itemType: isEbookSelection(item) ? "ebook" : "course",
+        isEbook: isEbookSelection(item),
+        grantAccess: true,
+        createOrderLine: true,
+      };
+      if (item.isCombo && Array.isArray(item.packageCourseIds) && item.packageCourseIds.length > 0) {
+        const packageOrderLine = {
+          ...base,
+          itemType: "package",
+          isEbook: false,
+          grantAccess: false,
+          createOrderLine: true,
+          packageCourseIds: item.packageCourseIds,
+        };
+
+        const childAccessLines = item.packageCourseIds.map((courseId) => ({
+          ...base,
+          courseId,
+          courseTitle: courseCatalogById.get(courseId)?.title || courseId,
+          itemType: "course",
+          grantAccess: true,
+          createOrderLine: false,
+          parentPackageId: item.id,
+          parentPackageTitle: item.title,
+          packageCourseIds: item.packageCourseIds,
+        }));
+
+        return [packageOrderLine, ...childAccessLines];
+      }
+
+      return [base];
+    });
 
     const remote = await createStudentPurchaseApi({
+      orderId: orderData.orderId,
+      paymentMethod: orderData.paymentMethod,
+      customerName: orderData.studentName,
+      customerEmail: orderData.email,
+      customerPhone: orderData.phone,
+      shippingAddressLine1: orderData.addressLine1,
+      shippingAddressLine2: orderData.addressLine2,
+      shippingCity: orderData.city,
+      shippingState: orderData.state,
+      shippingCountry: orderData.country,
+      shippingPincode: orderData.pincode,
       items: payloadItems,
       purchaseDate,
     });
@@ -243,12 +349,38 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       return { ok: false, message: remote.message || "Failed to save your purchase. Please retry." };
     }
 
-    // Add to purchased courses (skip duplicates)
+    // Add to purchased courses (skip duplicates), expanding bundles
     setPurchasedCourses((prev) => {
-      const newCourses = currentCart
-        .filter((item) => !prev.some((p) => p.id === item.id))
-        .map((item) => ({ ...item, purchasedOn: now, progress: 0 }));
-      return [...prev, ...newCourses];
+      const allItems: PurchasedCourse[] = [];
+
+      for (const item of currentCart) {
+        // Add the package/course itself for normal courses only.
+        if (!item.isCombo && !prev.some((p) => p.id === item.id)) {
+          allItems.push({ ...item, purchasedOn: now, progress: 0 });
+        }
+        // If this is a combo package, also add each bundled course with same settings
+        if (item.isCombo && Array.isArray(item.packageCourseIds)) {
+          for (const bundledId of item.packageCourseIds) {
+            if (!prev.some((p) => p.id === bundledId) && !allItems.some((a) => a.id === bundledId)) {
+              const catalogCourse = courseCatalogById.get(bundledId);
+              // Create a minimal stub inheriting package validity/views settings
+              const stub: PurchasedCourse = {
+                ...(catalogCourse || item),
+                id: bundledId,
+                isCombo: false,
+                packageCourseIds: [],
+                selectedViews: item.selectedViews,
+                selectedValidityDays: item.selectedValidityDays,
+                unlimitedViewsEnabled: item.unlimitedViewsEnabled,
+                purchasedOn: now,
+                progress: 0,
+              } as PurchasedCourse;
+              allItems.push(stub);
+            }
+          }
+        }
+      }
+      return [...prev, ...allItems];
     });
 
     // Add order

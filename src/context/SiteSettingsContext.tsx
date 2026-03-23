@@ -132,6 +132,7 @@ export interface SiteSettings {
     popularCourses: boolean;
     whyChooseUs: boolean;
     testimonials: boolean;
+    faculty: boolean;
     faq: boolean;
     ctaBand: boolean;
   };
@@ -200,6 +201,10 @@ export interface SiteSettings {
       subtitle: string;
       items: HomepageWhyChooseItem[];
     };
+    faculty: {
+      title: string;
+      subtitle: string;
+    };
   };
   exploreCategoryIds: string[];
   customHomepageSections: HomepageSection[];
@@ -228,6 +233,7 @@ const createDefaultSettings = (): SiteSettings => ({
     popularCourses: true,
     whyChooseUs: true,
     testimonials: true,
+    faculty: true,
     faq: true,
     ctaBand: true,
   },
@@ -469,6 +475,10 @@ const createDefaultSettings = (): SiteSettings => ({
         { icon: "Monitor", title: "HD Recorded Lectures", description: "Crystal clear video quality for the best learning experience" },
         { icon: "Users", title: "Choice of Professor", description: "Learn from your preferred faculty members" },
       ],
+    },
+    faculty: {
+      title: "Meet Our Expert Instructors",
+      subtitle: "Learn from industry professionals with years of experience and passion for education",
     },
   },
   exploreCategoryIds: [],
@@ -734,6 +744,10 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
               .filter((item) => item.title || item.description)
           : base.homepageContent.whyChooseUs.items,
       },
+      faculty: {
+        title: String(stored.homepageContent?.faculty?.title || base.homepageContent.faculty.title),
+        subtitle: String(stored.homepageContent?.faculty?.subtitle || base.homepageContent.faculty.subtitle),
+      },
     },
     exploreCategoryIds: Array.isArray(stored.exploreCategoryIds)
       ? stored.exploreCategoryIds.map((item) => String(item).trim()).filter(Boolean)
@@ -821,6 +835,7 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
         if (!response.ok) return;
         const payload = await response.json().catch(() => ({}));
         const backendSettings = payload?.settings?.siteSettings;
+        const backendBunny = payload?.settings?.bunnyStreamApi;
         const backendExploreIds = Array.isArray(payload?.settings?.homepage?.exploreCategoryIds)
           ? payload.settings.homepage.exploreCategoryIds.map((item: unknown) => String(item).trim()).filter(Boolean)
           : undefined;
@@ -828,8 +843,19 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
         if (!mounted) return;
 
         if (!backendSettings || typeof backendSettings !== "object") {
-          if (backendExploreIds) {
-            setSettings((prev) => mergeStoredSettings({ ...prev, exploreCategoryIds: backendExploreIds }));
+          if (backendExploreIds || (backendBunny && typeof backendBunny === "object")) {
+            setSettings((prev) =>
+              mergeStoredSettings({
+                ...prev,
+                bunnyStreamApi: (backendBunny && typeof backendBunny === "object")
+                  ? {
+                      ...prev.bunnyStreamApi,
+                      ...backendBunny,
+                    }
+                  : prev.bunnyStreamApi,
+                exploreCategoryIds: backendExploreIds || prev.exploreCategoryIds,
+              }),
+            );
           }
           return;
         }
@@ -838,6 +864,12 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
           mergeStoredSettings({
             ...prev,
             ...(backendSettings as Partial<SiteSettings>),
+            bunnyStreamApi: (backendBunny && typeof backendBunny === "object")
+              ? {
+                  ...prev.bunnyStreamApi,
+                  ...backendBunny,
+                }
+              : (backendSettings as Partial<SiteSettings>).bunnyStreamApi,
             exploreCategoryIds: backendExploreIds || (backendSettings as Partial<SiteSettings>).exploreCategoryIds,
           }),
         );

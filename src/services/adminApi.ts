@@ -201,6 +201,86 @@ export interface MarketingCampaignPayload {
   isEnabled: boolean;
 }
 
+export interface FacultyCourseRef {
+  id: string;
+  title: string;
+  thumbnail?: string;
+}
+
+export interface FacultyProfile {
+  id: string;
+  name: string;
+  photoUrl?: string;
+  about?: string;
+  courseIds: string[];
+  courses: FacultyCourseRef[];
+  isActive: boolean;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AdminOrderLine {
+  id: number;
+  orderId: string;
+  studentId: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  shippingAddressLine1?: string;
+  shippingAddressLine2?: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingCountry?: string;
+  shippingPincode?: string;
+  studentName: string;
+  studentEmail: string;
+  studentMobile?: string;
+  courseId: string;
+  courseTitle: string;
+  parentPackageId?: string;
+  parentPackageTitle?: string;
+  packageCourseIds?: string[];
+  orderDate?: string;
+  paymentMethod?: string;
+  amount: number;
+  currency: string;
+  status: string;
+  itemType: string;
+  modeLabel?: string;
+  bookLabel?: string;
+  isEbook: boolean;
+  dispatchStatus: "pending" | "processing" | "dispatched" | "delivered" | "cancelled" | string;
+  trackingId?: string;
+  dispatchNote?: string;
+  dispatchedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface AdminOrderGroup {
+  id: string;
+  date: string;
+  status: string;
+  dispatchStatus?: string;
+  trackingId?: string;
+  dispatchNote?: string;
+  paymentMethod?: string;
+  total: number;
+  items: Array<{
+    id?: number;
+    courseId?: string;
+    title: string;
+    price: number;
+    itemType?: string;
+    modeLabel?: string;
+    bookLabel?: string;
+    isEbook?: boolean;
+    dispatchStatus?: string;
+    trackingId?: string;
+  }>;
+}
+
 const jsonHeaders = {
   "Content-Type": "application/json",
 };
@@ -433,6 +513,55 @@ export const adminApi = {
     );
   },
 
+  async listOrders(options?: { search?: string; dispatchStatus?: string; itemType?: "all" | "ebook" | "course" | "package"; limit?: number }) {
+    const query = new URLSearchParams();
+    if (options?.search) query.set("search", options.search);
+    if (options?.dispatchStatus) query.set("dispatchStatus", options.dispatchStatus);
+    if (options?.itemType) query.set("itemType", options.itemType);
+    if (options?.limit) query.set("limit", String(options.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    return parseResponse<{ items: AdminOrderLine[] }>(
+      await fetch(`/api/admin/orders${suffix}`, {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async getStudentOrderHistory(studentId: string) {
+    return parseResponse<{ lines: AdminOrderLine[]; grouped: AdminOrderGroup[] }>(
+      await fetch(`/api/admin/orders/student/${encodeURIComponent(studentId)}`, {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async updateOrderDispatch(
+    id: number,
+    payload: {
+      dispatchStatus: "pending" | "processing" | "dispatched" | "delivered" | "cancelled" | string;
+      trackingId?: string;
+      dispatchNote?: string;
+      status?: string;
+    },
+  ) {
+    return parseResponse<{ item: AdminOrderLine }>(
+      await fetch(`/api/admin/orders/${encodeURIComponent(String(id))}/dispatch`, {
+        method: "PATCH",
+        headers: withAuthHeaders(),
+        body: JSON.stringify(payload),
+      }),
+    );
+  },
+
+  async deleteOrder(id: number) {
+    return parseResponse<{ ok: boolean; item: AdminOrderLine }>(
+      await fetch(`/api/admin/orders/${encodeURIComponent(String(id))}`, {
+        method: "DELETE",
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
   async saveStudentCourseAccess(studentId: string, payload: Record<string, unknown>) {
     return parseResponse<{ ok: boolean }>(
       await fetch(`/api/students/${encodeURIComponent(studentId)}/course-access`, {
@@ -614,6 +743,60 @@ export const adminApi = {
 
   async getCourses() {
     return parseResponse<{ courses: unknown[]; curricula: Record<string, unknown[]> }>(await fetch("/api/courses"));
+  },
+
+  async listFaculty() {
+    return parseResponse<{ items: FacultyProfile[] }>(
+      await fetch("/api/admin/faculty", {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async createFaculty(payload: {
+    name: string;
+    photoUrl?: string;
+    about?: string;
+    courseIds: string[];
+    isActive?: boolean;
+    sortOrder?: number;
+  }) {
+    return parseResponse<{ item: FacultyProfile }>(
+      await fetch("/api/admin/faculty", {
+        method: "POST",
+        headers: withAuthHeaders(),
+        body: JSON.stringify(payload),
+      }),
+    );
+  },
+
+  async updateFaculty(
+    id: string,
+    payload: {
+      name: string;
+      photoUrl?: string;
+      about?: string;
+      courseIds: string[];
+      isActive?: boolean;
+      sortOrder?: number;
+    },
+  ) {
+    return parseResponse<{ item: FacultyProfile }>(
+      await fetch(`/api/admin/faculty/${encodeURIComponent(id)}`, {
+        method: "PUT",
+        headers: withAuthHeaders(),
+        body: JSON.stringify(payload),
+      }),
+    );
+  },
+
+  async deleteFaculty(id: string) {
+    return parseResponse<{ ok: boolean }>(
+      await fetch(`/api/admin/faculty/${encodeURIComponent(id)}`, {
+        method: "DELETE",
+        headers: withAuthHeaders({}),
+      }),
+    );
   },
 
   async saveCurriculum(courseId: string, chapters: unknown[]) {

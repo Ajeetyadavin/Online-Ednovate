@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -7,27 +7,31 @@ import { Label } from "@/components/ui/label";
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import {
   BookOpen, User, ShoppingBag, PlayCircle, Clock, IndianRupee,
   Calendar, LogOut, Edit2, Save, TrendingUp, Bell,
-  ChevronRight, Star, Target
+  ChevronRight, Star, Target, LayoutDashboard, Award, Zap, Mail, Lock,
+  GraduationCap, Clock3, CheckCircle, FolderOpen
 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
+import { usePlatformData } from "@/context/PlatformDataContext";
 import LoginModal from "@/components/LoginModal";
-import { changeStudentPasswordApi, updateStudentProfileApi } from "@/services/authApi";
+import { changeStudentPasswordApi, getStudentDashboardApi, updateStudentProfileApi } from "@/services/authApi";
 
 const quickActions = [
-  { label: "Browse Courses", icon: BookOpen, color: "bg-primary/10 text-primary", href: "/packages" },
-  { label: "Technical Support", icon: Bell, color: "bg-rose-500/10 text-rose-600", href: "/dashboard/technical-support" },
-  { label: "Notifications", icon: Bell, color: "bg-amber-500/10 text-amber-600", href: "#" },
+  { label: "Browse Courses", icon: BookOpen, color: "bg-orange-100 text-[#E74623]", href: "/packages" },
+  { label: "Technical Support", icon: Bell, color: "bg-blue-100 text-[#1e3a8a]", href: "/dashboard/technical-support" },
+  { label: "Notifications", icon: Bell, color: "bg-amber-100 text-amber-600", href: "#", action: "notifications" },
 ];
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { purchasedCourses, orders } = useCart();
   const { isLoggedIn, logout, user, refreshProfile } = useAuth();
+  const { courses } = usePlatformData();
   const [isEditing, setIsEditing] = useState(false);
   const [isProfileSaving, setIsProfileSaving] = useState(false);
   const [profile, setProfile] = useState({
@@ -45,6 +49,10 @@ const Dashboard = () => {
   const [isPasswordSaving, setIsPasswordSaving] = useState(false);
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
+  const [notifications, setNotifications] = useState<Array<{ id: number; subject?: string; message: string; createdAt: string }>>([]);
+  const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
+  const [notificationsOpen, setNotificationsOpen] = useState(false);
+  const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!user) return;
@@ -57,15 +65,78 @@ const Dashboard = () => {
     }));
   }, [user?.studentId, user?.name, user?.email, user?.mobile]);
 
-  const totalHours = purchasedCourses.reduce((sum, c) => sum + (c.hours || 0), 0);
-  const completedCount = purchasedCourses.filter(c => c.progress === 100).length;
-  const avgProgress = purchasedCourses.length > 0
-    ? Math.round(purchasedCourses.reduce((sum, c) => sum + (c.progress || 0), 0) / purchasedCourses.length)
+  useEffect(() => {
+    if (!isLoggedIn) return;
+
+    let active = true;
+    const loadNotifications = async () => {
+      setIsNotificationsLoading(true);
+      try {
+        const result = await getStudentDashboardApi();
+        if (!active || !result.ok || !result.data) return;
+
+        const next = Array.isArray(result.data.notifications)
+          ? result.data.notifications.map((item) => ({
+              id: Number(item.id || 0),
+              subject: String(item.subject || ""),
+              message: String(item.message || ""),
+              createdAt: String(item.createdAt || ""),
+            }))
+          : [];
+        setNotifications(next);
+      } finally {
+        if (active) setIsNotificationsLoading(false);
+      }
+    };
+
+    void loadNotifications();
+    return () => {
+      active = false;
+    };
+  }, [isLoggedIn]);
+
+  const dashboardCourses = useMemo(() => {
+    return purchasedCourses.filter((course) => {
+      if (!course.isCombo || !Array.isArray(course.packageCourseIds) || course.packageCourseIds.length === 0) {
+        return true;
+      }
+      const hasAnyBundledChild = course.packageCourseIds.some((id) => purchasedCourses.some((p) => p.id === id));
+      return !hasAnyBundledChild;
+    });
+  }, [purchasedCourses]);
+
+  const totalHours = dashboardCourses.reduce((sum, c) => sum + (c.hours || 0), 0);
+  const completedCount = dashboardCourses.filter(c => c.progress === 100).length;
+  const avgProgress = dashboardCourses.length > 0
+    ? Math.round(dashboardCourses.reduce((sum, c) => sum + (c.progress || 0), 0) / dashboardCourses.length)
     : 0;
+
+  const courseTitleById = useMemo(
+    () => new Map(courses.map((course) => [course.id, course.title])),
+    [courses],
+  );
+
+  const courseById = useMemo(
+    () => new Map(courses.map((course) => [course.id, course])),
+    [courses],
+  );
+
+  const selectedOrder = useMemo(
+    () => orders.find((order) => order.id === selectedOrderId) || null,
+    [orders, selectedOrderId],
+  );
 
   const handleLogout = () => {
     logout();
     navigate("/");
+  };
+
+  const handleQuickAction = (action: { href: string; action?: string }) => {
+    if (action.action === "notifications") {
+      setNotificationsOpen(true);
+      return;
+    }
+    navigate(action.href);
   };
 
   const handleSaveProfile = async () => {
@@ -156,211 +227,228 @@ const Dashboard = () => {
 
   return (
     <div className="min-h-screen bg-muted/30 pb-20 md:pb-8">
-      {/* Hero Banner */}
-      <div className="bg-[rgb(38,72,151)] relative overflow-hidden">
-        <div className="absolute inset-0 opacity-[0.04]">
-          <div className="absolute top-0 right-0 w-96 h-96 rounded-full bg-accent translate-x-1/3 -translate-y-1/3" />
-          <div className="absolute bottom-0 left-0 w-64 h-64 rounded-full bg-primary-foreground translate-y-1/2 -translate-x-1/4" />
-        </div>
-
-        <div className="max-w-6xl mx-auto px-4 py-8 md:py-10 relative">
-          <div className="flex flex-col sm:flex-row items-center gap-5">
-            <div className="relative">
-              <Avatar className="w-20 h-20 border-[3px] border-primary-foreground/20 shadow-lg">
-                <AvatarImage src={profile.avatar} />
-                <AvatarFallback className="bg-accent text-accent-foreground text-2xl font-bold">
-                  {profile.name.split(" ").map(n => n[0]).join("")}
-                </AvatarFallback>
-              </Avatar>
-              <div className="absolute -bottom-1 -right-1 w-6 h-6 bg-emerald-500 rounded-full border-2 border-primary flex items-center justify-center">
-                <div className="w-2 h-2 bg-white rounded-full" />
-              </div>
-            </div>
-            <div className="text-center sm:text-left flex-1">
-              <h1 className="text-2xl md:text-3xl font-bold text-primary-foreground">{profile.name}</h1>
-              <p className="text-primary-foreground/60 text-sm mt-1 flex items-center justify-center sm:justify-start gap-1.5">
-                <Calendar className="w-3.5 h-3.5" /> Member since {profile.joinedDate}
+      <div className="bg-[#1e3a8a] border-b border-[#1e3a8a]">
+        <div className="max-w-6xl mx-auto px-4 py-6 md:py-7">
+          <div className="flex items-center gap-3">
+            <Avatar className="w-12 h-12 md:w-16 md:h-16 border-2 md:border-3 border-white/30 shadow-xl shrink-0">
+              <AvatarImage src={profile.avatar} />
+              <AvatarFallback className="bg-white text-[#1e3a8a] text-lg md:text-2xl font-bold">
+                {profile.name.split(" ").map(n => n[0]).join("")}
+              </AvatarFallback>
+            </Avatar>
+            <div className="flex-1 min-w-0">
+              <h1 className="text-lg md:text-2xl font-bold text-white truncate">{profile.name}</h1>
+              <p className="text-blue-200 text-xs md:text-sm flex items-center gap-1">
+                <Calendar className="w-3 h-3" /> Member since {profile.joinedDate || "N/A"}
               </p>
             </div>
             <Button
-              variant="outline"
               size="sm"
-              className="border-primary-foreground/20 text-primary-foreground hover:bg-primary-foreground/10 bg-transparent"
+              className="bg-white text-[#1e3a8a] hover:bg-blue-50 font-semibold text-xs px-3 h-8 shrink-0"
               onClick={handleLogout}
             >
-              <LogOut className="w-4 h-4 mr-1.5" /> Logout
+              <LogOut className="w-3.5 h-3.5 md:w-4 md:h-4" />
             </Button>
           </div>
 
-          {/* Stats Grid */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mt-8">
+          <div className="grid grid-cols-4 gap-2 mt-4">
             {[
-              { label: "Enrolled", value: purchasedCourses.length, icon: BookOpen, accent: "text-blue-300" },
-              { label: "Completed", value: completedCount, icon: Star, accent: "text-emerald-300" },
-              { label: "Hours Learned", value: totalHours, icon: Clock, accent: "text-amber-300" },
-              { label: "Avg Progress", value: `${avgProgress}%`, icon: TrendingUp, accent: "text-violet-300" },
+              { label: "Enrolled", value: dashboardCourses.length, icon: FolderOpen },
+              { label: "Completed", value: completedCount, icon: CheckCircle },
+              { label: "Hours", value: totalHours, icon: Clock3 },
+              { label: "Progress", value: `${avgProgress}%`, icon: TrendingUp },
             ].map(s => (
-              <div key={s.label} className="bg-primary-foreground/[0.07] backdrop-blur-sm rounded-xl p-3.5 text-center border border-primary-foreground/[0.06]">
-                <s.icon className={`w-5 h-5 mx-auto mb-2 ${s.accent}`} />
-                <p className="text-xl font-bold text-primary-foreground">{s.value}</p>
-                <p className="text-[11px] text-primary-foreground/50 mt-0.5">{s.label}</p>
+              <div key={s.label} className="bg-white/10 rounded-lg p-2 md:p-3 text-center">
+                <s.icon className="w-4 h-4 md:w-5 md:h-5 mx-auto text-white/80 mb-1" />
+                <p className="text-base md:text-xl font-bold text-white">{s.value}</p>
+                <p className="text-[9px] md:text-[11px] text-blue-200 truncate">{s.label}</p>
               </div>
             ))}
           </div>
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="max-w-6xl mx-auto px-4 -mt-5 relative z-10 mb-6">
+      <div className="max-w-6xl mx-auto px-4 -mt-6 relative z-10 mb-6">
         <div className="grid grid-cols-3 gap-2 sm:gap-3 max-w-md mx-auto sm:max-w-xl">
           {quickActions.map(action => (
             <button
               key={action.label}
-              onClick={() => navigate(action.href)}
-              className="bg-card rounded-xl p-3 sm:p-4 shadow-sm border border-border hover:shadow-md transition-all text-center group"
+              onClick={() => handleQuickAction(action)}
+              className="bg-card rounded-xl p-3 sm:p-4 shadow-md border border-border hover:shadow-lg hover:border-orange-200 transition-all text-center group"
             >
-              <div className={`w-10 h-10 rounded-lg ${action.color} flex items-center justify-center mx-auto mb-2 group-hover:scale-110 transition-transform`}>
+              <div className={`w-11 h-11 rounded-xl ${action.color} flex items-center justify-center mx-auto mb-2 group-hover:scale-110 group-hover:rotate-3 transition-all shadow-md`}>
                 <action.icon className="w-5 h-5" />
               </div>
-              <p className="text-[10px] sm:text-xs font-medium text-foreground/80 leading-tight">{action.label}</p>
+              <p className="text-[10px] sm:text-xs font-semibold text-foreground/80 leading-tight">{action.label}</p>
+              {action.action === "notifications" && notifications.length > 0 ? (
+                <span className="mt-1.5 inline-flex rounded-full bg-gradient-to-r from-amber-400 to-orange-400 px-1.5 py-0.5 text-[9px] font-bold text-white shadow-sm">
+                  {notifications.length}
+                </span>
+              ) : null}
             </button>
           ))}
         </div>
       </div>
 
-      {/* Main Content */}
       <div className="max-w-6xl mx-auto px-4">
         <Tabs defaultValue="courses" className="space-y-5">
-          <TabsList className="bg-card shadow-sm rounded-xl h-11 p-1 w-full sm:w-auto border border-border">
-            <TabsTrigger value="courses" className="rounded-lg text-xs sm:text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-3 sm:px-4">
+          <TabsList className="bg-card shadow-md rounded-2xl h-12 p-1.5 w-full sm:w-auto border border-slate-200/60">
+            <TabsTrigger value="courses" className="rounded-xl text-xs sm:text-sm font-semibold data-[state=active]:bg-[#E74623] data-[state=active]:text-white data-[state=active]:shadow-md px-4 sm:px-6">
               <BookOpen className="w-4 h-4 mr-1.5 hidden sm:block" /> My Courses
             </TabsTrigger>
-            <TabsTrigger value="orders" className="rounded-lg text-xs sm:text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-3 sm:px-4">
+            <TabsTrigger value="orders" className="rounded-xl text-xs sm:text-sm font-semibold data-[state=active]:bg-[#E74623] data-[state=active]:text-white data-[state=active]:shadow-md px-4 sm:px-6">
               <ShoppingBag className="w-4 h-4 mr-1.5 hidden sm:block" /> Orders
             </TabsTrigger>
-            <TabsTrigger value="profile" className="rounded-lg text-xs sm:text-sm font-semibold data-[state=active]:bg-primary data-[state=active]:text-primary-foreground px-3 sm:px-4">
+            <TabsTrigger value="profile" className="rounded-xl text-xs sm:text-sm font-semibold data-[state=active]:bg-[#E74623] data-[state=active]:text-white data-[state=active]:shadow-md px-4 sm:px-6">
               <User className="w-4 h-4 mr-1.5 hidden sm:block" /> Profile
             </TabsTrigger>
           </TabsList>
 
-          {/* MY COURSES */}
           <TabsContent value="courses" className="space-y-4">
-            {purchasedCourses.length === 0 ? (
-              <Card className="border-dashed border-2 border-border bg-card/50">
+            {dashboardCourses.length === 0 ? (
+              <Card className="border-dashed border-2 border-slate-200 bg-card/50">
                 <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-                    <BookOpen className="w-8 h-8 text-muted-foreground/50" />
+                  <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-4 shadow-inner">
+                    <BookOpen className="w-10 h-10 text-slate-400" />
                   </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-1">No courses yet</h3>
-                  <p className="text-sm text-muted-foreground mb-5 max-w-xs">Start your learning journey by exploring our courses</p>
-                  <Button className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg h-10 px-6" onClick={() => navigate("/packages")}>
+                  <h3 className="text-lg font-bold text-slate-800 mb-1">No courses yet</h3>
+                  <p className="text-sm text-slate-500 mb-5 max-w-xs">Start your learning journey by exploring our courses</p>
+                  <Button className="bg-[#E74623] hover:bg-[#d13a1a] text-white rounded-xl h-11 px-6 shadow-lg" onClick={() => navigate("/packages")}>
                     <Target className="w-4 h-4 mr-2" /> Explore Courses
                   </Button>
                 </CardContent>
               </Card>
             ) : (
-              <div className="grid gap-4 sm:grid-cols-2">
-                {purchasedCourses.map(course => (
-                  <Card key={course.id} className="overflow-hidden hover:shadow-lg transition-all group border-border">
-                    <div className="flex">
-                      <div className="w-28 sm:w-36 shrink-0 overflow-hidden relative">
-                        <img
-                          src={course.thumbnail || course.image || "/placeholder.svg"}
-                          alt={course.title}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                        />
-                        {course.progress === 100 && (
-                          <div className="absolute inset-0 bg-emerald-600/80 flex items-center justify-center">
-                            <Star className="w-8 h-8 text-white" />
-                          </div>
+              <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                {dashboardCourses.map(course => (
+                  <Card key={course.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 group border-slate-200/60">
+                    <div className="relative h-36 sm:h-40 overflow-hidden">
+                      <img
+                        src={course.thumbnail || course.image || "/placeholder.svg"}
+                        alt={course.title}
+                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                      />
+                      <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
+                      {course.progress === 100 && (
+                        <div className="absolute inset-0 bg-emerald-500/90 flex items-center justify-center">
+                          <Award className="w-12 h-12 text-white" />
+                        </div>
+                      )}
+                      <div className="absolute top-2 left-2 flex gap-2">
+                        {course.isCombo && (
+                          <span className="bg-[#E74623] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md">
+                            BUNDLE
+                          </span>
                         )}
                       </div>
-                      <CardContent className="p-3.5 flex-1 flex flex-col justify-between">
-                        <div>
-                          <Badge variant="secondary" className="text-[10px] mb-1.5 font-medium">{course.category.replace("-", " ").toUpperCase()}</Badge>
-                          <h3 className="text-sm font-bold text-foreground line-clamp-2 leading-snug">{course.title}</h3>
-                          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-                            <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {course.professor}
-                          </p>
+                      <div className="absolute bottom-2 left-2 right-2">
+                        <div className="flex items-center justify-between text-[11px] text-white/90">
+                          <span className="font-semibold bg-black/50 px-2 py-0.5 rounded">{course.progress}% complete</span>
+                          <span className="flex items-center gap-1 bg-black/50 px-2 py-0.5 rounded"><Clock className="w-3 h-3" /> {course.hours}h</span>
                         </div>
-                        <div className="mt-2.5">
-                          <div className="flex items-center justify-between text-[10px] text-muted-foreground mb-1.5">
-                            <span className="font-medium">{course.progress}% complete</span>
-                            <span className="flex items-center gap-0.5"><Clock className="w-3 h-3" /> {course.hours}h</span>
-                          </div>
-                          <Progress value={course.progress} className="h-1.5 bg-muted" />
-                          <div className="mt-2.5 grid grid-cols-2 gap-2">
-                            <Button
-                              size="sm"
-                              className="bg-accent hover:bg-accent/90 text-accent-foreground text-xs h-8 rounded-lg font-semibold group/btn"
-                              onClick={() => navigate(`/learn/${course.id}`)}
-                            >
-                              <PlayCircle className="w-3.5 h-3.5 mr-1 group-hover/btn:scale-110 transition-transform" />
-                              {course.progress === 100 ? "Review" : course.progress > 0 ? "Continue" : "Start"}
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="text-xs h-8 rounded-lg font-semibold"
-                              onClick={() => navigate(`/dashboard/course/${course.id}/about`)}
-                            >
-                              About
-                            </Button>
-                          </div>
-                        </div>
-                      </CardContent>
+                      </div>
                     </div>
+                    <CardContent className="p-4">
+                      <Badge variant="secondary" className="text-[10px] mb-2 font-semibold bg-blue-100 text-blue-700">{course.category.replace("-", " ").toUpperCase()}</Badge>
+                      <h3 className="text-sm font-bold text-slate-800 line-clamp-2 leading-snug mb-1">{course.title}</h3>
+                      <p className="text-xs text-slate-500 flex items-center gap-1 mb-3">
+                        <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {course.professor}
+                      </p>
+                      {course.isCombo && Array.isArray(course.packageCourseIds) && course.packageCourseIds.length > 0 && (
+                        <div className="mb-3">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-[#1e3a8a] mb-1.5">Included Courses ({course.packageCourseIds.length})</p>
+                          <div className="flex flex-wrap gap-1">
+                            {course.packageCourseIds.slice(0, 3).map((id) => {
+                              const bundledTitle = courseTitleById.get(id) || purchasedCourses.find((p) => p.id === id)?.title || id;
+                              return (
+                                <span key={`${course.id}-${id}`} className="rounded bg-blue-50 border border-blue-100 px-2 py-0.5 text-[9px] font-medium text-blue-700 line-clamp-1">
+                                  {bundledTitle}
+                                </span>
+                              );
+                            })}
+                            {course.packageCourseIds.length > 3 && (
+                              <span className="text-[9px] text-blue-600 font-medium">+{course.packageCourseIds.length - 3} more</span>
+                            )}
+                          </div>
+                        </div>
+                      )}
+                      <Progress value={course.progress} className="h-1.5 bg-slate-100 rounded-full mb-3" />
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button
+                          size="sm"
+                          className="bg-[#1e3a8a] hover:bg-[#1e3a8a]/90 text-white text-xs h-9 rounded-xl font-semibold shadow-md group/btn"
+                          onClick={() => navigate(`/learn/${course.id}`)}
+                        >
+                          <PlayCircle className="w-4 h-4 mr-1.5 group-hover/btn:scale-110 transition-transform" />
+                          {course.progress === 100 ? "Review" : course.progress > 0 ? "Continue" : "Start"}
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="text-xs h-9 rounded-xl font-semibold border-slate-200 text-slate-600 hover:bg-slate-50"
+                          onClick={() => navigate(`/dashboard/course/${course.id}/about`)}
+                        >
+                          About
+                        </Button>
+                      </div>
+                    </CardContent>
                   </Card>
                 ))}
               </div>
             )}
           </TabsContent>
 
-          {/* ORDERS */}
           <TabsContent value="orders" className="space-y-3">
             {orders.length === 0 ? (
-              <Card className="border-dashed border-2 border-border bg-card/50">
+              <Card className="border-dashed border-2 border-slate-200 bg-card/50">
                 <CardContent className="flex flex-col items-center justify-center py-16 text-center">
-                  <div className="w-16 h-16 rounded-2xl bg-muted flex items-center justify-center mb-4">
-                    <ShoppingBag className="w-8 h-8 text-muted-foreground/50" />
+                  <div className="w-20 h-20 rounded-2xl bg-slate-100 flex items-center justify-center mb-4 shadow-inner">
+                    <ShoppingBag className="w-10 h-10 text-slate-400" />
                   </div>
-                  <h3 className="text-lg font-semibold text-foreground mb-1">No orders yet</h3>
-                  <p className="text-sm text-muted-foreground mb-5">Your purchase history will appear here</p>
-                  <Button className="bg-accent hover:bg-accent/90 text-accent-foreground rounded-lg h-10 px-6" onClick={() => navigate("/packages")}>
+                  <h3 className="text-lg font-bold text-slate-800 mb-1">No orders yet</h3>
+                  <p className="text-sm text-slate-500 mb-5">Your purchase history will appear here</p>
+                  <Button className="bg-[#E74623] hover:bg-[#d13a1a] text-white rounded-xl h-11 px-6 shadow-lg" onClick={() => navigate("/packages")}>
                     Browse Courses
                   </Button>
                 </CardContent>
               </Card>
             ) : (
               orders.map(order => (
-                <Card key={order.id} className="hover:shadow-md transition-all border-border overflow-hidden">
+                <Card
+                  key={order.id}
+                  className="hover:shadow-xl transition-all duration-300 border-slate-200/60 overflow-hidden cursor-pointer group"
+                  onClick={() => setSelectedOrderId(order.id)}
+                >
                   <CardContent className="p-0">
                     <div className="flex flex-col sm:flex-row">
-                      <div className={`w-full sm:w-1.5 h-1.5 sm:h-auto ${order.status === "Completed" ? "bg-emerald-500" : "bg-amber-500"}`} />
-                      <div className="p-4 flex-1">
-                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-3">
+                      <div className={`w-full sm:w-1.5 h-1.5 sm:h-auto ${order.status === "Completed" ? "bg-gradient-to-b from-emerald-400 to-emerald-500" : "bg-gradient-to-b from-amber-400 to-orange-500"}`} />
+                      <div className="p-5 flex-1">
+                        <div className="flex flex-col sm:flex-row sm:items-start justify-between gap-4">
                           <div className="flex-1">
-                            <div className="flex items-center gap-2 mb-2">
-                              <p className="text-sm font-bold text-foreground">{order.id}</p>
-                              <Badge className={`text-[10px] ${order.status === "Completed" ? "bg-emerald-500/10 text-emerald-700 border-emerald-200" : "bg-amber-500/10 text-amber-700 border-amber-200"} border`}>
+                            <div className="flex items-center gap-3 mb-3">
+                              <p className="text-sm font-bold text-slate-800 bg-slate-100 px-2.5 py-1 rounded-lg font-mono">{order.id}</p>
+                              <Badge className={`text-[10px] font-semibold ${order.status === "Completed" ? "bg-gradient-to-r from-emerald-100 to-green-100 text-emerald-700 border-emerald-200" : "bg-gradient-to-r from-amber-100 to-orange-100 text-amber-700 border-amber-200"} border`}>
                                 {order.status}
                               </Badge>
                             </div>
-                            <p className="text-xs text-muted-foreground flex items-center gap-1.5 mb-2">
+                            <p className="text-xs text-slate-500 flex items-center gap-2 mb-3">
                               <Calendar className="w-3.5 h-3.5" /> {order.date}
                             </p>
-                            <div className="space-y-1">
+                            <div className="space-y-1.5">
                               {order.items.map((item, i) => (
-                                <p key={i} className="text-xs text-foreground/75 flex items-center gap-1.5">
-                                  <BookOpen className="w-3 h-3 text-muted-foreground shrink-0" />
-                                  <span className="line-clamp-1">{item.title}</span>
+                                <p key={i} className="text-sm text-slate-600 flex items-center gap-2">
+                                  <BookOpen className="w-3.5 h-3.5 text-[#E74623] shrink-0" />
+                                  <span className="line-clamp-1 font-medium">{item.title}</span>
                                 </p>
                               ))}
                             </div>
+                            <p className="mt-3 text-xs text-[#E74623] font-semibold flex items-center gap-1 group-hover:translate-x-1 transition-transform">
+                              <ChevronRight className="w-3 h-3" /> Click to view full order details
+                            </p>
                           </div>
-                          <div className="text-right">
-                            <p className="text-lg font-bold text-foreground flex items-center">
-                              <IndianRupee className="w-4 h-4" />{order.total.toLocaleString()}
+                          <div className="text-right sm:min-w-[100px]">
+                            <p className="text-xl font-bold text-slate-800 flex items-center justify-end">
+                              <IndianRupee className="w-4 h-4 mr-0.5 text-[#E74623]" />{order.total.toLocaleString()}
                             </p>
                           </div>
                         </div>
@@ -372,19 +460,23 @@ const Dashboard = () => {
             )}
           </TabsContent>
 
-          {/* PROFILE */}
           <TabsContent value="profile" className="pb-8">
-            <Card className="border-border">
-              <CardHeader className="flex flex-row items-center justify-between pb-2">
-                <div>
-                  <CardTitle className="text-lg">Profile Settings</CardTitle>
-                  <p className="text-xs text-muted-foreground mt-0.5">Manage your account details</p>
+            <Card className="border-slate-200 shadow-lg rounded-2xl">
+              <CardHeader className="flex flex-row items-center justify-between pb-4 border-b border-slate-100">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-[#E74623] shadow-md">
+                    <User className="w-5 h-5 text-white" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-lg font-bold text-slate-800">Profile Settings</CardTitle>
+                    <p className="text-xs text-slate-500 mt-0.5">Manage your account details</p>
+                  </div>
                 </div>
                 {isEditing ? (
                   <Button
                     variant="default"
                     size="sm"
-                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    className="bg-[#E74623] hover:bg-[#d13a1a] text-white rounded-xl shadow-md"
                     onClick={handleSaveProfile}
                     disabled={isProfileSaving}
                   >
@@ -394,77 +486,94 @@ const Dashboard = () => {
                   <Button
                     variant="outline"
                     size="sm"
+                    className="border-slate-200 text-slate-700 hover:bg-slate-50 rounded-xl"
                     onClick={() => setIsEditing(true)}
                   >
                     <Edit2 className="w-4 h-4 mr-1.5" /> Edit
                   </Button>
                 )}
               </CardHeader>
-              <CardContent className="space-y-5 pt-4">
-                <div className="flex items-center gap-4 p-4 rounded-xl bg-muted/50 border border-border">
-                  <Avatar className="w-16 h-16 border-2 border-border">
+              <CardContent className="space-y-6 pt-6">
+                <div className="flex items-center gap-4 p-5 rounded-2xl bg-orange-50 border border-slate-100">
+                  <Avatar className="w-16 h-16 border-3 border-white shadow-md">
                     <AvatarImage src={profile.avatar} />
-                    <AvatarFallback className="bg-accent text-accent-foreground text-xl font-bold">
+                    <AvatarFallback className="bg-[#E74623] text-white text-xl font-bold">
                       {profile.name.split(" ").map(n => n[0]).join("")}
                     </AvatarFallback>
                   </Avatar>
                   <div>
-                    <p className="text-sm font-semibold text-foreground">{profile.name}</p>
-                    <p className="text-xs text-muted-foreground">{profile.email}</p>
+                    <p className="text-base font-bold text-slate-800">{profile.name}</p>
+                    <p className="text-sm text-slate-500">{profile.email}</p>
                     {isEditing && (
-                      <Button variant="link" size="sm" className="text-xs text-accent h-auto p-0 mt-1">
+                      <Button variant="link" size="sm" className="text-xs text-[#E74623] h-auto p-0 mt-1 font-semibold">
                         Change Photo
                       </Button>
                     )}
                   </div>
                 </div>
 
-                <div className="grid sm:grid-cols-2 gap-4">
+                <div className="grid sm:grid-cols-2 gap-5">
                   {[
-                    { label: "Full Name", key: "name" as const, editable: true },
-                    { label: "Email Address", key: "email" as const, editable: true },
-                    { label: "Phone Number", key: "phone" as const, editable: true },
-                    { label: "Member Since", key: "joinedDate" as const, editable: false },
+                    { label: "Full Name", key: "name" as const, editable: true, icon: User },
+                    { label: "Email Address", key: "email" as const, editable: true, icon: Mail },
+                    { label: "Phone Number", key: "phone" as const, editable: true, icon: User },
+                    { label: "Member Since", key: "joinedDate" as const, editable: false, icon: Calendar },
                   ].map(field => (
-                    <div key={field.key} className="space-y-1.5">
-                      <Label className="text-xs font-medium text-muted-foreground">{field.label}</Label>
+                    <div key={field.key} className="space-y-2">
+                      <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                        <field.icon className="w-3.5 h-3.5" /> {field.label}
+                      </Label>
                       <Input
                         value={profile[field.key]}
                         disabled={!isEditing || !field.editable}
                         onChange={e => setProfile(p => ({ ...p, [field.key]: e.target.value }))}
-                        className={`h-11 text-sm rounded-lg ${!field.editable ? "bg-muted" : isEditing ? "border-accent/30 focus:border-accent" : ""}`}
+                        className={`h-12 text-sm rounded-xl ${!field.editable ? "bg-slate-50" : isEditing ? "border-[#E74623]/30 focus:border-[#E74623] focus:ring-2 focus:ring-orange-100" : "border-slate-200"}`}
                       />
                     </div>
                   ))}
                 </div>
 
-                <div className="pt-2 border-t border-border space-y-3">
-                  <h4 className="text-sm font-semibold text-foreground">Change Password</h4>
-                  <div className="grid sm:grid-cols-3 gap-3">
-                    <Input
-                      type="password"
-                      placeholder="Current Password"
-                      value={passwordForm.currentPassword}
-                      onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
-                      className="h-11 text-sm rounded-lg"
-                    />
-                    <Input
-                      type="password"
-                      placeholder="New Password"
-                      value={passwordForm.newPassword}
-                      onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
-                      className="h-11 text-sm rounded-lg"
-                    />
-                    <Input
-                      type="password"
-                      placeholder="Confirm Password"
-                      value={passwordForm.confirmPassword}
-                      onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
-                      className="h-11 text-sm rounded-lg"
-                    />
+                <div className="pt-4 border-t border-slate-100 space-y-4">
+                  <div className="flex items-center gap-2">
+                    <div className="p-1.5 rounded-lg bg-gradient-to-br from-amber-400 to-orange-500 shadow-md">
+                      <Lock className="w-4 h-4 text-white" />
+                    </div>
+                    <h4 className="text-sm font-bold text-slate-800">Change Password</h4>
+                  </div>
+                  <div className="grid sm:grid-cols-3 gap-4">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-slate-600">Current Password</Label>
+                      <Input
+                        type="password"
+                        placeholder="Enter current password"
+                        value={passwordForm.currentPassword}
+                        onChange={(e) => setPasswordForm((prev) => ({ ...prev, currentPassword: e.target.value }))}
+                        className="h-12 text-sm rounded-xl border-slate-200 focus:border-[#E74623] focus:ring-2 focus:ring-orange-100"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-slate-600">New Password</Label>
+                      <Input
+                        type="password"
+                        placeholder="Enter new password"
+                        value={passwordForm.newPassword}
+                        onChange={(e) => setPasswordForm((prev) => ({ ...prev, newPassword: e.target.value }))}
+                        className="h-12 text-sm rounded-xl border-slate-200 focus:border-[#E74623] focus:ring-2 focus:ring-orange-100"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label className="text-xs font-semibold text-slate-600">Confirm Password</Label>
+                      <Input
+                        type="password"
+                        placeholder="Confirm new password"
+                        value={passwordForm.confirmPassword}
+                        onChange={(e) => setPasswordForm((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+                        className="h-12 text-sm rounded-xl border-slate-200 focus:border-[#E74623] focus:ring-2 focus:ring-orange-100"
+                      />
+                    </div>
                   </div>
                   <Button
-                    className="bg-accent hover:bg-accent/90 text-accent-foreground"
+                    className="bg-[#E74623] hover:bg-[#d13a1a] text-white rounded-xl h-11 px-6 shadow-lg"
                     onClick={handleChangePassword}
                     disabled={isPasswordSaving}
                   >
@@ -476,6 +585,96 @@ const Dashboard = () => {
           </TabsContent>
         </Tabs>
       </div>
+
+      <Dialog open={notificationsOpen} onOpenChange={setNotificationsOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Notifications</DialogTitle>
+          </DialogHeader>
+          {isNotificationsLoading ? (
+            <p className="text-sm text-muted-foreground">Loading notifications...</p>
+          ) : notifications.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No notifications yet.</p>
+          ) : (
+            <div className="space-y-3">
+              {notifications.map((item) => (
+                <div key={item.id} className="rounded-lg border border-border p-3">
+                  <p className="text-sm font-semibold text-foreground">{item.subject || "Order Update"}</p>
+                  <p className="mt-1 text-sm text-muted-foreground">{item.message}</p>
+                  <p className="mt-2 text-[11px] text-muted-foreground">{item.createdAt ? new Date(item.createdAt).toLocaleString("en-IN") : ""}</p>
+                </div>
+              ))}
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedOrder)} onOpenChange={(open) => { if (!open) setSelectedOrderId(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Order Details</DialogTitle>
+          </DialogHeader>
+          {selectedOrder ? (
+            <div className="space-y-4">
+              <div className="rounded-lg border border-border p-3 grid grid-cols-1 md:grid-cols-2 gap-2 text-sm">
+                <p><span className="font-semibold text-foreground">Order ID:</span> {selectedOrder.id}</p>
+                <p><span className="font-semibold text-foreground">Date:</span> {selectedOrder.date}</p>
+                <p><span className="font-semibold text-foreground">Payment:</span> {selectedOrder.paymentMethod || "-"}</p>
+                <p><span className="font-semibold text-foreground">Status:</span> {selectedOrder.status}</p>
+                <p><span className="font-semibold text-foreground">Dispatch:</span> {selectedOrder.dispatchStatus || "-"}</p>
+                <p><span className="font-semibold text-foreground">Tracking:</span> {selectedOrder.trackingId || "-"}</p>
+                <p className="md:col-span-2"><span className="font-semibold text-foreground">Note:</span> {selectedOrder.dispatchNote || "-"}</p>
+              </div>
+
+              <div className="space-y-3">
+                {selectedOrder.items.map((item, index) => {
+                  const itemType = String(item.itemType || "").toLowerCase();
+                  const isPackage = itemType === "package";
+                  const packageCourseIds = isPackage && item.courseId
+                    ? (Array.isArray(courseById.get(item.courseId)?.packageCourseIds)
+                        ? courseById.get(item.courseId)?.packageCourseIds
+                        : [])
+                    : [];
+                  const includedTitles = Array.isArray(packageCourseIds)
+                    ? packageCourseIds.map((id) => courseTitleById.get(id) || id)
+                    : [];
+
+                  return (
+                    <div key={`${selectedOrder.id}-${index}-${item.title}`} className="rounded-lg border border-border p-3 space-y-1.5">
+                      <div className="flex items-center justify-between gap-2">
+                        <p className="text-sm font-semibold text-foreground">{item.title}</p>
+                        <Badge variant="secondary">
+                          {isPackage ? "Package" : item.isEbook ? "E-Book" : "Course"}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Amount: ₹{Number(item.price || 0).toLocaleString()}</p>
+                      <p className="text-xs text-muted-foreground">Mode: {item.modeLabel || "-"}</p>
+                      <p className="text-xs text-muted-foreground">Book Addon: {item.bookLabel || "-"}</p>
+
+                      {isPackage && (
+                        <div className="pt-1">
+                          <p className="text-xs font-semibold text-foreground mb-1">Included Courses:</p>
+                          {includedTitles.length > 0 ? (
+                            <div className="flex flex-wrap gap-1">
+                              {includedTitles.map((title) => (
+                                <span key={`${item.title}-${title}`} className="rounded-md bg-primary/10 px-2 py-0.5 text-[11px] font-medium text-primary">
+                                  {title}
+                                </span>
+                              ))}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-muted-foreground">Package courses data unavailable</p>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ) : null}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

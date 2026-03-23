@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { type ManagedCourse, usePlatformData } from "@/context/PlatformDataContext";
 import { adminApi } from "@/services/adminApi";
+import { decodeVideoUrl } from "@/lib/video-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Search, Edit2, Trash2, Eye, EyeOff, ArrowUpDown, Copy, BookOpen, Clock, DollarSign, Tag, Video, Package, FileText, Star, Settings, Loader2, LayoutGrid, List } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Eye, EyeOff, ArrowUpDown, Copy, BookOpen, Clock, DollarSign, Tag, Video, Package, FileText, Star, Settings, Loader2, LayoutGrid, List, Layers, CheckCircle2, X } from "lucide-react";
 
 /* ─── helpers (unchanged) ─────────────────────────────────────── */
 const parseLessonDurationToSeconds = (value: unknown) => {
@@ -61,6 +62,8 @@ const parseReviewsText = (value: string) =>
     return { name, rating, comment, date };
   }).filter((x): x is { name: string; rating: number; comment: string; date: string } => Boolean(x));
 
+const decodeDemoVideoValue = (value: unknown) => decodeVideoUrl(String(value || "")).trim();
+
 type CourseForm = {
   id: string; title: string; category: string; subcategory: string; price: number; originalPrice: number; taxPercentage: number;
   language: string; professor: string; lectures: number; hours: number; thumbnail?: string;
@@ -85,7 +88,7 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
   price: c.price, originalPrice: c.originalPrice, taxPercentage: Math.max(0, Number(c.taxPercentage || 0)), language: c.language, professor: c.professor,
   lectures: c.lectures, hours: c.hours, thumbnail: c.thumbnail,
   demoVideoTitle: c.demoVideoTitle, demoVideoDescription: c.demoVideoDescription,
-  demoVideoSource: c.demoVideoSource, demoVideoUrl: c.demoVideoUrl,
+  demoVideoSource: c.demoVideoSource, demoVideoUrl: decodeDemoVideoValue(c.demoVideoUrl),
   demoVideoThumbnailUrl: c.demoVideoThumbnailUrl, demoVideoVisible: c.demoVideoVisible,
   isSubcategoryCustom: !c.subcategory?.startsWith("subcat-"),
   viewPricingEnabled: Boolean(c.viewPricingEnabled), unlimitedViewsEnabled: Boolean(c.unlimitedViewsEnabled),
@@ -155,12 +158,76 @@ export default function AdminCourses() {
   const [searchTerm, setSearchTerm] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
+  const [facultyOptions, setFacultyOptions] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<CourseForm>(BLANK_FORM);
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogTab, setDialogTab] = useState<DialogTab>("basic");
   const [isSaving, setIsSaving] = useState(false);
   const [curriculumMetaByCourse, setCurriculumMetaByCourse] = useState<Record<string, { lectures: number; totalSeconds: number; hours: number }>>({});
+
+  // ── Package Builder state ──────────────────────────────────
+  const [pkgOpen, setPkgOpen] = useState(false);
+  const [pkgTab, setPkgTab] = useState<"courses"|"details"|"demo"|"pricing"|"delivery"|"content">("courses");
+  const [pkgEditingId, setPkgEditingId] = useState<string | null>(null);
+  const [pkgTitle, setPkgTitle] = useState("");
+  const [pkgThumbnail, setPkgThumbnail] = useState("");
+  const [pkgThumbnailUploading, setPkgThumbnailUploading] = useState(false);
+  const [pkgCategory, setPkgCategory] = useState("");
+  const [pkgSubcategory, setPkgSubcategory] = useState("");
+  const [pkgPrice, setPkgPrice] = useState(0);
+  const [pkgOriginalPrice, setPkgOriginalPrice] = useState(0);
+  const [pkgTaxPct, setPkgTaxPct] = useState(0);
+  const [pkgLanguage, setPkgLanguage] = useState("Hindi + English");
+  const [pkgProfessor, setPkgProfessor] = useState("Multiple Faculty");
+  const [pkgCourseIds, setPkgCourseIds] = useState<string[]>([]);
+  const [pkgSearch, setPkgSearch] = useState("");
+  const [pkgSaving, setPkgSaving] = useState(false);
+  // Pricing options
+  const [pkgViewPricingEnabled, setPkgViewPricingEnabled] = useState(false);
+  const [pkgUnlimitedViews, setPkgUnlimitedViews] = useState(false);
+  const [pkgViewOptionsText, setPkgViewOptionsText] = useState("1,2");
+  const [pkgValidityEnabled, setPkgValidityEnabled] = useState(false);
+  const [pkgValidityDaysText, setPkgValidityDaysText] = useState("30,90,180");
+  // Delivery modes
+  const [pkgDeliveryEnabled, setPkgDeliveryEnabled] = useState(false);
+  const [pkgOnlineMode, setPkgOnlineMode] = useState(true);
+  const [pkgOnlinePrice, setPkgOnlinePrice] = useState(0);
+  const [pkgDriveMode, setPkgDriveMode] = useState(false);
+  const [pkgDrivePrice, setPkgDrivePrice] = useState(0);
+  const [pkgPenMode, setPkgPenMode] = useState(false);
+  const [pkgPenPrice, setPkgPenPrice] = useState(0);
+  // Book addons
+  const [pkgBookAddon, setPkgBookAddon] = useState(false);
+  const [pkgEnotesEnabled, setPkgEnotesEnabled] = useState(false);
+  const [pkgEnotesPrice, setPkgEnotesPrice] = useState(0);
+  const [pkgPhysBookEnabled, setPkgPhysBookEnabled] = useState(false);
+  const [pkgPhysBookPrice, setPkgPhysBookPrice] = useState(0);
+  // Demo video
+  const [pkgDemoVideoVisible, setPkgDemoVideoVisible] = useState(false);
+  const [pkgDemoVideoTitle, setPkgDemoVideoTitle] = useState("");
+  const [pkgDemoVideoDescription, setPkgDemoVideoDescription] = useState("");
+  const [pkgDemoVideoSource, setPkgDemoVideoSource] = useState<"youtube" | "direct" | "upload">("youtube");
+  const [pkgDemoVideoUrl, setPkgDemoVideoUrl] = useState("");
+  const [pkgDemoVideoThumbnailUrl, setPkgDemoVideoThumbnailUrl] = useState("");
+  // About + ratings/reviews + sidebar display controls
+  const [pkgAboutCourseEnabled, setPkgAboutCourseEnabled] = useState(false);
+  const [pkgAboutCourseText, setPkgAboutCourseText] = useState("");
+  const [pkgRatingsEnabled, setPkgRatingsEnabled] = useState(true);
+  const [pkgReviewsEnabled, setPkgReviewsEnabled] = useState(true);
+  const [pkgRatingValue, setPkgRatingValue] = useState(4.8);
+  const [pkgRatingCount, setPkgRatingCount] = useState(0);
+  const [pkgReviewsText, setPkgReviewsText] = useState("");
+  const [pkgEnrollmentCount, setPkgEnrollmentCount] = useState(0);
+  const [pkgShowEnrollmentCount, setPkgShowEnrollmentCount] = useState(true);
+  const [pkgShowMetaLectures, setPkgShowMetaLectures] = useState(true);
+  const [pkgShowMetaHours, setPkgShowMetaHours] = useState(true);
+  const [pkgShowMetaValidity, setPkgShowMetaValidity] = useState(true);
+  const [pkgShowMetaResources, setPkgShowMetaResources] = useState(true);
+  const [pkgShowMetaViews, setPkgShowMetaViews] = useState(true);
+  const [pkgShowMetaPerHour, setPkgShowMetaPerHour] = useState(true);
+  const [pkgShowMetaLanguage, setPkgShowMetaLanguage] = useState(true);
+
 
   const sf = (updates: Partial<CourseForm>) => setForm((p) => ({ ...p, ...updates }));
 
@@ -193,6 +260,26 @@ export default function AdminCourses() {
     if (form.lectures !== m.lectures || form.hours !== m.hours) sf({ lectures: m.lectures, hours: m.hours });
   }, [dialogOpen, form.id, form.lectures, form.hours, curriculumMetaByCourse]);
 
+  useEffect(() => {
+    const loadFacultyOptions = async () => {
+      try {
+        const response = await fetch("/api/faculty");
+        if (!response.ok) throw new Error("Failed to load faculty");
+        const data = await response.json();
+        const names = Array.isArray(data?.items)
+          ? data.items
+              .map((item: { name?: string }) => String(item?.name || "").trim())
+              .filter(Boolean)
+          : [];
+        setFacultyOptions(Array.from(new Set(names)));
+      } catch {
+        setFacultyOptions([]);
+      }
+    };
+
+    void loadFacultyOptions();
+  }, []);
+
   const categoriesById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
   const parentCategories = useMemo(() => categories.filter((c) => c.parentId === null), [categories]);
   const subcategoryOptions = useMemo(() => categories.filter((c) => c.parentId === form.category), [categories, form.category]);
@@ -209,6 +296,14 @@ export default function AdminCourses() {
       (categoriesById[c.category]?.name || c.category).toLowerCase().includes(searchTerm.toLowerCase())
     ).sort((a, b) => sortOrder === "asc" ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title)),
   [courses, categoriesById, searchTerm, sortOrder]);
+
+  const suggestedFaculty = useMemo(() => {
+    const query = form.professor.trim().toLowerCase();
+    if (!query) return [];
+    return facultyOptions
+      .filter((name) => name.toLowerCase().includes(query))
+      .slice(0, 8);
+  }, [facultyOptions, form.professor]);
 
   const handleToggleVisibility = (courseId: string) => {
     toggleCourseVisibility(courseId);
@@ -319,6 +414,182 @@ export default function AdminCourses() {
     } catch (e) { alert(e instanceof Error ? e.message : "Failed to duplicate course"); }
   };
 
+  // ── Package Builder helpers ──────────────────────────────────
+  const openCreatePackage = () => {
+    const firstCat = parentCategories[0]?.id || "general";
+    const firstSub = categories.find((c) => c.parentId === firstCat)?.id || "general";
+    setPkgEditingId(null); setPkgTab("courses");
+    setPkgTitle(""); setPkgThumbnail(""); setPkgCategory(firstCat); setPkgSubcategory(firstSub);
+    setPkgPrice(0); setPkgOriginalPrice(0); setPkgTaxPct(0);
+    setPkgLanguage("Hindi + English"); setPkgProfessor("Multiple Faculty");
+    setPkgCourseIds([]); setPkgSearch("");
+    setPkgViewPricingEnabled(false); setPkgUnlimitedViews(false); setPkgViewOptionsText("1,2");
+    setPkgValidityEnabled(false); setPkgValidityDaysText("30,90,180");
+    setPkgDeliveryEnabled(false); setPkgOnlineMode(true); setPkgOnlinePrice(0);
+    setPkgDriveMode(false); setPkgDrivePrice(0); setPkgPenMode(false); setPkgPenPrice(0);
+    setPkgBookAddon(false); setPkgEnotesEnabled(false); setPkgEnotesPrice(0);
+    setPkgPhysBookEnabled(false); setPkgPhysBookPrice(0);
+    setPkgDemoVideoVisible(false); setPkgDemoVideoTitle(""); setPkgDemoVideoDescription("");
+    setPkgDemoVideoSource("youtube"); setPkgDemoVideoUrl(""); setPkgDemoVideoThumbnailUrl("");
+    setPkgAboutCourseEnabled(false); setPkgAboutCourseText("");
+    setPkgRatingsEnabled(true); setPkgReviewsEnabled(true); setPkgRatingValue(4.8); setPkgRatingCount(0); setPkgReviewsText("");
+    setPkgEnrollmentCount(0); setPkgShowEnrollmentCount(true); setPkgShowMetaLectures(true); setPkgShowMetaHours(true);
+    setPkgShowMetaValidity(true); setPkgShowMetaResources(true); setPkgShowMetaViews(true); setPkgShowMetaPerHour(true); setPkgShowMetaLanguage(true);
+    setPkgOpen(true);
+  };
+
+  const openEditPackage = (course: ManagedCourse) => {
+    setPkgEditingId(course.id); setPkgTab("courses");
+    setPkgTitle(course.title); setPkgThumbnail(course.thumbnail || "");
+    setPkgCategory(course.category || ""); setPkgSubcategory(course.subcategory || "");
+    setPkgPrice(course.price); setPkgOriginalPrice(course.originalPrice);
+    setPkgTaxPct(Number(course.taxPercentage || 0));
+    setPkgLanguage(course.language || "Hindi + English"); setPkgProfessor(course.professor || "Multiple Faculty");
+    setPkgCourseIds(Array.isArray(course.packageCourseIds) ? course.packageCourseIds : []);
+    setPkgSearch("");
+    setPkgViewPricingEnabled(Boolean(course.viewPricingEnabled));
+    setPkgUnlimitedViews(Boolean(course.unlimitedViewsEnabled));
+    setPkgViewOptionsText((course.viewOptions?.length ? course.viewOptions : [1,2]).join(","));
+    setPkgValidityEnabled(Boolean(course.validityPricingEnabled));
+    setPkgValidityDaysText((course.validityOptionsDays?.length ? course.validityOptionsDays : [30,90,180]).join(","));
+    setPkgDeliveryEnabled(Boolean(course.deliveryModePricingEnabled));
+    setPkgOnlineMode(Boolean(course.deliveryModes?.some(m => m.id === "online")));
+    setPkgOnlinePrice(course.deliveryModes?.find(m => m.id === "online")?.price ?? course.price);
+    setPkgDriveMode(Boolean(course.deliveryModes?.some(m => m.id === "google-drive")));
+    setPkgDrivePrice(course.deliveryModes?.find(m => m.id === "google-drive")?.price ?? course.price);
+    setPkgPenMode(Boolean(course.deliveryModes?.some(m => m.id === "pen-drive")));
+    setPkgPenPrice(course.deliveryModes?.find(m => m.id === "pen-drive")?.price ?? course.price);
+    setPkgBookAddon(Boolean(course.bookAddonEnabled));
+    setPkgEnotesEnabled(Boolean(course.bookAddons?.find(a => a.id === "enotes")?.enabled));
+    setPkgEnotesPrice(Number(course.bookAddons?.find(a => a.id === "enotes")?.price || 0));
+    setPkgPhysBookEnabled(Boolean(course.bookAddons?.find(a => a.id === "physical-book")?.enabled));
+    setPkgPhysBookPrice(Number(course.bookAddons?.find(a => a.id === "physical-book")?.price || 0));
+    setPkgDemoVideoVisible(Boolean(course.demoVideoVisible));
+    setPkgDemoVideoTitle(String(course.demoVideoTitle || ""));
+    setPkgDemoVideoDescription(String(course.demoVideoDescription || ""));
+    setPkgDemoVideoSource((course.demoVideoSource === "upload" || course.demoVideoSource === "direct") ? course.demoVideoSource : "youtube");
+    setPkgDemoVideoUrl(decodeDemoVideoValue(course.demoVideoUrl));
+    setPkgDemoVideoThumbnailUrl(String(course.demoVideoThumbnailUrl || ""));
+    setPkgAboutCourseEnabled(Boolean(course.aboutCourseEnabled));
+    setPkgAboutCourseText(String(course.aboutCourseText || ""));
+    setPkgRatingsEnabled(course.ratingsEnabled !== false);
+    setPkgReviewsEnabled(course.reviewsEnabled !== false);
+    setPkgRatingValue(Number(course.ratingValue || 4.8));
+    setPkgRatingCount(Number(course.ratingCount || 0));
+    setPkgReviewsText((course.reviews || []).map((r) => `${r.name} | ${r.rating} | ${r.comment} | ${r.date || ""}`).join("\n"));
+    setPkgEnrollmentCount(Number(course.enrollmentCount || 0));
+    setPkgShowEnrollmentCount(course.showEnrollmentCount !== false);
+    setPkgShowMetaLectures(course.showMetaLectures !== false);
+    setPkgShowMetaHours(course.showMetaHours !== false);
+    setPkgShowMetaValidity(course.showMetaValidity !== false);
+    setPkgShowMetaResources(course.showMetaResources !== false);
+    setPkgShowMetaViews(course.showMetaViews !== false);
+    setPkgShowMetaPerHour(course.showMetaPerHour !== false);
+    setPkgShowMetaLanguage(course.showMetaLanguage !== false);
+    setPkgOpen(true);
+  };
+
+  const pkgSelectedCourses = useMemo(() =>
+    courses.filter((c) => pkgCourseIds.includes(c.id)),
+    [courses, pkgCourseIds]
+  );
+  const pkgTotalLectures = useMemo(() => pkgSelectedCourses.reduce((s, c) => s + (c.lectures || 0), 0), [pkgSelectedCourses]);
+  const pkgTotalHours = useMemo(() => Number(pkgSelectedCourses.reduce((s, c) => s + (c.hours || 0), 0).toFixed(1)), [pkgSelectedCourses]);
+  const pkgTotalRetailPrice = useMemo(() => pkgSelectedCourses.reduce((s, c) => s + (c.price || 0), 0), [pkgSelectedCourses]);
+
+  const pkgFilteredCourses = useMemo(() => {
+    const q = pkgSearch.trim().toLowerCase();
+    return courses
+      .filter((c) => !c.isCombo && (q === "" || c.title.toLowerCase().includes(q) || (categoriesById[c.category]?.name || "").toLowerCase().includes(q)))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [courses, categoriesById, pkgSearch]);
+
+  const pkgSubcategoryOptions = useMemo(() => categories.filter((c) => c.parentId === pkgCategory), [categories, pkgCategory]);
+
+  const handleUploadPkgThumbnail = async (file?: File | null) => {
+    if (!file) return;
+    setPkgThumbnailUploading(true);
+    try {
+      const base64Data = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result || ""));
+        reader.onerror = () => reject(new Error("read error"));
+        reader.readAsDataURL(file);
+      });
+      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "packages");
+      setPkgThumbnail(uploaded.url);
+    } catch { /* ignore */ } finally { setPkgThumbnailUploading(false); }
+  };
+
+  const handleSavePackage = async () => {
+    if (!pkgTitle.trim()) { alert("Package name is required"); return; }
+    if (pkgCourseIds.length < 2) { alert("Select at least 2 courses for a package"); return; }
+    if (!pkgDeliveryEnabled && pkgPrice <= 0) { alert("Set a valid package price"); return; }
+    setPkgSaving(true);
+    try {
+      const id = pkgEditingId || `pkg-${Date.now()}`;
+      const deliveryModes: Array<{ id: string; label: string; price: number; originalPrice?: number }> = [];
+      if (pkgDeliveryEnabled) {
+        if (pkgOnlineMode && pkgOnlinePrice > 0) deliveryModes.push({ id: "online", label: "Online", price: pkgOnlinePrice, originalPrice: pkgOriginalPrice || pkgOnlinePrice });
+        if (pkgDriveMode && pkgDrivePrice > 0) deliveryModes.push({ id: "google-drive", label: "Google Drive", price: pkgDrivePrice, originalPrice: pkgOriginalPrice || pkgDrivePrice });
+        if (pkgPenMode && pkgPenPrice > 0) deliveryModes.push({ id: "pen-drive", label: "Pen Drive", price: pkgPenPrice, originalPrice: pkgOriginalPrice || pkgPenPrice });
+      }
+      const bookAddons: Array<{ id: string; label: string; price: number; enabled?: boolean }> = [];
+      if (pkgBookAddon) {
+        if (pkgEnotesEnabled) bookAddons.push({ id: "enotes", label: "eNotes", price: Math.max(0, pkgEnotesPrice), enabled: true });
+        if (pkgPhysBookEnabled) bookAddons.push({ id: "physical-book", label: "Physical Book", price: Math.max(0, pkgPhysBookPrice), enabled: true });
+      }
+      const derivedPrice = pkgDeliveryEnabled ? (deliveryModes[0]?.price || 0) : pkgPrice;
+      const originalPrice = pkgOriginalPrice > 0 ? pkgOriginalPrice : pkgTotalRetailPrice;
+      const discount = originalPrice > derivedPrice ? Math.round(((originalPrice - derivedPrice) / originalPrice) * 100) : 0;
+      const pkg: ManagedCourse = {
+        id, title: pkgTitle.trim(), category: pkgCategory || "general",
+        subcategory: pkgSubcategory || "general", language: pkgLanguage || "Hindi + English",
+        professor: pkgProfessor.trim() || "Multiple Faculty",
+        price: derivedPrice, originalPrice, taxPercentage: Math.max(0, pkgTaxPct),
+        discount, image: "/placeholder.svg", thumbnail: pkgThumbnail.trim(),
+        lectures: pkgTotalLectures, hours: pkgTotalHours,
+        isCombo: true, isMaterial: false, isVisible: true,
+        packageCourseIds: pkgCourseIds,
+        viewPricingEnabled: pkgViewPricingEnabled, unlimitedViewsEnabled: pkgUnlimitedViews,
+        validityPricingEnabled: pkgValidityEnabled,
+        viewOptions: parsePositiveNumberList(pkgViewOptionsText, [1,2]),
+        validityOptionsDays: parsePositiveNumberList(pkgValidityDaysText, [30,90,180]),
+        selectedViews: 1, selectedValidityDays: 30,
+        deliveryModePricingEnabled: pkgDeliveryEnabled, deliveryModes,
+        selectedDeliveryModeId: deliveryModes[0]?.id || "online",
+        selectedDeliveryModeIds: deliveryModes.length > 0 ? [deliveryModes[0].id] : ["online"],
+        bookAddonEnabled: pkgBookAddon, bookAddons, selectedBookAddonIds: [],
+        aboutCourseEnabled: pkgAboutCourseEnabled,
+        aboutCourseText: String(pkgAboutCourseText || "").trim(),
+        ratingsEnabled: pkgRatingsEnabled,
+        reviewsEnabled: pkgReviewsEnabled,
+        ratingValue: Math.max(0, Math.min(5, Number(pkgRatingValue || 4.8))),
+        ratingCount: Math.max(0, Number(pkgRatingCount || 0)),
+        reviews: parseReviewsText(pkgReviewsText || ""),
+        enrollmentCount: Math.max(0, Number(pkgEnrollmentCount || 0)),
+        showEnrollmentCount: pkgShowEnrollmentCount,
+        showMetaLectures: pkgShowMetaLectures,
+        showMetaHours: pkgShowMetaHours,
+        showMetaValidity: pkgShowMetaValidity,
+        showMetaResources: pkgShowMetaResources,
+        showMetaViews: pkgShowMetaViews,
+        showMetaPerHour: pkgShowMetaPerHour,
+        showMetaLanguage: pkgShowMetaLanguage,
+        demoVideoVisible: pkgDemoVideoVisible,
+        demoVideoTitle: String(pkgDemoVideoTitle || "").trim(),
+        demoVideoDescription: String(pkgDemoVideoDescription || "").trim(),
+        demoVideoSource: pkgDemoVideoSource,
+        demoVideoUrl: String(pkgDemoVideoUrl || "").trim(),
+        demoVideoThumbnailUrl: String(pkgDemoVideoThumbnailUrl || "").trim(),
+      };
+      upsertCourse(pkg);
+      await adminApi.upsertCourse(pkg);
+      setPkgOpen(false);
+    } catch (e) { alert(e instanceof Error ? e.message : "Failed to save package"); }
+    finally { setPkgSaving(false); }
+  };
+
   /* ─── Dialog Tabs ────────────────────────────────────────────── */
   const dialogTabs: { key: DialogTab; label: string; icon: React.ElementType }[] = [
     { key: "basic",    label: "Basic",    icon: BookOpen },
@@ -334,9 +605,14 @@ export default function AdminCourses() {
     <div className="space-y-5 font-['Inter']">
       {/* ─── Header ─────────────────────────────────────────────── */}
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Courses</h1>
-          <p className="mt-0.5 text-xs text-slate-500">{filteredCourses.length} courses total</p>
+        <div className="flex items-center gap-3">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-lg shadow-primary/25">
+            <BookOpen className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Courses</h1>
+            <p className="mt-0.5 text-xs text-slate-500">{filteredCourses.length} courses total</p>
+          </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl border-slate-200 text-xs" onClick={() => setSortOrder((p) => p === "asc" ? "desc" : "asc")}>
@@ -363,6 +639,356 @@ export default function AdminCourses() {
                 <Plus className="h-3.5 w-3.5" /> Add Course
               </Button>
             </DialogTrigger>
+
+            {/* ─── Package Builder Button + Dialog ─────────── */}
+            <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl border-primary/40 px-4 text-xs font-semibold text-primary hover:bg-primary/5" onClick={openCreatePackage}>
+              <Layers className="h-3.5 w-3.5" /> Create Package
+            </Button>
+
+            {/* Package Builder Dialog */}
+            <Dialog open={pkgOpen} onOpenChange={setPkgOpen}>
+              <DialogContent className="flex max-h-[94vh] max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-100 p-0 shadow-2xl">
+                <DialogHeader className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-primary/5 to-accent/5 px-6 py-4">
+                  <div className="flex items-center gap-2.5">
+                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
+                      <Layers className="h-4 w-4 text-primary" />
+                    </div>
+                    <DialogTitle className="text-base font-bold text-slate-900">{pkgEditingId ? "Edit Package" : "Create Course Package"}</DialogTitle>
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">Bundle multiple courses into one combo package with a custom price.</p>
+                </DialogHeader>
+
+                {/* Tabs */}
+                <div className="shrink-0 flex border-b border-slate-100 px-6">
+                  {([
+                    { key: "courses" as const, label: "Courses", icon: BookOpen },
+                    { key: "details" as const, label: "Details", icon: Tag },
+                    { key: "demo" as const, label: "Demo", icon: Video },
+                    { key: "pricing" as const, label: "Pricing", icon: DollarSign },
+                    { key: "delivery" as const, label: "Delivery", icon: Package },
+                    { key: "content" as const, label: "Content", icon: FileText },
+                  ]).map((t) => (
+                    <button key={t.key} type="button" onClick={() => setPkgTab(t.key)}
+                      className={`flex items-center gap-1.5 px-3 py-3 text-xs font-semibold transition-colors ${pkgTab === t.key ? "border-b-2 border-primary text-primary" : "text-slate-500 hover:text-slate-700"}`}>
+                      <t.icon className="h-3.5 w-3.5" />{t.label}
+                      {t.key === "courses" && pkgCourseIds.length > 0 && <span className="ml-0.5 rounded-full bg-primary/10 px-1.5 text-[9px] font-bold text-primary">{pkgCourseIds.length}</span>}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="flex-1 overflow-y-auto px-6 py-5">
+                  {/* ── COURSES TAB ── */}
+                  {pkgTab === "courses" && (
+                    <div className="space-y-3">
+                      <div className="flex items-center justify-between">
+                        <Label>Select Courses (min 2)</Label>
+                        {pkgCourseIds.length > 0 && <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">{pkgCourseIds.length} selected</span>}
+                      </div>
+                      <div className="relative">
+                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-slate-400" />
+                        <Input className={`${fieldCls} pl-9`} placeholder="Search courses…" value={pkgSearch} onChange={(e) => setPkgSearch(e.target.value)} />
+                      </div>
+                      <div className="max-h-64 overflow-y-auto rounded-xl border border-slate-200 divide-y divide-slate-100">
+                        {pkgFilteredCourses.length === 0 ? (
+                          <p className="py-8 text-center text-xs text-slate-400">No courses found</p>
+                        ) : pkgFilteredCourses.map((c) => {
+                          const sel = pkgCourseIds.includes(c.id);
+                          return (
+                            <label key={c.id} className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors ${sel ? "bg-primary/5" : "hover:bg-slate-50"}`}>
+                              <input type="checkbox" className="accent-primary h-3.5 w-3.5 shrink-0" checked={sel}
+                                onChange={(e) => setPkgCourseIds((prev) => e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id))} />
+                              {c.thumbnail && <img src={c.thumbnail} alt={c.title} className="h-9 w-14 rounded-md object-cover shrink-0" />}
+                              <div className="flex-1 min-w-0">
+                                <p className={`text-xs font-semibold line-clamp-1 ${sel ? "text-primary" : "text-slate-700"}`}>{c.title}</p>
+                                <p className="text-[10px] text-slate-400 mt-0.5">₹{c.price.toLocaleString()} · {c.lectures} lec · {c.hours}h · {c.professor}</p>
+                              </div>
+                              {sel && <CheckCircle2 className="shrink-0 h-3.5 w-3.5 text-primary" />}
+                            </label>
+                          );
+                        })}
+                      </div>
+                      {pkgCourseIds.length > 0 && (
+                        <div className="rounded-xl bg-primary/5 border border-primary/20 p-3 space-y-2">
+                          <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Package Summary</p>
+                          <div className="grid grid-cols-3 gap-2 text-center">
+                            <div className="rounded-lg bg-white border border-slate-200 p-2"><p className="text-base font-extrabold text-slate-900">{pkgCourseIds.length}</p><p className="text-[9px] text-slate-400">Courses</p></div>
+                            <div className="rounded-lg bg-white border border-slate-200 p-2"><p className="text-base font-extrabold text-slate-900">{pkgTotalLectures}</p><p className="text-[9px] text-slate-400">Lectures</p></div>
+                            <div className="rounded-lg bg-white border border-slate-200 p-2"><p className="text-base font-extrabold text-slate-900">{pkgTotalHours}h</p><p className="text-[9px] text-slate-400">Watch Time</p></div>
+                          </div>
+                          <div className="flex items-center justify-between text-[11px]"><span className="text-slate-500">Total retail value</span><span className="font-bold text-slate-700">₹{pkgTotalRetailPrice.toLocaleString()}</span></div>
+                          {pkgPrice > 0 && pkgTotalRetailPrice > pkgPrice && (
+                            <div className="flex items-center justify-between text-[11px]"><span className="text-slate-500">Package savings</span><span className="font-bold text-emerald-600">₹{(pkgTotalRetailPrice - pkgPrice).toLocaleString()} off</span></div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── DETAILS TAB ── */}
+                  {pkgTab === "details" && (
+                    <div className="space-y-4">
+                      <div className="space-y-1.5">
+                        <Label>Package Name *</Label>
+                        <Input className={fieldCls} placeholder="e.g., CA Final Complete Combo Pack" value={pkgTitle} onChange={(e) => setPkgTitle(e.target.value)} />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label>Thumbnail</Label>
+                        <div className="flex gap-2 items-start">
+                          {pkgThumbnail && <img src={pkgThumbnail} alt="thumb" className="h-14 w-20 rounded-xl object-cover shrink-0" />}
+                          <div className="flex-1 space-y-1.5">
+                            <Input className={fieldCls} placeholder="https://… or upload below" value={pkgThumbnail} onChange={(e) => setPkgThumbnail(e.target.value)} />
+                            <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-primary/40 hover:text-primary transition-colors w-fit">
+                              {pkgThumbnailUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
+                              {pkgThumbnailUploading ? "Uploading..." : "Upload Image"}
+                              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadPkgThumbnail(e.target.files?.[0])} />
+                            </label>
+                          </div>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label>Category</Label>
+                          <select className={selectCls} value={pkgCategory} onChange={(e) => { setPkgCategory(e.target.value); setPkgSubcategory(categories.find((c) => c.parentId === e.target.value)?.id || "general"); }}>
+                            {parentCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Subcategory</Label>
+                          <select className={selectCls} value={pkgSubcategory} onChange={(e) => setPkgSubcategory(e.target.value)}>
+                            {pkgSubcategoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                          </select>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-2 gap-3">
+                        <div className="space-y-1.5"><Label>Language</Label><Input className={fieldCls} value={pkgLanguage} onChange={(e) => setPkgLanguage(e.target.value)} /></div>
+                        <div className="space-y-1.5"><Label>Professor</Label><Input className={fieldCls} value={pkgProfessor} onChange={(e) => setPkgProfessor(e.target.value)} /></div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── PRICING TAB ── */}
+                  {pkgTab === "pricing" && (
+                    <div className="space-y-4">
+                      {/* Base price */}
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                        <p className="text-xs font-bold text-slate-800">Base Price</p>
+                        <div className="grid grid-cols-3 gap-3">
+                          <div className="space-y-1.5"><Label>Package Price (₹) *</Label><Input className={fieldCls} type="number" placeholder="24999" value={pkgPrice || ""} onChange={(e) => setPkgPrice(Number(e.target.value) || 0)} /></div>
+                          <div className="space-y-1.5"><Label>Original / MRP (₹)</Label><Input className={fieldCls} type="number" placeholder="Auto from retail" value={pkgOriginalPrice || ""} onChange={(e) => setPkgOriginalPrice(Number(e.target.value) || 0)} /></div>
+                          <div className="space-y-1.5"><Label>Tax (%)</Label><Input className={fieldCls} type="number" min={0} step={0.01} placeholder="0" value={pkgTaxPct || ""} onChange={(e) => setPkgTaxPct(Math.max(0, Number(e.target.value) || 0))} /></div>
+                        </div>
+                        {pkgPrice > 0 && (
+                          <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] space-y-1">
+                            <div className="flex justify-between"><span className="text-slate-500">Package Price</span><span className="font-bold">₹{pkgPrice.toLocaleString()}</span></div>
+                            {(pkgOriginalPrice > pkgPrice || pkgTotalRetailPrice > pkgPrice) && <div className="flex justify-between"><span className="text-slate-500">Savings</span><span className="font-bold text-emerald-600">₹{((pkgOriginalPrice || pkgTotalRetailPrice) - pkgPrice).toLocaleString()} off</span></div>}
+                            {pkgTaxPct > 0 && <div className="flex justify-between"><span className="text-slate-500">With Tax</span><span className="font-bold">₹{(pkgPrice * (1 + pkgTaxPct / 100)).toFixed(0)}</span></div>}
+                          </div>
+                        )}
+                      </div>
+                      {/* View-based pricing */}
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                        <p className="text-xs font-bold text-slate-800">View-based Pricing</p>
+                        {checkboxRow("Sell by number of views", pkgViewPricingEnabled, (v) => { setPkgViewPricingEnabled(v); if (v) setPkgUnlimitedViews(false); })}
+                        {pkgViewPricingEnabled && (
+                          <div className="pl-5 space-y-1.5"><Label>View options (comma-separated)</Label><Input className={fieldCls} placeholder="1,2,3" value={pkgViewOptionsText} onChange={(e) => setPkgViewOptionsText(e.target.value)} /></div>
+                        )}
+                        {checkboxRow("Grant unlimited views to buyers", pkgUnlimitedViews, (v) => { setPkgUnlimitedViews(v); if (v) setPkgViewPricingEnabled(false); })}
+                      </div>
+                      {/* Validity pricing */}
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                        <p className="text-xs font-bold text-slate-800">Validity Pricing</p>
+                        {checkboxRow("Sell by validity period", pkgValidityEnabled, setPkgValidityEnabled)}
+                        {pkgValidityEnabled && (
+                          <div className="pl-5 space-y-1.5"><Label>Validity options in days (comma-separated)</Label><Input className={fieldCls} placeholder="30,90,180" value={pkgValidityDaysText} onChange={(e) => setPkgValidityDaysText(e.target.value)} /></div>
+                        )}
+                      </div>
+                      {/* Book addons */}
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                        <p className="text-xs font-bold text-slate-800">Book Addons</p>
+                        {checkboxRow("Enable book addons", pkgBookAddon, setPkgBookAddon)}
+                        {pkgBookAddon && (
+                          <div className="pl-5 space-y-2">
+                            <div className="flex items-center gap-3">
+                              {checkboxRow("eNotes", pkgEnotesEnabled, setPkgEnotesEnabled)}
+                              {pkgEnotesEnabled && <Input className={`${fieldCls} w-28`} type="number" placeholder="Price" value={pkgEnotesPrice || ""} onChange={(e) => setPkgEnotesPrice(Number(e.target.value) || 0)} />}
+                            </div>
+                            <div className="flex items-center gap-3">
+                              {checkboxRow("Physical Book", pkgPhysBookEnabled, setPkgPhysBookEnabled)}
+                              {pkgPhysBookEnabled && <Input className={`${fieldCls} w-28`} type="number" placeholder="Price" value={pkgPhysBookPrice || ""} onChange={(e) => setPkgPhysBookPrice(Number(e.target.value) || 0)} />}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── DEMO TAB ── */}
+                  {pkgTab === "demo" && (
+                    <div className="space-y-4">
+                      {checkboxRow("Show Demo Lecture on Course Page", pkgDemoVideoVisible, setPkgDemoVideoVisible)}
+                      {pkgDemoVideoVisible && (
+                        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                          <div className="space-y-1.5">
+                            <Label>Demo Lecture Title</Label>
+                            <Input className={fieldCls} placeholder="Introduction Lecture" value={pkgDemoVideoTitle} onChange={(e) => setPkgDemoVideoTitle(e.target.value)} />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>Description</Label>
+                            <textarea className="h-20 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" value={pkgDemoVideoDescription} onChange={(e) => setPkgDemoVideoDescription(e.target.value)} placeholder="Brief description…" />
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>Video Source</Label>
+                            <div className="flex gap-3">
+                              {(["youtube", "upload", "direct"] as const).map((src) => (
+                                <label key={src} className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-700">
+                                  <input
+                                    type="radio"
+                                    name="pkgVideoSource"
+                                    value={src}
+                                    checked={pkgDemoVideoSource === src}
+                                    onChange={() => setPkgDemoVideoSource(src)}
+                                    className="accent-primary"
+                                  />
+                                  {src === "youtube" ? "YouTube" : src === "upload" ? "CDN Upload" : "Direct URL"}
+                                </label>
+                              ))}
+                            </div>
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>{pkgDemoVideoSource === "youtube" ? "YouTube Video ID" : "Video URL"}</Label>
+                            <Input
+                              className={fieldCls}
+                              placeholder={pkgDemoVideoSource === "youtube" ? "e.g., dQw4w9WgXcQ" : "https://…"}
+                              value={pkgDemoVideoUrl}
+                              onChange={(e) => setPkgDemoVideoUrl(e.target.value)}
+                            />
+                            {pkgDemoVideoSource === "youtube" && pkgDemoVideoUrl && (
+                              <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{pkgDemoVideoUrl}</p>
+                            )}
+                          </div>
+                          <div className="space-y-1.5">
+                            <Label>Video Thumbnail URL (Optional)</Label>
+                            <Input className={fieldCls} placeholder="https://…" value={pkgDemoVideoThumbnailUrl} onChange={(e) => setPkgDemoVideoThumbnailUrl(e.target.value)} />
+                            {pkgDemoVideoThumbnailUrl && <img src={pkgDemoVideoThumbnailUrl} alt="thumb" className="mt-1 h-16 rounded-xl object-cover" />}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  {/* ── DELIVERY TAB ── */}
+                  {pkgTab === "delivery" && (
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                        <p className="text-xs font-bold text-slate-800">Delivery Mode Pricing</p>
+                        {checkboxRow("Enable different prices per delivery mode", pkgDeliveryEnabled, setPkgDeliveryEnabled)}
+                        {pkgDeliveryEnabled && (
+                          <div className="pl-5 space-y-3 mt-2">
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex-1">{checkboxRow("Online / Pendrive (Streaming)", pkgOnlineMode, setPkgOnlineMode)}</div>
+                              {pkgOnlineMode && <Input className={`${fieldCls} w-28`} type="number" placeholder="₹ price" value={pkgOnlinePrice || ""} onChange={(e) => setPkgOnlinePrice(Number(e.target.value) || 0)} />}
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex-1">{checkboxRow("Google Drive", pkgDriveMode, setPkgDriveMode)}</div>
+                              {pkgDriveMode && <Input className={`${fieldCls} w-28`} type="number" placeholder="₹ price" value={pkgDrivePrice || ""} onChange={(e) => setPkgDrivePrice(Number(e.target.value) || 0)} />}
+                            </div>
+                            <div className="flex items-center justify-between gap-3">
+                              <div className="flex-1">{checkboxRow("Pen Drive", pkgPenMode, setPkgPenMode)}</div>
+                              {pkgPenMode && <Input className={`${fieldCls} w-28`} type="number" placeholder="₹ price" value={pkgPenPrice || ""} onChange={(e) => setPkgPenPrice(Number(e.target.value) || 0)} />}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                      <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
+                        <p className="text-xs font-semibold text-amber-800">When a student buys this package:</p>
+                        <ul className="mt-2 space-y-1 text-[11px] text-amber-700">
+                          <li>• All {pkgCourseIds.length || "bundled"} courses automatically unlock in their dashboard</li>
+                          <li>• The same validity period &amp; view count applies to all courses</li>
+                          <li>• Each bundled course appears as a separate card in My Courses</li>
+                        </ul>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* ── CONTENT TAB ── */}
+                  {pkgTab === "content" && (
+                    <div className="space-y-4">
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                        <p className="text-xs font-bold text-slate-800">About Course Section</p>
+                        {checkboxRow("Show About Course section on package page", pkgAboutCourseEnabled, setPkgAboutCourseEnabled)}
+                        {pkgAboutCourseEnabled && (
+                          <div className="space-y-1.5">
+                            <Label>About Course Text</Label>
+                            <textarea
+                              className="min-h-[160px] w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40"
+                              placeholder="Dear Students, this package covers…"
+                              value={pkgAboutCourseText}
+                              onChange={(e) => setPkgAboutCourseText(e.target.value)}
+                            />
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                        <p className="text-xs font-bold text-slate-800">Sidebar Display Controls</p>
+                        <div className="space-y-1.5">
+                          <Label>Enrollment Count</Label>
+                          <Input
+                            className={fieldCls}
+                            type="number"
+                            min={0}
+                            value={pkgEnrollmentCount}
+                            onChange={(e) => setPkgEnrollmentCount(Number(e.target.value) || 0)}
+                          />
+                        </div>
+                        <div className="grid grid-cols-2 gap-2 pt-1">
+                          {checkboxRow("Show enrolled count", pkgShowEnrollmentCount, setPkgShowEnrollmentCount)}
+                          {checkboxRow("Show lectures", pkgShowMetaLectures, setPkgShowMetaLectures)}
+                          {checkboxRow("Show hours", pkgShowMetaHours, setPkgShowMetaHours)}
+                          {checkboxRow("Show validity", pkgShowMetaValidity, setPkgShowMetaValidity)}
+                          {checkboxRow("Show resources", pkgShowMetaResources, setPkgShowMetaResources)}
+                          {checkboxRow("Show views", pkgShowMetaViews, setPkgShowMetaViews)}
+                          {checkboxRow("Show ₹/hr", pkgShowMetaPerHour, setPkgShowMetaPerHour)}
+                          {checkboxRow("Show language", pkgShowMetaLanguage, setPkgShowMetaLanguage)}
+                        </div>
+                      </div>
+
+                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                        <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5"><Star className="h-4 w-4 text-amber-500" /> Ratings & Reviews</p>
+                        <div className="grid grid-cols-2 gap-3">
+                          {checkboxRow("Show Ratings tab", pkgRatingsEnabled, setPkgRatingsEnabled)}
+                          {checkboxRow("Show Reviews tab", pkgReviewsEnabled, setPkgReviewsEnabled)}
+                        </div>
+                        {pkgRatingsEnabled && (
+                          <div className="grid grid-cols-2 gap-3">
+                            <div className="space-y-1.5"><Label>Rating Value (0-5)</Label><Input className={fieldCls} type="number" step={0.1} min={0} max={5} value={pkgRatingValue} onChange={(e) => setPkgRatingValue(Number(e.target.value) || 0)} /></div>
+                            <div className="space-y-1.5"><Label>Rating Count</Label><Input className={fieldCls} type="number" min={0} value={pkgRatingCount} onChange={(e) => setPkgRatingCount(Number(e.target.value) || 0)} /></div>
+                          </div>
+                        )}
+                        {pkgReviewsEnabled && (
+                          <div className="space-y-1.5">
+                            <Label>Reviews (one per line)</Label>
+                            <textarea className="h-28 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40" placeholder="Name | 5 | Great package | 2 weeks ago" value={pkgReviewsText} onChange={(e) => setPkgReviewsText(e.target.value)} />
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Footer */}
+                <div className="shrink-0 flex items-center justify-between border-t border-slate-100 bg-slate-50 px-6 py-4">
+                  <p className="text-[11px] text-slate-400">{pkgCourseIds.length < 2 ? "Select at least 2 courses" : `${pkgCourseIds.length} courses · ${pkgTotalLectures} lectures · ${pkgTotalHours}h total`}</p>
+                  <div className="flex gap-2">
+                    <Button type="button" variant="outline" size="sm" className="rounded-xl text-xs" onClick={() => setPkgOpen(false)}>Cancel</Button>
+                    <Button size="sm" className="gap-1.5 rounded-xl px-5 text-xs font-semibold" onClick={handleSavePackage} disabled={pkgSaving || pkgCourseIds.length < 2}>
+                      {pkgSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Layers className="h-3.5 w-3.5" />}
+                      {pkgEditingId ? "Update Package" : "Save Package"}
+                    </Button>
+                  </div>
+                </div>
+              </DialogContent>
+            </Dialog>
 
             {/* ─── Course Dialog ─────────────────────────────────── */}
             <DialogContent className="flex max-h-[92vh] max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-100 p-0 shadow-2xl">
@@ -427,7 +1053,32 @@ export default function AdminCourses() {
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
                         <Label>Professor</Label>
-                        <Input className={fieldCls} placeholder="Faculty Name" value={form.professor} onChange={(e) => sf({ professor: e.target.value })} />
+                        <Input
+                          className={fieldCls}
+                          placeholder="Faculty Name"
+                          list="course-faculty-options"
+                          value={form.professor}
+                          onChange={(e) => sf({ professor: e.target.value })}
+                        />
+                        <datalist id="course-faculty-options">
+                          {suggestedFaculty.map((name) => (
+                            <option key={name} value={name} />
+                          ))}
+                        </datalist>
+                        {form.professor.trim() && suggestedFaculty.length > 0 && (
+                          <div className="flex flex-wrap gap-1 pt-1">
+                            {suggestedFaculty.map((name) => (
+                              <button
+                                key={name}
+                                type="button"
+                                onClick={() => sf({ professor: name })}
+                                className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600 hover:border-primary/40 hover:text-primary"
+                              >
+                                {name}
+                              </button>
+                            ))}
+                          </div>
+                        )}
                       </div>
                       <div className="space-y-1.5">
                         <Label>Language</Label>
@@ -654,9 +1305,11 @@ export default function AdminCourses() {
 
       {/* ─── Course List ──────────────────────────────────────── */}
       {filteredCourses.length === 0 ? (
-        <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-slate-200 py-20 text-center">
-          <BookOpen className="mb-3 h-10 w-10 text-slate-300" />
-          <p className="text-sm font-semibold text-slate-500">No courses found</p>
+        <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-20 text-center">
+          <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
+            <BookOpen className="h-8 w-8 text-slate-300" />
+          </div>
+          <p className="text-sm font-semibold text-slate-600">No courses found</p>
           <p className="mt-1 text-xs text-slate-400">Add a course or adjust your search</p>
         </div>
       ) : viewMode === "grid" ? (
@@ -667,11 +1320,11 @@ export default function AdminCourses() {
             const catName = categoriesById[course.category]?.name || course.category;
             const subName = categoriesById[course.subcategory]?.name || "";
             return (
-              <div key={course.id} className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-shadow hover:shadow-md">
+              <div key={course.id} className="group relative flex flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition-all hover:shadow-lg hover:border-primary/20">
                 {/* Thumbnail */}
                 <div className="relative h-36 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200">
                   {course.thumbnail ? (
-                    <img src={course.thumbnail} alt={course.title} className="h-full w-full object-cover" />
+                    <img src={course.thumbnail} alt={course.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                   ) : (
                     <div className="flex h-full items-center justify-center">
                       <BookOpen className="h-10 w-10 text-slate-300" />
@@ -686,6 +1339,7 @@ export default function AdminCourses() {
                   <div className="flex flex-wrap items-center gap-1.5 mb-2">
                     <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">{catName}</span>
                     {subName && <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] text-slate-500">{subName}</span>}
+                    {course.isCombo && <span className="flex items-center gap-0.5 rounded-full bg-amber-100 px-2 py-0.5 text-[10px] font-bold text-amber-700"><Layers className="h-2.5 w-2.5" />Package</span>}
                   </div>
                   <h3 className="line-clamp-2 text-sm font-bold leading-snug text-slate-900">{course.title}</h3>
                   <p className="mt-1 text-xs text-slate-500">{course.professor}</p>
@@ -699,8 +1353,8 @@ export default function AdminCourses() {
                   <button type="button" onClick={() => handleToggleVisibility(course.id)} title={course.isVisible ? "Hide" : "Publish"} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-800">
                     {course.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                   </button>
-                  <button type="button" onClick={() => openEditDialog(course)} title="Edit" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-primary/10 hover:text-primary">
-                    <Edit2 className="h-3.5 w-3.5" />
+                  <button type="button" onClick={() => course.isCombo ? openEditPackage(course) : openEditDialog(course)} title="Edit" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-primary/10 hover:text-primary">
+                    {course.isCombo ? <Layers className="h-3.5 w-3.5" /> : <Edit2 className="h-3.5 w-3.5" />}
                   </button>
                   <button type="button" onClick={() => handleDuplicateCourse(course)} title="Duplicate" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-blue-50 hover:text-blue-600">
                     <Copy className="h-3.5 w-3.5" />
@@ -760,8 +1414,8 @@ export default function AdminCourses() {
                     <button type="button" onClick={() => handleToggleVisibility(course.id)} title={course.isVisible ? "Hide" : "Publish"} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
                       {course.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                     </button>
-                    <button type="button" onClick={() => openEditDialog(course)} title="Edit" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-primary/10 hover:text-primary">
-                      <Edit2 className="h-3.5 w-3.5" />
+                    <button type="button" onClick={() => course.isCombo ? openEditPackage(course) : openEditDialog(course)} title="Edit" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-primary/10 hover:text-primary">
+                      {course.isCombo ? <Layers className="h-3.5 w-3.5" /> : <Edit2 className="h-3.5 w-3.5" />}
                     </button>
                     <button type="button" onClick={() => handleDuplicateCourse(course)} title="Duplicate" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600">
                       <Copy className="h-3.5 w-3.5" />

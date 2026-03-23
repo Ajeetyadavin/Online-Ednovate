@@ -110,6 +110,7 @@ const sCls = "h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-x
 /* ─── Main ─────────────────────────────────────────────────────── */
 export default function AdminCourseContent() {
   const { courses, getCurriculumForCourse, setCurriculumForCourse } = usePlatformData();
+  const nonPackageCourses = useMemo(() => courses.filter((course) => !course.isCombo), [courses]);
 
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
@@ -167,9 +168,17 @@ export default function AdminCourseContent() {
     void persistOrder(updated);
   };
 
-  const selectedCourse = useMemo(() => courses.find((c) => c.id === selectedCourseId), [selectedCourseId, courses]);
+  const selectedCourse = useMemo(() => nonPackageCourses.find((c) => c.id === selectedCourseId), [selectedCourseId, nonPackageCourses]);
   const curriculum = useMemo(() => selectedCourse ? getCurriculumForCourse(selectedCourse.id, selectedCourse.title) : [], [selectedCourseId, selectedCourse, getCurriculumForCourse]);
   const selectedChapter = useMemo(() => curriculum.find((ch) => ch.id === selectedChapterId) || curriculum[0] || null, [selectedChapterId, curriculum]);
+
+  useEffect(() => {
+    if (!selectedCourseId) return;
+    if (!nonPackageCourses.some((course) => course.id === selectedCourseId)) {
+      setSelectedCourseId("");
+      setSelectedChapterId(null);
+    }
+  }, [selectedCourseId, nonPackageCourses]);
 
   useEffect(() => {
     if (curriculum.length > 0 && !selectedChapterId) setSelectedChapterId(curriculum[0].id);
@@ -296,7 +305,7 @@ export default function AdminCourseContent() {
                 <CommandList>
                   <CommandEmpty className="py-6 text-center text-xs text-slate-400">No course found.</CommandEmpty>
                   <CommandGroup>
-                    {courses.map((course) => (
+                    {nonPackageCourses.map((course) => (
                       <CommandItem key={course.id} value={`${course.title} ${course.id}`} onSelect={() => { setSelectedCourseId(course.id); setSelectedChapterId(null); setCoursePickerOpen(false); }}
                         className="text-xs">
                         <Check className={cn("mr-2 h-3.5 w-3.5", selectedCourseId === course.id ? "opacity-100 text-primary" : "opacity-0")} />
@@ -319,11 +328,11 @@ export default function AdminCourseContent() {
         </div>
       )}
 
-      {courses.length === 0 ? (
+      {nonPackageCourses.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border border-dashed border-orange-200 bg-orange-50 py-20 text-center">
           <BookOpen className="mb-3 h-10 w-10 text-orange-300" />
           <p className="text-sm font-semibold text-orange-700">No courses available</p>
-          <p className="mt-1 text-xs text-orange-500">Create courses first in the Courses section</p>
+          <p className="mt-1 text-xs text-orange-500">Create normal courses first. Package/combo courses are hidden here.</p>
         </div>
       ) : (
         <>

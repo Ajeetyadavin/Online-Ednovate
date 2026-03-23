@@ -199,6 +199,62 @@ export async function ensureSchema() {
   await pool.query("ALTER TABLE student_course_access ADD COLUMN IF NOT EXISTS is_unlimited_views BOOLEAN NOT NULL DEFAULT FALSE");
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS student_orders (
+      id BIGSERIAL PRIMARY KEY,
+      order_id TEXT NOT NULL,
+      student_id TEXT NOT NULL,
+      customer_name TEXT,
+      customer_email TEXT,
+      customer_phone TEXT,
+      shipping_address_line1 TEXT,
+      shipping_address_line2 TEXT,
+      shipping_city TEXT,
+      shipping_state TEXT,
+      shipping_country TEXT,
+      shipping_pincode TEXT,
+      course_id TEXT NOT NULL,
+      course_title TEXT NOT NULL,
+      parent_package_id TEXT,
+      parent_package_title TEXT,
+      package_course_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+      order_date DATE,
+      payment_method TEXT,
+      amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      currency TEXT NOT NULL DEFAULT 'INR',
+      status TEXT NOT NULL DEFAULT 'completed',
+      item_type TEXT NOT NULL DEFAULT 'course',
+      mode_label TEXT,
+      book_label TEXT,
+      is_ebook BOOLEAN NOT NULL DEFAULT FALSE,
+      dispatch_status TEXT NOT NULL DEFAULT 'pending',
+      tracking_id TEXT,
+      dispatch_note TEXT,
+      dispatched_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(order_id, student_id, course_id)
+    );
+  `);
+
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS parent_package_id TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS parent_package_title TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS package_course_ids JSONB NOT NULL DEFAULT '[]'::jsonb");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS customer_name TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS customer_email TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS customer_phone TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_address_line1 TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_address_line2 TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_city TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_state TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_country TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_pincode TEXT");
+
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_orders_student ON student_orders(student_id)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_orders_order ON student_orders(order_id)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_orders_dispatch_status ON student_orders(dispatch_status)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_orders_parent_package_id ON student_orders(parent_package_id)");
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS student_login_logs (
       id BIGSERIAL PRIMARY KEY,
       student_id TEXT NOT NULL,
@@ -336,6 +392,23 @@ export async function ensureSchema() {
   await pool.query("CREATE INDEX IF NOT EXISTS idx_marketing_events_campaign ON marketing_campaign_events(campaign_id)");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_marketing_events_student ON marketing_campaign_events(student_id)");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_marketing_events_session ON marketing_campaign_events(session_id)");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS faculty_profiles (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      photo_url TEXT,
+      about TEXT,
+      course_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_profiles_active ON faculty_profiles(is_active)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_profiles_sort ON faculty_profiles(sort_order)");
 
   const superAdminEmail = String(process.env.ADMIN_EMAIL || "admin@ednovate.com").trim().toLowerCase();
   const superAdminPassword = String(process.env.ADMIN_PASSWORD || "admin123");

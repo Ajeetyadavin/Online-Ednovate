@@ -486,6 +486,16 @@ export default function AdminHomepage() {
             </div>
           </div>
 
+          {/* Faculty Section */}
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
+            <p className="text-sm font-bold text-slate-800">Faculty Section</p>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="space-y-1.5"><FL>Section Title</FL><Input className={fCls} placeholder="Meet Our Expert Instructors" value={siteDraft.homepageContent.faculty.title} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faculty: { ...p.homepageContent.faculty, title: e.target.value } } }))} /></div>
+              <div className="space-y-1.5"><FL>Section Subtitle</FL><Input className={fCls} placeholder="Learn from industry professionals..." value={siteDraft.homepageContent.faculty.subtitle} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faculty: { ...p.homepageContent.faculty, subtitle: e.target.value } } }))} /></div>
+            </div>
+            <p className="text-[11px] text-slate-500">Faculty members are managed in the <strong>Faculty</strong> admin module. Only active faculty with photos will display here.</p>
+          </div>
+
           <div className="flex justify-end gap-2">
             <Button type="button" variant="outline" size="sm" className="rounded-xl text-xs" onClick={() => { if (!confirm("Reset all site settings to default values?")) return; resetSettings(); }}>Reset All Settings</Button>
             <Button size="sm" className="gap-1.5 rounded-xl px-5 text-xs font-semibold" onClick={() => persistSiteSettings(siteDraft)} disabled={isSaving}>

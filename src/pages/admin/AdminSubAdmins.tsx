@@ -45,6 +45,7 @@ const MODULES: AdminModuleKey[] = [
   "course-content",
   "categories",
   "coupons",
+  "faculty",
   "homepage",
   "users",
   "orders",

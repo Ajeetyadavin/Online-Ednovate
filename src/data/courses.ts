@@ -61,6 +61,7 @@ export interface Course {
   isCombo?: boolean;
   isMaterial?: boolean;
   isVisible?: boolean;
+  packageCourseIds?: string[]; // IDs of bundled courses (for combo packages)
 }
 
 export const categories = [

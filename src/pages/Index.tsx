@@ -10,6 +10,7 @@ import Testimonials from "@/components/Testimonials";
 import HowItWorks from "@/components/HowItWorks";
 import FAQ from "@/components/FAQ";
 import DynamicHomepageSection from "@/components/DynamicHomepageSection";
+import FacultySection from "@/components/FacultySection";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const Index = () => {
@@ -25,6 +26,7 @@ const Index = () => {
       {s.popularCourses && <PopularCourses />}
       {s.whyChooseUs && <WhyChooseUs />}
       {s.testimonials && <Testimonials />}
+      <FacultySection />
       {s.faq && <FAQ />}
 
       {/* CTA Band */}

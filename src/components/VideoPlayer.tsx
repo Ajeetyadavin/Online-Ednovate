@@ -2,6 +2,8 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { AlertCircle, Loader2 } from "lucide-react";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import {
+  decodeVideoUrl,
+  extractYouTubeVideoId,
   getVideoUrl,
   LessonVideoSource,
 } from "@/lib/video-utils";
@@ -57,6 +59,7 @@ export default function VideoPlayer({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
   const lastProgressSecondRef = useRef<number>(-1);
+  const [signedPlaybackUrl, setSignedPlaybackUrl] = useState("");
   const siteSettings = useSiteSettings();
   const bunnyLibraryId = siteSettings.settings?.bunnyStreamApi?.libraryId || "";
 
@@ -66,8 +69,20 @@ export default function VideoPlayer({
     return uuidRegex.test(input.trim());
   };
 
+  const decodedVideoInput = useMemo(() => decodeVideoUrl(videoUrl).trim(), [videoUrl]);
+
+  const resolvedSource = useMemo<LessonVideoSource>(() => {
+    if (source !== "youtube") return source;
+
+    // If source was mistakenly left as YouTube but a Bunny GUID/URL is provided,
+    // auto-fallback to a playable source instead of rendering a broken iframe URL.
+    if (extractYouTubeVideoId(decodedVideoInput)) return "youtube";
+    if (isBunnyStreamId(decodedVideoInput)) return "upload";
+    return "direct";
+  }, [source, decodedVideoInput]);
+
   const videoSrc = useMemo(() => {
-    const decoded = getVideoUrl(videoUrl, source);
+    const decoded = getVideoUrl(videoUrl, resolvedSource);
     
     // If it's a Bunny Stream video ID, convert to full CDN URL
     if (isBunnyStreamId(decoded) && siteSettings) {
@@ -82,12 +97,55 @@ export default function VideoPlayer({
     }
     
     return decoded;
-  }, [videoUrl, source, siteSettings]);
+  }, [videoUrl, resolvedSource, siteSettings]);
 
   const bunnyVideoId = useMemo(() => {
-    const decoded = getVideoUrl(videoUrl, source).trim();
+    const decoded = getVideoUrl(videoUrl, resolvedSource).trim();
     return isBunnyStreamId(decoded) ? decoded : "";
-  }, [videoUrl, source]);
+  }, [videoUrl, resolvedSource]);
+
+  useEffect(() => {
+    let isCancelled = false;
+    const controller = new AbortController();
+
+    const loadSignedPlayback = async () => {
+      if (!bunnyVideoId) {
+        setSignedPlaybackUrl("");
+        return;
+      }
+
+      try {
+        const response = await fetch("/api/bunny/signed-playback", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            videoId: bunnyVideoId,
+            cdnHostname: siteSettings.settings?.bunnyStreamApi?.cdnHostname || "",
+          }),
+          signal: controller.signal,
+        });
+
+        if (!response.ok) {
+          if (!isCancelled) setSignedPlaybackUrl("");
+          return;
+        }
+
+        const payload = (await response.json()) as { playbackUrl?: string };
+        if (!isCancelled) {
+          setSignedPlaybackUrl(String(payload?.playbackUrl || "").trim());
+        }
+      } catch {
+        if (!isCancelled) setSignedPlaybackUrl("");
+      }
+    };
+
+    void loadSignedPlayback();
+
+    return () => {
+      isCancelled = true;
+      controller.abort();
+    };
+  }, [bunnyVideoId, siteSettings.settings?.bunnyStreamApi?.cdnHostname]);
 
   const bunnyEmbedSrc = useMemo(() => {
     if (!bunnyVideoId || !bunnyLibraryId) return "";
@@ -102,14 +160,19 @@ export default function VideoPlayer({
   }, [autoplay, bunnyLibraryId, bunnyVideoId]);
 
   // Keep HTML5/HLS mode in LMS where progress tracking is required.
-  const useBunnyIframePlayer = Boolean(bunnyEmbedSrc) && !onProgress;
+  const useBunnyIframePlayer = Boolean(bunnyEmbedSrc) && !onProgress && !signedPlaybackUrl;
+
+  const finalVideoSrc = useMemo(() => {
+    if (signedPlaybackUrl && bunnyVideoId) return signedPlaybackUrl;
+    return videoSrc;
+  }, [signedPlaybackUrl, bunnyVideoId, videoSrc]);
 
   // Detect if this is an HLS stream (chunk-based delivery from CDN)
   const isHlsStream = useMemo(() => {
-    return videoSrc.toLowerCase().includes(".m3u8") || 
-           source === "upload" ||
-           videoSrc.toLowerCase().includes("bunny");
-  }, [videoSrc, source]);
+      return finalVideoSrc.toLowerCase().includes(".m3u8") || 
+           resolvedSource === "upload" ||
+        finalVideoSrc.toLowerCase().includes("bunny");
+    }, [finalVideoSrc, resolvedSource]);
 
   // Setup HLS streaming for CDN chunked delivery
   useEffect(() => {
@@ -125,7 +188,7 @@ export default function VideoPlayer({
 
       // For native HLS support (Safari)
       if (videoEl.canPlayType("application/vnd.apple.mpegurl")) {
-        videoEl.src = videoSrc;
+        videoEl.src = finalVideoSrc;
         return;
       }
 
@@ -138,7 +201,7 @@ export default function VideoPlayer({
         });
 
         hlsRef.current = hls;
-        hls.loadSource(videoSrc);
+        hls.loadSource(finalVideoSrc);
         hls.attachMedia(videoEl);
 
         return () => {
@@ -150,12 +213,12 @@ export default function VideoPlayer({
       }
 
       // Fallback: browser might support HLS natively
-      videoEl.src = videoSrc;
+      videoEl.src = finalVideoSrc;
     } catch (error) {
       console.error("HLS setup error:", error);
-      videoEl.src = videoSrc; // Fallback
+      videoEl.src = finalVideoSrc; // Fallback
     }
-  }, [videoSrc, isHlsStream]);
+  }, [finalVideoSrc, isHlsStream]);
 
   const emitProgress = () => {
     const el = videoRef.current;
@@ -184,7 +247,7 @@ export default function VideoPlayer({
   }
 
   // YouTube embed
-  if (source === "youtube") {
+  if (resolvedSource === "youtube") {
     return (
       <div className={compact ? "w-full h-full" : "w-full"}>
         <div className={`${aspectRatio} rounded-xl overflow-hidden bg-background border border-border shadow-sm`}>
@@ -258,8 +321,8 @@ export default function VideoPlayer({
           {/* For non-HLS videos */}
           {!isHlsStream && (
             <>
-              <source src={videoSrc} type="video/mp4" />
-              <source src={videoSrc} type="video/webm" />
+              <source src={finalVideoSrc} type="video/mp4" />
+              <source src={finalVideoSrc} type="video/webm" />
             </>
           )}
           {/* For HLS streams, src is set via JavaScript */}

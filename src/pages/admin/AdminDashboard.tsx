@@ -18,19 +18,19 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { BookOpen, Users, ShoppingCart, IndianRupee, TrendingUp, Eye, Zap } from "lucide-react";
+import { BookOpen, Users, ShoppingCart, IndianRupee, TrendingUp, Eye, Zap, LayoutDashboard, AlertTriangle, BarChart3, PieChart as PieChartIcon, Activity, DollarSign } from "lucide-react";
 
-const StatCard = ({ icon: Icon, label, value, change, changeColor }: any) => (
-  <Card className="hover:shadow-lg transition-shadow">
-    <CardContent className="pt-6">
-      <div className="flex items-start justify-between">
-        <div className="space-y-2">
-          <p className="text-sm font-medium text-gray-600">{label}</p>
-          <p className="text-3xl font-bold text-gray-900">{value}</p>
+const StatCard = ({ icon: Icon, label, value, change, changeColor, color }: any) => (
+  <Card className="hover:shadow-md transition-all duration-200 border-l-4" style={{ borderLeftColor: color }}>
+    <CardContent className="pt-5">
+      <div className="flex items-center justify-between">
+        <div className="space-y-1.5">
+          <p className="text-sm font-medium text-slate-500">{label}</p>
+          <p className="text-2xl font-bold text-slate-900">{value}</p>
           <p className={`text-xs font-medium ${changeColor}`}>{change}</p>
         </div>
-        <div className="p-3 rounded-lg bg-gradient-to-br from-purple-100 to-blue-100">
-          <Icon className="w-6 h-6 text-purple-600" />
+        <div className="p-3 rounded-xl" style={{ background: `linear-gradient(135deg, ${color}15, ${color}30)` }}>
+          <Icon className="w-6 h-6" style={{ color }} />
         </div>
       </div>
     </CardContent>
@@ -70,6 +70,7 @@ export default function AdminDashboard() {
         value: courses.length,
         change: `${visibleCourses} Live on Website`,
         changeColor: "text-green-600",
+        color: "#10b981",
       },
       {
         icon: Users,
@@ -77,6 +78,7 @@ export default function AdminDashboard() {
         value: purchasedCourses.length,
         change: "From course purchases",
         changeColor: "text-blue-600",
+        color: "#3b82f6",
       },
       {
         icon: ShoppingCart,
@@ -84,6 +86,7 @@ export default function AdminDashboard() {
         value: orders.length,
         change: `${completedOrders} Completed`,
         changeColor: "text-purple-600",
+        color: "#9333ea",
       },
       {
         icon: IndianRupee,
@@ -91,6 +94,7 @@ export default function AdminDashboard() {
         value: `₹${totalRevenue.toLocaleString()}`,
         change: "From all sales",
         changeColor: "text-orange-600",
+        color: "#f59e0b",
       },
     ];
   }, [courses, orders, purchasedCourses]);
@@ -114,181 +118,252 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="space-y-2">
-        <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
-        <p className="text-gray-600">Welcome back! Here's your platform overview.</p>
+      <div className="flex items-center gap-3">
+        <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
+          <LayoutDashboard className="w-6 h-6 text-white" />
+        </div>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+          <p className="text-slate-500 text-sm">Welcome back! Here's your platform overview.</p>
+        </div>
       </div>
 
-      {/* Stats Grid */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
         {stats.map((stat, index) => (
           <StatCard key={index} {...stat} />
         ))}
       </div>
 
       {(accessSummary.expired > 0 || accessSummary.outOfViews > 0 || accessSummary.disabled > 0) && (
-        <Card className="border-amber-200 bg-amber-50">
-          <CardHeader>
-            <CardTitle className="text-amber-900">Access Anomaly Alerts</CardTitle>
-            <CardDescription className="text-amber-800">Learner access issues detected. Review Student Access module.</CardDescription>
+        <Card className="border-amber-200/50 bg-gradient-to-r from-amber-50/80 to-orange-50/80">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              <CardTitle className="text-amber-900 text-base">Access Anomaly Alerts</CardTitle>
+            </div>
+            <CardDescription className="text-amber-700">Learner access issues detected. Review Student Access module.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="rounded-lg bg-white border border-amber-200 p-3">
-              <p className="text-xs text-gray-600">Expired Access</p>
+            <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-center">
+              <p className="text-xs text-slate-500 mb-1">Expired Access</p>
               <p className="text-2xl font-bold text-red-600">{accessSummary.expired}</p>
             </div>
-            <div className="rounded-lg bg-white border border-amber-200 p-3">
-              <p className="text-xs text-gray-600">Out of Views</p>
+            <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-center">
+              <p className="text-xs text-slate-500 mb-1">Out of Views</p>
               <p className="text-2xl font-bold text-amber-600">{accessSummary.outOfViews}</p>
             </div>
-            <div className="rounded-lg bg-white border border-amber-200 p-3">
-              <p className="text-xs text-gray-600">Disabled Access</p>
+            <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-center">
+              <p className="text-xs text-slate-500 mb-1">Disabled Access</p>
               <p className="text-2xl font-bold text-slate-700">{accessSummary.disabled}</p>
             </div>
           </CardContent>
         </Card>
       )}
 
-      {/* Charts Row */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Revenue Chart */}
-        <Card className="lg:col-span-2">
-          <CardHeader>
-            <CardTitle>Revenue Trend</CardTitle>
-            <CardDescription>Last 6 months performance</CardDescription>
+        <Card className="lg:col-span-2 border-slate-200 shadow-sm">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-gradient-to-br from-purple-500 to-indigo-600">
+                <Activity className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-semibold text-slate-900">Revenue Trend</CardTitle>
+                <CardDescription className="text-slate-500 text-xs">Last 6 months performance</CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+          <CardContent className="pt-4">
+            <ResponsiveContainer width="100%" height={280}>
               <LineChart data={revenueData}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={12} />
+                <YAxis stroke="#64748b" fontSize={12} />
                 <Tooltip
                   contentStyle={{
                     backgroundColor: "#fff",
-                    border: "1px solid #e5e7eb",
+                    border: "1px solid #e2e8f0",
                     borderRadius: "8px",
+                    boxShadow: "0 4px 6px -1px rgb(0 0 0 / 0.1)",
                   }}
                 />
                 <Line
                   type="monotone"
                   dataKey="value"
                   stroke="#9333ea"
-                  strokeWidth={2}
-                  dot={{ fill: "#9333ea", r: 4 }}
+                  strokeWidth={3}
+                  dot={{ fill: "#9333ea", r: 5, strokeWidth: 2, stroke: "#fff" }}
+                  activeDot={{ r: 7, fill: "#9333ea" }}
                 />
               </LineChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Category Distribution */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top Categories</CardTitle>
-            <CardDescription>Course distribution</CardDescription>
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-gradient-to-br from-blue-500 to-cyan-600">
+                <PieChartIcon className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-semibold text-slate-900">Top Categories</CardTitle>
+                <CardDescription className="text-slate-500 text-xs">Course distribution</CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={300}>
+          <CardContent className="pt-4">
+            <ResponsiveContainer width="100%" height={280}>
               <PieChart>
                 <Pie
                   data={categoryData}
                   cx="50%"
                   cy="50%"
                   labelLine={false}
-                  label={({ name, value }) => `${name}: ${value}`}
-                  outerRadius={80}
+                  label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                  outerRadius={90}
                   fill="#8884d8"
                   dataKey="value"
+                  stroke="none"
                 >
                   {categoryData.map((entry, index) => (
                     <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                   ))}
                 </Pie>
-                <Tooltip />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#fff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                  }}
+                />
               </PieChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
       </div>
 
-      {/* Bottom Row */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Orders Chart */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Orders by Status</CardTitle>
-            <CardDescription>Current order breakdown</CardDescription>
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-gradient-to-br from-blue-500 to-indigo-600">
+                <BarChart3 className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-semibold text-slate-900">Orders by Status</CardTitle>
+                <CardDescription className="text-slate-500 text-xs">Current order breakdown</CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent>
-            <ResponsiveContainer width="100%" height={250}>
+          <CardContent className="pt-4">
+            <ResponsiveContainer width="100%" height={220}>
               <BarChart data={[
                 { name: "Completed", value: orders.filter((o) => o.status === "Completed").length },
                 { name: "Processing", value: orders.filter((o) => o.status === "Processing").length },
               ]}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
-                <XAxis dataKey="name" stroke="#6b7280" />
-                <YAxis stroke="#6b7280" />
-                <Tooltip />
-                <Bar dataKey="value" fill="#3b82f6" radius={[8, 8, 0, 0]} />
+                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" />
+                <XAxis dataKey="name" stroke="#64748b" fontSize={12} />
+                <YAxis stroke="#64748b" fontSize={12} />
+                <Tooltip
+                  contentStyle={{
+                    backgroundColor: "#fff",
+                    border: "1px solid #e2e8f0",
+                    borderRadius: "8px",
+                  }}
+                />
+                <Bar dataKey="value" fill="#3b82f6" radius={[6, 6, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           </CardContent>
         </Card>
 
-        {/* Quick Stats */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Quick Stats</CardTitle>
-            <CardDescription>Platform metrics</CardDescription>
+        <Card className="border-slate-200 shadow-sm">
+          <CardHeader className="pb-3 border-b border-slate-100">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-gradient-to-br from-emerald-500 to-teal-600">
+                <TrendingUp className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-semibold text-slate-900">Quick Stats</CardTitle>
+                <CardDescription className="text-slate-500 text-xs">Platform metrics at a glance</CardDescription>
+              </div>
+            </div>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50 to-blue-50 rounded-lg">
+          <CardContent className="pt-4 space-y-3">
+            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-purple-50/50 to-blue-50/50 rounded-lg border border-slate-100">
               <div className="flex items-center gap-3">
-                <Zap className="w-5 h-5 text-purple-600" />
-                <span className="font-medium text-gray-700">Active Categories</span>
+                <div className="p-2 rounded-lg bg-purple-100">
+                  <Zap className="w-4 h-4 text-purple-600" />
+                </div>
+                <span className="font-medium text-slate-700">Active Categories</span>
               </div>
-              <span className="text-2xl font-bold text-gray-900">{categories.filter((c) => c.isVisible).length}</span>
+              <span className="text-xl font-bold text-slate-900">{categories.filter((c) => c.isVisible).length}</span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50 to-cyan-50 rounded-lg">
+            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-blue-50/50 to-cyan-50/50 rounded-lg border border-slate-100">
               <div className="flex items-center gap-3">
-                <Eye className="w-5 h-5 text-blue-600" />
-                <span className="font-medium text-gray-700">Visible Courses</span>
+                <div className="p-2 rounded-lg bg-blue-100">
+                  <Eye className="w-4 h-4 text-blue-600" />
+                </div>
+                <span className="font-medium text-slate-700">Visible Courses</span>
               </div>
-              <span className="text-2xl font-bold text-gray-900">{courses.filter((c) => c.isVisible).length}</span>
+              <span className="text-xl font-bold text-slate-900">{courses.filter((c) => c.isVisible).length}</span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-green-50 to-emerald-50 rounded-lg">
+            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-green-50/50 to-emerald-50/50 rounded-lg border border-slate-100">
               <div className="flex items-center gap-3">
-                <TrendingUp className="w-5 h-5 text-green-600" />
-                <span className="font-medium text-gray-700">Conversion Rate</span>
+                <div className="p-2 rounded-lg bg-green-100">
+                  <TrendingUp className="w-4 h-4 text-green-600" />
+                </div>
+                <span className="font-medium text-slate-700">Conversion Rate</span>
               </div>
-              <span className="text-2xl font-bold text-gray-900">
+              <span className="text-xl font-bold text-slate-900">
                 {orders.length > 0 ? ((purchasedCourses.length / courses.length) * 100).toFixed(1) : "0"}%
               </span>
             </div>
-            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-orange-50 to-amber-50 rounded-lg">
-              <span className="font-medium text-gray-700">Tracked Events</span>
-              <span className="text-2xl font-bold text-gray-900">{analyticsSummary.totalEvents}</span>
+            <div className="flex items-center justify-between p-3 bg-gradient-to-r from-orange-50/50 to-amber-50/50 rounded-lg border border-slate-100">
+              <div className="flex items-center gap-3">
+                <div className="p-2 rounded-lg bg-amber-100">
+                  <Activity className="w-4 h-4 text-amber-600" />
+                </div>
+                <span className="font-medium text-slate-700">Tracked Events</span>
+              </div>
+              <span className="text-xl font-bold text-slate-900">{analyticsSummary.totalEvents}</span>
             </div>
           </CardContent>
         </Card>
       </div>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Most Viewed Content</CardTitle>
-          <CardDescription>Live analytics from learner activity</CardDescription>
+      <Card className="border-slate-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-slate-100">
+          <div className="flex items-center gap-2">
+            <div className="p-1.5 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600">
+              <Eye className="w-4 h-4 text-white" />
+            </div>
+            <div>
+              <CardTitle className="text-base font-semibold text-slate-900">Most Viewed Content</CardTitle>
+              <CardDescription className="text-slate-500 text-xs">Live analytics from learner activity</CardDescription>
+            </div>
+          </div>
         </CardHeader>
-        <CardContent>
+        <CardContent className="pt-4">
           {topContent.length === 0 ? (
-            <p className="text-sm text-gray-500">No view data yet. Open course pages to start tracking.</p>
+            <div className="text-center py-6">
+              <Eye className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <p className="text-sm text-slate-500">No view data yet. Open course pages to start tracking.</p>
+            </div>
           ) : (
             <div className="space-y-2">
-              {topContent.map((item) => (
-                <div key={item.course_id} className="flex items-center justify-between border border-gray-200 rounded-lg px-3 py-2">
-                  <span className="text-sm font-medium text-gray-800">{item.course_id}</span>
-                  <Badge className="bg-orange-100 text-orange-800">{item.views} views</Badge>
+              {topContent.map((item, index) => (
+                <div key={item.course_id} className="flex items-center justify-between bg-slate-50/50 rounded-lg px-4 py-3 border border-slate-100 hover:shadow-sm transition-shadow">
+                  <div className="flex items-center gap-3">
+                    <span className="flex items-center justify-center w-6 h-6 rounded-full bg-gradient-to-br from-indigo-500 to-purple-600 text-white text-xs font-bold">
+                      {index + 1}
+                    </span>
+                    <span className="text-sm font-medium text-slate-800 truncate max-w-xs">{item.course_id}</span>
+                  </div>
+                  <Badge className="bg-gradient-to-r from-orange-100 to-amber-100 text-orange-700 border border-orange-200">
+                    {item.views} views
+                  </Badge>
                 </div>
               ))}
             </div>

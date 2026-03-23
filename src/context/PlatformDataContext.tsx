@@ -396,6 +396,9 @@ const normalizeCourse = (course: Partial<ManagedCourse>, index: number): Managed
   isCombo: Boolean(course.isCombo),
   isMaterial: Boolean(course.isMaterial),
   isVisible: course.isVisible !== false,
+  packageCourseIds: Array.isArray(course.packageCourseIds)
+    ? course.packageCourseIds.map((id) => String(id).trim()).filter(Boolean)
+    : [],
 });
 
 const normalizeCategory = (category: Partial<ManagedCategory>, index: number): ManagedCategory => ({

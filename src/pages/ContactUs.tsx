@@ -1,6 +1,6 @@
 import { FormEvent, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { ArrowRight, Landmark, Mail, MapPin, MessageCircle, Phone, QrCode } from "lucide-react";
+import { ArrowRight, CheckCircle, Headphones, Mail, MapPin, MessageCircle, Phone, QrCode, Send, Clock } from "lucide-react";
 import { toast } from "sonner";
 
 import { createEnquiryLead, normalizePhoneDigits } from "@/lib/contactTools";
@@ -24,12 +24,11 @@ const INITIAL_FORM_STATE: ContactFormState = {
 };
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
-const fieldClassName =
-  "h-11 rounded-xl border border-slate-200 bg-slate-50/70 text-sm font-semibold text-slate-900 placeholder:text-slate-400 focus-visible:border-[rgb(38,72,151)] focus-visible:ring-[rgb(38,72,151)]/20";
 
 const ContactUs = () => {
   const { settings } = useSiteSettings();
   const [form, setForm] = useState<ContactFormState>(INITIAL_FORM_STATE);
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   const callValue = settings.floatingContact.call.value || settings.header.topBarPhone;
   const whatsappValue = settings.floatingContact.whatsapp.value || settings.floatingContact.call.value || settings.header.topBarPhone;
@@ -72,224 +71,244 @@ const ContactUs = () => {
       return;
     }
 
+    setIsSubmitting(true);
+    
     createEnquiryLead({
       name: form.name,
       location: "Contact Us Page",
       mobile: normalizePhoneDigits(form.mobile),
     });
 
-    toast.success("Query submitted successfully. Our team will contact you soon.");
-    setForm(INITIAL_FORM_STATE);
+    setTimeout(() => {
+      toast.success("Query submitted successfully. Our team will contact you soon.");
+      setForm(INITIAL_FORM_STATE);
+      setIsSubmitting(false);
+    }, 1000);
   };
 
   return (
-    <div className="bg-[linear-gradient(180deg,#f7f9ff_0%,#ffffff_38%)]">
-      <section className="relative overflow-hidden bg-gradient-to-br from-[rgb(38,72,151)] via-[rgb(38,72,151)] to-[rgb(17,37,92)] text-white">
-        <div
-          className="pointer-events-none absolute inset-0 opacity-[0.14]"
-          style={{
-            backgroundImage: "radial-gradient(circle at 1px 1px, rgba(255,255,255,0.9) 1px, transparent 0)",
-            backgroundSize: "22px 22px",
-          }}
-        />
-        <div className="pointer-events-none absolute -left-10 top-1/3 h-56 w-56 rounded-full bg-white/20 blur-3xl" />
-        <div className="pointer-events-none absolute -right-10 bottom-0 h-56 w-56 rounded-full bg-[rgb(231,70,35)]/25 blur-3xl" />
+    <div className="min-h-screen bg-slate-50">
+      {/* Hero Section */}
+      <section className="relative bg-[#1e3a8a] overflow-hidden">
+        <div className="absolute inset-0 opacity-10">
+          <div className="absolute top-0 right-0 w-[600px] h-[600px] rounded-full bg-white translate-x-1/3 -translate-y-1/3" />
+          <div className="absolute bottom-0 left-0 w-[400px] h-[400px] rounded-full bg-[#E74623] translate-y-1/3 -translate-x-1/4" />
+        </div>
+        
+        <div className="relative max-w-6xl mx-auto px-4 py-16 md:py-20">
+          <div className="max-w-3xl">
+            <div className="inline-flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-1.5 mb-6">
+              <Headphones className="w-4 h-4 text-white" />
+              <span className="text-xs font-semibold uppercase tracking-wider text-white/90">24/7 Support</span>
+            </div>
+            
+            <h1 className="text-4xl md:text-5xl lg:text-6xl font-black text-white leading-tight">
+              We&apos;re Here to <span className="text-[#E74623]">Help</span>
+            </h1>
+            
+            <p className="mt-4 text-lg text-blue-100 max-w-xl">
+              Have questions about courses, admissions, or payments? Our expert team is ready to assist you within minutes.
+            </p>
 
-        <div className="container mx-auto px-4 py-14 md:py-20 relative z-10">
-          <p className="inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-[11px] sm:text-xs font-bold uppercase tracking-[0.18em] text-white/90">
-            <MessageCircle className="w-3.5 h-3.5" />
-            Support Desk
-          </p>
+            <div className="mt-8 flex flex-wrap gap-4">
+              <a
+                href={telLink || undefined}
+                className="inline-flex items-center gap-2 bg-white text-[#1e3a8a] px-5 py-2.5 rounded-xl font-bold hover:bg-blue-50 transition-colors"
+              >
+                <Phone className="w-5 h-5" />
+                {callValue}
+              </a>
+              <a
+                href={whatsappLink || undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-2 bg-[#25D366] text-white px-5 py-2.5 rounded-xl font-bold hover:bg-[#20BD5A] transition-colors"
+              >
+                <MessageCircle className="w-5 h-5" />
+                WhatsApp
+              </a>
+            </div>
+          </div>
 
-          <h1 className="mt-4 max-w-3xl text-3xl sm:text-4xl lg:text-5xl font-black tracking-tight leading-[1.05]">
-            Let&apos;s Solve Your Query Fast
-          </h1>
-          <p className="mt-4 text-sm sm:text-base text-[rgb(211,224,255)] max-w-2xl font-medium leading-relaxed">
-            Reach out for course guidance, admissions, batch details, or payment support. Our team responds quickly with the right next step.
-          </p>
-
-          <div className="mt-8 grid grid-cols-1 sm:grid-cols-3 gap-3 max-w-4xl">
-            <a
-              href={telLink || undefined}
-              className="rounded-2xl border border-white/25 bg-white/10 backdrop-blur-sm px-4 py-3 hover:bg-white/15 transition-colors"
-            >
-              <div className="flex items-center gap-2 text-white">
-                <Phone className="w-4 h-4" />
-                <span className="text-xs uppercase tracking-[0.15em] font-bold text-white/85">Call</span>
-              </div>
-              <p className="mt-2 text-sm font-bold text-white break-words">{callValue}</p>
-            </a>
-
-            <a
-              href={whatsappLink || undefined}
-              target="_blank"
-              rel="noreferrer"
-              className="rounded-2xl border border-white/25 bg-white/10 backdrop-blur-sm px-4 py-3 hover:bg-white/15 transition-colors"
-            >
-              <div className="flex items-center gap-2 text-white">
-                <MessageCircle className="w-4 h-4" />
-                <span className="text-xs uppercase tracking-[0.15em] font-bold text-white/85">WhatsApp</span>
-              </div>
-              <p className="mt-2 text-sm font-bold text-white break-words">{whatsappValue}</p>
-            </a>
-
-            <a
-              href={emailLink}
-              className="rounded-2xl border border-white/25 bg-white/10 backdrop-blur-sm px-4 py-3 hover:bg-white/15 transition-colors"
-            >
-              <div className="flex items-center gap-2 text-white">
-                <Mail className="w-4 h-4" />
-                <span className="text-xs uppercase tracking-[0.15em] font-bold text-white/85">Email</span>
-              </div>
-              <p className="mt-2 text-sm font-bold text-white break-all">{settings.header.topBarEmail}</p>
-            </a>
+          <div className="mt-12 grid grid-cols-1 sm:grid-cols-3 gap-4 max-w-2xl">
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-5 text-center">
+              <Clock className="w-8 h-8 mx-auto text-[#E74623] mb-2" />
+              <p className="text-2xl font-black text-white">30 min</p>
+              <p className="text-sm text-blue-200">Avg Response Time</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-5 text-center">
+              <CheckCircle className="w-8 h-8 mx-auto text-[#E74623] mb-2" />
+              <p className="text-2xl font-black text-white">10K+</p>
+              <p className="text-sm text-blue-200">Students Helped</p>
+            </div>
+            <div className="bg-white/10 backdrop-blur-sm rounded-2xl p-5 text-center">
+              <MessageCircle className="w-8 h-8 mx-auto text-[#E74623] mb-2" />
+              <p className="text-2xl font-black text-white">24/7</p>
+              <p className="text-sm text-blue-200">Support Available</p>
+            </div>
           </div>
         </div>
       </section>
 
-      <section className="container mx-auto px-4 py-8 md:py-12 lg:py-14">
-        <div className="grid grid-cols-1 xl:grid-cols-5 gap-6 lg:gap-8">
-          <div className="xl:col-span-3 space-y-6">
-            <div className="rounded-[28px] border border-slate-200 bg-white shadow-[0_30px_80px_-50px_rgba(15,23,42,0.5)] overflow-hidden">
-              <div className="px-6 py-5 border-b border-slate-200 bg-slate-50/80">
-                <p className="text-xs font-bold uppercase tracking-[0.16em] text-primary/75">Contact Form</p>
-                <h2 className="mt-1 text-2xl font-black tracking-tight text-slate-900">Send Us Your Query</h2>
-                <p className="text-sm text-slate-600 mt-1">Fill in the details and our support counselor will connect with you shortly.</p>
+      {/* Main Content */}
+      <section className="max-w-6xl mx-auto px-4 py-12 -mt-8">
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+          {/* Contact Form */}
+          <div className="lg:col-span-2">
+            <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
+              <div className="bg-gradient-to-r from-[#1e3a8a] to-[#1e3a8a]/90 px-8 py-6">
+                <h2 className="text-2xl font-black text-white">Send us a Message</h2>
+                <p className="text-blue-100 text-sm mt-1">We typically respond within 30 minutes</p>
               </div>
 
-              <form className="p-6 space-y-4" onSubmit={handleSubmit}>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-800">Name*</label>
+              <form className="p-8" onSubmit={handleSubmit}>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Full Name *</label>
                     <Input
                       value={form.name}
-                      onChange={(event) => setForm((previous) => ({ ...previous, name: event.target.value }))}
-                      placeholder="Enter your full name"
-                      className={fieldClassName}
+                      onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
+                      placeholder="John Doe"
+                      className="h-12 rounded-xl border-slate-200 focus:border-[#1e3a8a] focus:ring-[#1e3a8a]/20"
                     />
                   </div>
 
-                  <div className="space-y-1.5">
-                    <label className="text-sm font-semibold text-slate-800">Email Id*</label>
+                  <div className="space-y-2">
+                    <label className="text-sm font-semibold text-slate-700">Email Address *</label>
                     <Input
                       type="email"
                       value={form.email}
-                      onChange={(event) => setForm((previous) => ({ ...previous, email: event.target.value }))}
-                      placeholder="you@example.com"
-                      className={fieldClassName}
+                      onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
+                      placeholder="john@example.com"
+                      className="h-12 rounded-xl border-slate-200 focus:border-[#1e3a8a] focus:ring-[#1e3a8a]/20"
                     />
                   </div>
 
-                  <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-sm font-semibold text-slate-800">Mobile No*</label>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-slate-700">Phone Number *</label>
                     <Input
                       value={form.mobile}
-                      onChange={(event) => setForm((previous) => ({ ...previous, mobile: event.target.value }))}
-                      placeholder="Enter 10-digit mobile number"
+                      onChange={(e) => setForm((p) => ({ ...p, mobile: e.target.value }))}
+                      placeholder="9876543210"
                       inputMode="numeric"
-                      className={fieldClassName}
+                      className="h-12 rounded-xl border-slate-200 focus:border-[#1e3a8a] focus:ring-[#1e3a8a]/20"
                     />
                   </div>
 
-                  <div className="space-y-1.5 md:col-span-2">
-                    <label className="text-sm font-semibold text-slate-800">Query*</label>
+                  <div className="space-y-2 md:col-span-2">
+                    <label className="text-sm font-semibold text-slate-700">Your Query *</label>
                     <Textarea
                       value={form.query}
-                      onChange={(event) => setForm((previous) => ({ ...previous, query: event.target.value }))}
-                      placeholder="Tell us exactly what you need help with"
-                      className="min-h-[130px] rounded-xl border border-slate-200 bg-slate-50/60 text-sm font-medium text-slate-900 placeholder:text-slate-400 focus-visible:border-[rgb(38,72,151)] focus-visible:ring-[rgb(38,72,151)]/20"
+                      onChange={(e) => setForm((p) => ({ ...p, query: e.target.value }))}
+                      placeholder="Tell us about your query in detail..."
+                      className="min-h-[140px] rounded-xl border-slate-200 focus:border-[#1e3a8a] focus:ring-[#1e3a8a]/20 resize-none"
                     />
                   </div>
                 </div>
 
-                <div className="flex flex-wrap items-center gap-3 pt-1">
-                  <Button type="submit" className="h-11 px-7 rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] text-white font-bold">
-                    Submit Query
+                <div className="mt-6 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                  <Button 
+                    type="submit" 
+                    disabled={isSubmitting}
+                    className="h-12 px-8 rounded-xl bg-[#E74623] hover:bg-[#d13a1a] text-white font-bold text-base"
+                  >
+                    {isSubmitting ? (
+                      <span className="flex items-center gap-2">
+                        <svg className="animate-spin h-5 w-5" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none" />
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+                        </svg>
+                        Sending...
+                      </span>
+                    ) : (
+                      <span className="flex items-center gap-2">
+                        <Send className="w-5 h-5" />
+                        Submit Query
+                      </span>
+                    )}
                   </Button>
-                  <p className="text-xs text-slate-500 font-medium">Our typical response time is under 30 minutes during working hours.</p>
-                </div>
-
-                <div className="rounded-2xl border border-emerald-200 bg-emerald-50 px-4 py-3 flex items-start gap-3">
-                  <Phone className="w-5 h-5 text-emerald-600 mt-0.5" />
-                  <p className="text-xs sm:text-sm font-semibold text-emerald-800 leading-relaxed">
-                    Your details remain private and are only used by the Ednovate support team for callback and query resolution.
-                  </p>
+                  
+                  <div className="flex items-center gap-2 text-sm text-slate-500">
+                    <CheckCircle className="w-4 h-4 text-green-500" />
+                    <span>Your data is secure with us</span>
+                  </div>
                 </div>
               </form>
             </div>
 
-            <div className="rounded-[28px] border border-slate-200 bg-white p-5 sm:p-6 shadow-[0_24px_50px_-40px_rgba(15,23,42,0.45)]">
-              <div className="flex flex-wrap items-center gap-2">
-                <Phone className="w-4 h-4 text-primary" />
-                <p className="text-xs uppercase tracking-[0.16em] font-bold text-primary/80">Need Immediate Help?</p>
-              </div>
-              <h3 className="mt-2 text-xl font-black tracking-tight text-slate-900">Talk To Our Support Team Now</h3>
-              <p className="mt-1 text-sm text-slate-600">If your issue is urgent, use direct call or WhatsApp and get real-time guidance.</p>
+            {/* Quick Contact Cards */}
+            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <a 
+                href={telLink || undefined}
+                className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-slate-100 group"
+              >
+                <div className="w-12 h-12 bg-[#1e3a8a]/10 rounded-xl flex items-center justify-center mb-4 group-hover:bg-[#1e3a8a] transition-colors">
+                  <Phone className="w-6 h-6 text-[#1e3a8a] group-hover:text-white transition-colors" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">Call Us</h3>
+                <p className="text-sm text-slate-500 mt-1">Mon-Sat, 9AM-8PM</p>
+                <p className="text-[#1e3a8a] font-bold mt-2">{callValue}</p>
+              </a>
 
-              <div className="mt-4 flex flex-wrap gap-3">
-                {telLink && (
-                  <a href={telLink} className="inline-flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-bold text-white hover:opacity-90 transition-opacity">
-                    <Phone className="w-4 h-4" />
-                    Call Support
-                  </a>
-                )}
-                {whatsappLink && (
-                  <a
-                    href={whatsappLink}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-2 rounded-xl bg-green-600 px-4 py-2.5 text-sm font-bold text-white hover:opacity-90 transition-opacity"
-                  >
-                    <MessageCircle className="w-4 h-4" />
-                    Chat On WhatsApp
-                  </a>
-                )}
-              </div>
+              <a 
+                href={whatsappLink || undefined}
+                target="_blank"
+                rel="noreferrer"
+                className="bg-white rounded-2xl p-6 shadow-lg hover:shadow-xl transition-all border border-slate-100 group"
+              >
+                <div className="w-12 h-12 bg-[#25D366]/10 rounded-xl flex items-center justify-center mb-4 group-hover:bg-[#25D366] transition-colors">
+                  <MessageCircle className="w-6 h-6 text-[#25D366] group-hover:text-white transition-colors" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900">WhatsApp</h3>
+                <p className="text-sm text-slate-500 mt-1">Quick chat, quick reply</p>
+                <p className="text-[#25D366] font-bold mt-2">{whatsappValue}</p>
+              </a>
             </div>
           </div>
 
-          <div className="xl:col-span-2 space-y-6">
-            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_50px_-40px_rgba(15,23,42,0.45)]">
-              <h3 className="text-xl font-black tracking-tight text-slate-900">Contact Info</h3>
-              <p className="text-sm text-slate-600 mt-1">Choose your preferred channel and connect with us instantly.</p>
+          {/* Sidebar */}
+          <div className="space-y-6">
+            {/* Contact Info Card */}
+            <div className="bg-white rounded-3xl shadow-lg p-6">
+              <h3 className="text-xl font-black text-slate-900">Get in Touch</h3>
+              <p className="text-sm text-slate-500 mt-1">Prefer face-to-face? Visit us!</p>
 
-              <div className="mt-5 space-y-3">
-                <a href={telLink || undefined} className="group flex items-center gap-3 rounded-xl border border-slate-200 px-3.5 py-3 hover:border-primary/40 hover:bg-slate-50 transition-colors">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center"><Phone className="w-4 h-4" /></div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] uppercase tracking-[0.14em] font-bold text-slate-500">Call</p>
-                    <p className="text-sm font-bold text-slate-900 break-all">{callValue}</p>
+              <div className="mt-6 space-y-4">
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-[#E74623]/10 rounded-lg flex items-center justify-center shrink-0">
+                    <Phone className="w-5 h-5 text-[#E74623]" />
                   </div>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-primary transition-colors" />
-                </a>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase">Phone</p>
+                    <p className="font-bold text-slate-900">{callValue}</p>
+                  </div>
+                </div>
 
-                <a
-                  href={whatsappLink || undefined}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="group flex items-center gap-3 rounded-xl border border-slate-200 px-3.5 py-3 hover:border-green-400 hover:bg-green-50/50 transition-colors"
-                >
-                  <div className="w-9 h-9 rounded-lg bg-green-100 text-green-600 flex items-center justify-center"><MessageCircle className="w-4 h-4" /></div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] uppercase tracking-[0.14em] font-bold text-slate-500">WhatsApp</p>
-                    <p className="text-sm font-bold text-slate-900 break-all">{whatsappValue}</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-[#1e3a8a]/10 rounded-lg flex items-center justify-center shrink-0">
+                    <Mail className="w-5 h-5 text-[#1e3a8a]" />
                   </div>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-green-600 transition-colors" />
-                </a>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase">Email</p>
+                    <p className="font-bold text-slate-900">{settings.header.topBarEmail}</p>
+                  </div>
+                </div>
 
-                <a href={emailLink} className="group flex items-center gap-3 rounded-xl border border-slate-200 px-3.5 py-3 hover:border-primary/40 hover:bg-slate-50 transition-colors">
-                  <div className="w-9 h-9 rounded-lg bg-primary/10 text-primary flex items-center justify-center"><Mail className="w-4 h-4" /></div>
-                  <div className="min-w-0 flex-1">
-                    <p className="text-[11px] uppercase tracking-[0.14em] font-bold text-slate-500">Email</p>
-                    <p className="text-sm font-bold text-slate-900 break-all">{settings.header.topBarEmail}</p>
+                <div className="flex items-start gap-3">
+                  <div className="w-10 h-10 bg-green-100 rounded-lg flex items-center justify-center shrink-0">
+                    <MapPin className="w-5 h-5 text-green-600" />
                   </div>
-                  <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-primary transition-colors" />
-                </a>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase">Address</p>
+                    <p className="font-bold text-slate-900">Mumbai, Maharashtra</p>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-slate-200 bg-white shadow-[0_24px_50px_-40px_rgba(15,23,42,0.45)] overflow-hidden">
-              <div className="h-48 w-full border-b border-slate-200">
+            {/* Map Card */}
+            <div className="bg-white rounded-3xl shadow-lg overflow-hidden">
+              <div className="h-48">
                 <iframe
                   title="Ednovate Location"
                   src="https://maps.google.com/maps?q=Mumbai,Maharashtra&z=12&output=embed"
@@ -299,60 +318,79 @@ const ContactUs = () => {
                 />
               </div>
               <div className="p-5">
-                <div className="flex items-center gap-2 mb-2">
-                  <MapPin className="w-4 h-4 text-primary" />
-                  <h3 className="text-base font-black text-slate-900">Locate Us</h3>
-                </div>
-                <p className="text-sm text-slate-700 font-semibold">Mumbai, Maharashtra</p>
+                <h4 className="font-bold text-slate-900">Find Us</h4>
                 <a
                   href="https://maps.google.com/?q=Mumbai,Maharashtra"
                   target="_blank"
                   rel="noreferrer"
-                  className="mt-2 inline-flex items-center gap-1.5 text-sm font-bold text-primary hover:underline"
+                  className="text-sm text-[#1e3a8a] font-semibold hover:underline flex items-center gap-1 mt-1"
                 >
-                  Open in Google Maps
-                  <ArrowRight className="w-3.5 h-3.5" />
+                  Open in Maps <ArrowRight className="w-4 h-4" />
                 </a>
               </div>
             </div>
 
-            <div className="rounded-[28px] bg-gradient-to-br from-[rgb(38,72,151)] via-[rgb(38,72,151)] to-[rgb(17,37,92)] p-6 text-white shadow-[0_24px_60px_-30px_rgba(38,72,151,0.75)]">
-              <h3 className="text-lg font-black tracking-tight">Bank Details</h3>
-              <p className="text-sm text-white/80 mt-1">Use QR code for quick payment and share confirmation on WhatsApp.</p>
-
-              <div className="mt-4 flex flex-col sm:flex-row gap-4 items-start">
-                <div className="w-32 h-32 rounded-xl border border-white/30 bg-white/10 flex flex-col items-center justify-center text-center px-2 backdrop-blur-sm">
-                  <QrCode className="w-9 h-9 text-white" />
-                  <p className="text-[11px] font-bold text-white mt-2">Scan To Pay</p>
+            {/* Bank Details Card */}
+            <div className="bg-gradient-to-br from-[#1e3a8a] to-[#1e3a8a]/80 rounded-3xl shadow-lg p-6 text-white">
+              <div className="flex items-center gap-2 mb-4">
+                <QrCode className="w-5 h-5" />
+                <h3 className="text-lg font-bold">Bank Details</h3>
+              </div>
+              
+              <div className="flex flex-col sm:flex-row gap-4">
+                <div className="w-28 h-28 bg-white/10 rounded-xl flex flex-col items-center justify-center shrink-0">
+                  <QrCode className="w-10 h-10 text-white/80" />
+                  <p className="text-xs font-semibold mt-2">Scan to Pay</p>
                 </div>
-
-                <div className="space-y-1.5 text-sm text-white/95">
-                  <p><span className="font-bold">Account Name:</span> Ednovate Learning Pvt. Ltd.</p>
-                  <p><span className="font-bold">Bank Name:</span> Update Your Bank Name</p>
-                  <p><span className="font-bold">Account Number:</span> XXXX XXXX XXXX</p>
-                  <p><span className="font-bold">IFSC Code:</span> XXXXX000000</p>
-                  <p><span className="font-bold">Branch:</span> Mumbai</p>
+                
+                <div className="space-y-2 text-sm">
+                  <p><span className="font-bold">A/C Name:</span> Ednovate Learning Pvt. Ltd.</p>
+                  <p><span className="font-bold">Bank:</span> Update Your Bank</p>
+                  <p><span className="font-bold">A/C No:</span> XXXX XXXX XXXX</p>
+                  <p><span className="font-bold">IFSC:</span> XXXXX000000</p>
                 </div>
               </div>
             </div>
 
-            <div className="rounded-[28px] border border-slate-200 bg-white p-6 shadow-[0_24px_50px_-40px_rgba(15,23,42,0.45)]">
-              <div className="flex items-center gap-2 mb-3">
-                <Landmark className="w-4 h-4 text-primary" />
-                <h3 className="text-base font-black text-slate-900">Additional Links</h3>
-              </div>
-              <div className="space-y-2.5">
+            {/* Quick Links */}
+            <div className="bg-white rounded-3xl shadow-lg p-6">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Quick Links</h3>
+              <div className="space-y-2">
                 {quickLinks.map((item) => (
                   <Link
                     key={item.to}
                     to={item.to}
-                    className="group flex items-center justify-between rounded-xl border border-slate-200 px-3.5 py-2.5 text-sm font-semibold text-slate-800 hover:bg-slate-50 hover:border-primary/30 transition-colors"
+                    className="flex items-center justify-between p-3 rounded-xl bg-slate-50 hover:bg-[#1e3a8a]/5 text-slate-700 hover:text-[#1e3a8a] font-medium transition-colors"
                   >
                     {item.label}
-                    <ArrowRight className="w-3.5 h-3.5 text-slate-400 group-hover:text-primary transition-colors" />
+                    <ArrowRight className="w-4 h-4" />
                   </Link>
                 ))}
               </div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* Trust Section */}
+      <section className="bg-white py-12">
+        <div className="max-w-6xl mx-auto px-4">
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
+            <div>
+              <p className="text-4xl font-black text-[#E74623]">15+</p>
+              <p className="text-sm text-slate-500 mt-1">Years Experience</p>
+            </div>
+            <div>
+              <p className="text-4xl font-black text-[#E74623]">50K+</p>
+              <p className="text-sm text-slate-500 mt-1">Students Trained</p>
+            </div>
+            <div>
+              <p className="text-4xl font-black text-[#E74623]">500+</p>
+              <p className="text-sm text-slate-500 mt-1">Courses</p>
+            </div>
+            <div>
+              <p className="text-4xl font-black text-[#E74623]">98%</p>
+              <p className="text-sm text-slate-500 mt-1">Satisfaction Rate</p>
             </div>
           </div>
         </div>

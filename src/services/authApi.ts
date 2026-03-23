@@ -302,7 +302,86 @@ export interface StudentDashboardData {
   loginLogs: Array<{ id: number; createdAt: string; source?: string; ipAddress?: string; userAgent?: string }>;
   notifications: Array<{ id: number; channel: string; subject?: string; message: string; status: string; createdAt: string }>;
   videoActivity: Array<{ id: number; courseId?: string; chapterTitle?: string; lessonTitle?: string; progressPercent: number; viewedSeconds: number; lastViewedAt: string }>;
-  orders: Array<{ id: string; date: string; status: string; total: number; items: Array<{ title: string; price: number }> }>;
+  orders: Array<{
+    id: string;
+    date: string;
+    status: string;
+    dispatchStatus?: string;
+    trackingId?: string;
+    dispatchNote?: string;
+    paymentMethod?: string;
+    total: number;
+    items: Array<{
+      id?: number;
+      courseId?: string;
+      title: string;
+      price: number;
+      itemType?: string;
+      modeLabel?: string;
+      bookLabel?: string;
+      isEbook?: boolean;
+      dispatchStatus?: string;
+      trackingId?: string;
+    }>;
+  }>;
+}
+
+export interface StudentOrderLine {
+  id: number;
+  orderId: string;
+  studentId: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  shippingAddressLine1?: string;
+  shippingAddressLine2?: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingCountry?: string;
+  shippingPincode?: string;
+  courseId: string;
+  courseTitle: string;
+  parentPackageId?: string;
+  parentPackageTitle?: string;
+  packageCourseIds?: string[];
+  orderDate?: string;
+  paymentMethod?: string;
+  amount: number;
+  currency: string;
+  status: string;
+  itemType: string;
+  modeLabel?: string;
+  bookLabel?: string;
+  isEbook: boolean;
+  dispatchStatus: string;
+  trackingId?: string;
+  dispatchNote?: string;
+  dispatchedAt?: string;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
+export interface StudentOrderGroup {
+  id: string;
+  date: string;
+  status: string;
+  dispatchStatus?: string;
+  trackingId?: string;
+  dispatchNote?: string;
+  paymentMethod?: string;
+  total: number;
+  items: Array<{
+    id?: number;
+    courseId?: string;
+    title: string;
+    price: number;
+    itemType?: string;
+    modeLabel?: string;
+    bookLabel?: string;
+    isEbook?: boolean;
+    dispatchStatus?: string;
+    trackingId?: string;
+  }>;
 }
 
 export const getStudentDashboardApi = async (): Promise<AuthActionResult<StudentDashboardData>> => {
@@ -425,14 +504,35 @@ export const syncStudentWatchProgressApi = async (payload: {
 };
 
 export const createStudentPurchaseApi = async (payload: {
+  orderId?: string;
+  paymentMethod?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  shippingAddressLine1?: string;
+  shippingAddressLine2?: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingCountry?: string;
+  shippingPincode?: string;
   items: Array<{
     courseId: string;
     courseTitle: string;
+    parentPackageId?: string;
+    parentPackageTitle?: string;
+    packageCourseIds?: string[];
     durationDays?: number;
     totalViews?: number;
     isUnlimitedViews?: boolean;
     usedViews?: number;
     isEnabled?: boolean;
+    amount?: number;
+    modeLabel?: string;
+    bookLabel?: string;
+    itemType?: string;
+    isEbook?: boolean;
+    grantAccess?: boolean;
+    createOrderLine?: boolean;
   }>;
   purchaseDate?: string;
 }): Promise<AuthActionResult> => {
@@ -446,6 +546,30 @@ export const createStudentPurchaseApi = async (payload: {
     return { ok: parsed.ok, message: parsed.message };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Failed to save purchase." };
+  }
+};
+
+export const getStudentOrdersApi = async (courseId?: string): Promise<AuthActionResult<{ lines: StudentOrderLine[]; grouped: StudentOrderGroup[] }>> => {
+  try {
+    const query = new URLSearchParams();
+    if (courseId) query.set("courseId", courseId);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+    const response = await fetch(`/api/auth/student/orders${suffix}`, { headers: authHeaders(false) });
+    const parsed = await parseResponseMessage(response, "Failed to load order history.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+    const payload = parsed.payload as { lines?: StudentOrderLine[]; grouped?: StudentOrderGroup[] };
+    return {
+      ok: true,
+      message: "Order history loaded.",
+      data: {
+        lines: Array.isArray(payload.lines) ? payload.lines : [],
+        grouped: Array.isArray(payload.grouped) ? payload.grouped : [],
+      },
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to load order history." };
   }
 };
 
