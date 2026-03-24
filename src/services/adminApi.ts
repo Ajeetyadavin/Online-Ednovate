@@ -171,7 +171,7 @@ export interface MarketingCampaign {
   campaignKey: string;
   title: string;
   message: string;
-  contentType: "text" | "banner" | "video" | "pdf" | "alert";
+  contentType: "text" | "banner" | "video" | "pdf" | "alert" | "enquiry_form";
   mediaUrl?: string;
   ctaText?: string;
   ctaUrl?: string;
@@ -197,7 +197,7 @@ export interface MarketingCampaign {
 export interface MarketingCampaignPayload {
   title: string;
   message: string;
-  contentType: "text" | "banner" | "video" | "pdf" | "alert";
+  contentType: "text" | "banner" | "video" | "pdf" | "alert" | "enquiry_form";
   mediaUrl?: string;
   ctaText?: string;
   ctaUrl?: string;
@@ -265,10 +265,13 @@ export interface AdminOrderLine {
   modeLabel?: string;
   bookLabel?: string;
   isEbook: boolean;
-  dispatchStatus: "pending" | "processing" | "dispatched" | "delivered" | "cancelled" | string;
+  dispatchStatus: "pending" | "processing" | "dispatched" | "delivered" | "cancelled" | "refunded" | string;
   trackingId?: string;
   dispatchNote?: string;
   dispatchedAt?: string;
+  refundNote?: string;
+  refundedAt?: string;
+  refundedBy?: string;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -294,6 +297,66 @@ export interface AdminOrderGroup {
     dispatchStatus?: string;
     trackingId?: string;
   }>;
+}
+
+export type LeadBaseFieldKey = "name" | "address" | "mobile" | "email" | "message";
+
+export interface LeadFormFieldSetting {
+  key: LeadBaseFieldKey;
+  label: string;
+  type: "text" | "phone" | "email" | "textarea";
+  enabled: boolean;
+  mandatory: boolean;
+}
+
+export interface LeadCustomFieldSetting {
+  key: string;
+  label: string;
+  type: "text" | "textarea" | "number" | "select";
+  enabled: boolean;
+  mandatory: boolean;
+  options?: string[];
+  placeholder?: string;
+}
+
+export interface LeadFormSettings {
+  fields: LeadFormFieldSetting[];
+  customFields?: LeadCustomFieldSetting[];
+  stream: {
+    enabled: boolean;
+    label: string;
+    mandatory: boolean;
+    allowMultiple: boolean;
+    options: string[];
+  };
+}
+
+export interface LeadRecord {
+  id: number;
+  source: string;
+  name: string;
+  address: string;
+  mobile: string;
+  email?: string;
+  streams: string[];
+  status: "fresh" | "contacted" | "follow_up" | "qualified" | "won" | "lost" | string;
+  enquiryMessage?: string;
+  extraData?: Record<string, unknown>;
+  lastFollowUpAt?: string;
+  createdAt: string;
+  updatedAt: string;
+  followUpCount?: number;
+  latestFollowUpAt?: string;
+}
+
+export interface LeadFollowUp {
+  id: number;
+  leadId: number;
+  commentText: string;
+  nextFollowUpAt?: string;
+  status: string;
+  createdBy?: string;
+  createdAt: string;
 }
 
 export interface ActivityLogItem {
@@ -340,6 +403,84 @@ const withAuthHeaders = (headers: Record<string, string> = jsonHeaders) => {
     Authorization: `Bearer ${token}`,
   };
 };
+
+const resolveApiUrl = (path: string) => {
+  const isDevVite = typeof window !== "undefined" && window.location.port === "8080";
+  if (!isDevVite) return path;
+  const protocol = window.location.protocol || "http:";
+  const host = window.location.hostname || "localhost";
+  return `${protocol}//${host}:4000${path}`;
+};
+
+type BunnyVideoUploadOptions = {
+  onProgress?: (percent: number, loaded: number, total: number) => void;
+  signal?: AbortSignal;
+  forceStorage?: boolean;
+};
+
+const uploadVideoViaXhr = (
+  url: string,
+  file: File,
+  headers: Record<string, string>,
+  options?: BunnyVideoUploadOptions,
+) => new Promise<{ url: string; remotePath: string }>((resolve, reject) => {
+  const xhr = new XMLHttpRequest();
+  xhr.open("POST", url, true);
+
+  Object.entries(headers).forEach(([key, value]) => {
+    xhr.setRequestHeader(key, value);
+  });
+
+  const onAbort = () => {
+    xhr.abort();
+    reject(new Error("Upload cancelled"));
+  };
+
+  if (options?.signal) {
+    if (options.signal.aborted) {
+      onAbort();
+      return;
+    }
+    options.signal.addEventListener("abort", onAbort, { once: true });
+  }
+
+  xhr.upload.onprogress = (event) => {
+    if (!options?.onProgress) return;
+    const total = Number(event.total || 0);
+    const loaded = Number(event.loaded || 0);
+    const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+    options.onProgress(percent, loaded, total);
+  };
+
+  xhr.onerror = () => {
+    reject(new Error("Network error while uploading video"));
+  };
+
+  xhr.onabort = () => {
+    reject(new Error("Upload cancelled"));
+  };
+
+  xhr.onload = () => {
+    const raw = String(xhr.responseText || "");
+    const parsed = (() => {
+      if (!raw) return null;
+      try {
+        return JSON.parse(raw);
+      } catch {
+        return null;
+      }
+    })();
+
+    if (xhr.status >= 200 && xhr.status < 300) {
+      resolve(parsed as { url: string; remotePath: string });
+      return;
+    }
+
+    reject(new Error(parsed?.message || raw || `Request failed with ${xhr.status}`));
+  };
+
+  xhr.send(file);
+});
 
 async function parseResponse<T>(response: Response): Promise<T> {
   if (!response.ok) {
@@ -461,6 +602,34 @@ const writeMarketingCampaignsToSettings = async (
 };
 
 export const adminApi = {
+  async getPublicLeadFormSettings() {
+    return parseResponse<{ settings: LeadFormSettings }>(
+      await fetch("/api/lead-form-settings", {
+        headers: {},
+      }),
+    );
+  },
+
+  async submitPublicEnquiryLead(payload: {
+    source?: string;
+    name: string;
+    address: string;
+    mobile: string;
+    email?: string;
+    message?: string;
+    streams?: string[];
+    customFieldValues?: Record<string, unknown>;
+    extraData?: Record<string, unknown>;
+  }) {
+    return parseResponse<{ ok: boolean; item: LeadRecord }>(
+      await fetch("/api/leads/enquiry", {
+        method: "POST",
+        headers: jsonHeaders,
+        body: JSON.stringify(payload),
+      }),
+    );
+  },
+
   async listStudents(search = "", from?: string, to?: string) {
     const params = new URLSearchParams();
     if (search) params.set("search", search);
@@ -605,6 +774,110 @@ export const adminApi = {
       await fetch(`/api/admin/orders/${encodeURIComponent(String(id))}`, {
         method: "DELETE",
         headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async sendOrderInvoice(id: number) {
+    return parseResponse<{ ok: boolean }>(
+      await fetch(`/api/admin/orders/${encodeURIComponent(String(id))}/send-invoice`, {
+        method: "POST",
+        headers: withAuthHeaders(),
+      }),
+    );
+  },
+
+  async refundOrder(id: number, refundNote?: string) {
+    return parseResponse<{ ok: boolean; item: AdminOrderLine }>(
+      await fetch(`/api/admin/orders/${encodeURIComponent(String(id))}/refund`, {
+        method: "POST",
+        headers: withAuthHeaders(),
+        body: JSON.stringify({ refundNote: String(refundNote || "").trim() }),
+      }),
+    );
+  },
+
+  async getLeadFormSettings() {
+    return parseResponse<{ settings: LeadFormSettings }>(
+      await fetch("/api/admin/lead-form-settings", {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async saveLeadFormSettings(settings: LeadFormSettings) {
+    return parseResponse<{ ok: boolean; settings: LeadFormSettings }>(
+      await fetch("/api/admin/lead-form-settings", {
+        method: "PUT",
+        headers: withAuthHeaders(),
+        body: JSON.stringify({ settings }),
+      }),
+    );
+  },
+
+  async listLeads(options?: {
+    search?: string;
+    status?: string;
+    source?: string;
+    stream?: string;
+    from?: string;
+    to?: string;
+    limit?: number;
+  }) {
+    const query = new URLSearchParams();
+    if (options?.search) query.set("search", options.search);
+    if (options?.status) query.set("status", options.status);
+    if (options?.source) query.set("source", options.source);
+    if (options?.stream) query.set("stream", options.stream);
+    if (options?.from) query.set("from", options.from);
+    if (options?.to) query.set("to", options.to);
+    if (options?.limit) query.set("limit", String(options.limit));
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+
+    return parseResponse<{
+      items: LeadRecord[];
+      summary: {
+        total: number;
+        freshCount: number;
+        followUpCount: number;
+        qualifiedCount: number;
+        wonCount: number;
+        lostCount: number;
+      };
+    }>(
+      await fetch(`/api/admin/leads${suffix}`, {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async getLeadDetails(id: number) {
+    return parseResponse<{ lead: LeadRecord; followUps: LeadFollowUp[] }>(
+      await fetch(`/api/admin/leads/${encodeURIComponent(String(id))}`, {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async updateLeadStatus(id: number, status: LeadRecord["status"]) {
+    return parseResponse<{ item: LeadRecord }>(
+      await fetch(`/api/admin/leads/${encodeURIComponent(String(id))}`, {
+        method: "PATCH",
+        headers: withAuthHeaders(),
+        body: JSON.stringify({ status }),
+      }),
+    );
+  },
+
+  async addLeadFollowUp(
+    id: number,
+    payload: { commentText: string; status?: LeadRecord["status"]; nextFollowUpAt?: string },
+  ) {
+    return parseResponse<{ ok: boolean; followUp: LeadFollowUp; lead: LeadRecord }>(
+      await fetch(`/api/admin/leads/${encodeURIComponent(String(id))}/follow-ups`, {
+        method: "POST",
+        headers: withAuthHeaders(),
+        body: JSON.stringify(payload),
       }),
     );
   },
@@ -865,6 +1138,14 @@ export const adminApi = {
     );
   },
 
+  async getBunnyVideoDuration(videoId: string) {
+    return parseResponse<{ videoId: string; durationSeconds: number; ready: boolean; status?: string }>(
+      await fetch(`/api/admin/bunny/video-duration/${encodeURIComponent(videoId)}`, {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
   async uploadImage(fileName: string, mimeType: string, base64Data: string, folder = "images") {
     return parseResponse<{ url: string }>(
       await fetch("/api/uploads/image", {
@@ -883,6 +1164,31 @@ export const adminApi = {
         body: JSON.stringify({ fileName, mimeType, base64Data, folder }),
       }),
     );
+  },
+
+  async uploadVideoFileToBunny(file: File, folder = "videos") {
+    return this.uploadVideoFileToBunnyWithProgress(file, folder);
+  },
+
+  async uploadVideoFileToBunnyWithProgress(file: File, folder = "videos", options?: BunnyVideoUploadOptions) {
+    const headers = withAuthHeaders({
+      "Content-Type": file.type || "application/octet-stream",
+      "X-File-Name": encodeURIComponent(file.name || `video-${Date.now()}.mp4`),
+      "X-Upload-Folder": folder,
+      ...(options?.forceStorage ? { "X-Force-Storage": "1" } : {}),
+    });
+
+    const directUrl = resolveApiUrl("/api/uploads/bunny-video");
+    const proxyUrl = "/api/uploads/bunny-video";
+
+    try {
+      return await uploadVideoViaXhr(directUrl, file, headers, options);
+    } catch (error) {
+      if (directUrl !== proxyUrl) {
+        return uploadVideoViaXhr(proxyUrl, file, headers, options);
+      }
+      throw error;
+    }
   },
 
   async trackEvent(eventType: string, courseId?: string, userId?: string, metadata: Record<string, unknown> = {}) {

@@ -1,6 +1,6 @@
 import { SESSION_TOKEN_KEY } from "@/services/authApi";
 
-export type MarketingContentType = "text" | "banner" | "video" | "pdf" | "alert";
+export type MarketingContentType = "text" | "banner" | "video" | "pdf" | "alert" | "enquiry_form";
 
 export interface ActiveMarketingCampaign {
   id: number;

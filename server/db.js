@@ -197,6 +197,7 @@ export async function ensureSchema() {
   await pool.query("ALTER TABLE student_course_access ADD COLUMN IF NOT EXISTS allowed_watch_seconds INTEGER NOT NULL DEFAULT 0");
   await pool.query("ALTER TABLE student_course_access ADD COLUMN IF NOT EXISTS used_watch_seconds INTEGER NOT NULL DEFAULT 0");
   await pool.query("ALTER TABLE student_course_access ADD COLUMN IF NOT EXISTS is_unlimited_views BOOLEAN NOT NULL DEFAULT FALSE");
+  await pool.query("ALTER TABLE student_course_access ADD COLUMN IF NOT EXISTS preferred_video_quality TEXT NOT NULL DEFAULT 'auto'");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_orders (
@@ -230,6 +231,9 @@ export async function ensureSchema() {
       tracking_id TEXT,
       dispatch_note TEXT,
       dispatched_at TIMESTAMPTZ,
+      refund_note TEXT,
+      refunded_at TIMESTAMPTZ,
+      refunded_by TEXT,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       UNIQUE(order_id, student_id, course_id)
@@ -248,11 +252,73 @@ export async function ensureSchema() {
   await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_state TEXT");
   await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_country TEXT");
   await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_pincode TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS refund_note TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS refunded_by TEXT");
 
   await pool.query("CREATE INDEX IF NOT EXISTS idx_student_orders_student ON student_orders(student_id)");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_student_orders_order ON student_orders(order_id)");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_student_orders_dispatch_status ON student_orders(dispatch_status)");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_student_orders_parent_package_id ON student_orders(parent_package_id)");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS lead_form_settings (
+      id INTEGER PRIMARY KEY,
+      data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query(`
+    INSERT INTO lead_form_settings (id, data)
+    VALUES (1, '{}'::jsonb)
+    ON CONFLICT (id) DO NOTHING;
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS enquiry_leads (
+      id BIGSERIAL PRIMARY KEY,
+      source TEXT NOT NULL DEFAULT 'enquiry_now',
+      name TEXT NOT NULL,
+      address TEXT NOT NULL,
+      mobile TEXT NOT NULL,
+      email TEXT,
+      streams JSONB NOT NULL DEFAULT '[]'::jsonb,
+      status TEXT NOT NULL DEFAULT 'fresh',
+      enquiry_message TEXT,
+      extra_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+      last_follow_up_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query("ALTER TABLE enquiry_leads ADD COLUMN IF NOT EXISTS source TEXT NOT NULL DEFAULT 'enquiry_now'");
+  await pool.query("ALTER TABLE enquiry_leads ADD COLUMN IF NOT EXISTS address TEXT NOT NULL DEFAULT ''");
+  await pool.query("ALTER TABLE enquiry_leads ADD COLUMN IF NOT EXISTS email TEXT");
+  await pool.query("ALTER TABLE enquiry_leads ADD COLUMN IF NOT EXISTS streams JSONB NOT NULL DEFAULT '[]'::jsonb");
+  await pool.query("ALTER TABLE enquiry_leads ADD COLUMN IF NOT EXISTS status TEXT NOT NULL DEFAULT 'fresh'");
+  await pool.query("ALTER TABLE enquiry_leads ADD COLUMN IF NOT EXISTS enquiry_message TEXT");
+  await pool.query("ALTER TABLE enquiry_leads ADD COLUMN IF NOT EXISTS extra_data JSONB NOT NULL DEFAULT '{}'::jsonb");
+  await pool.query("ALTER TABLE enquiry_leads ADD COLUMN IF NOT EXISTS last_follow_up_at TIMESTAMPTZ");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS lead_follow_ups (
+      id BIGSERIAL PRIMARY KEY,
+      lead_id BIGINT NOT NULL REFERENCES enquiry_leads(id) ON DELETE CASCADE,
+      comment_text TEXT NOT NULL,
+      next_follow_up_at TIMESTAMPTZ,
+      status TEXT NOT NULL DEFAULT 'follow_up',
+      created_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_enquiry_leads_created_at ON enquiry_leads(created_at DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_enquiry_leads_status ON enquiry_leads(status)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_enquiry_leads_mobile ON enquiry_leads(mobile)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_lead_follow_ups_lead_id ON lead_follow_ups(lead_id)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_lead_follow_ups_created_at ON lead_follow_ups(created_at DESC)");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_login_logs (
@@ -290,6 +356,24 @@ export async function ensureSchema() {
       UNIQUE(student_id, course_id, lesson_id)
     );
   `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS student_lesson_notes (
+      id BIGSERIAL PRIMARY KEY,
+      student_id TEXT NOT NULL,
+      course_id TEXT NOT NULL,
+      lesson_id TEXT NOT NULL,
+      chapter_title TEXT,
+      lesson_title TEXT,
+      note_text TEXT NOT NULL DEFAULT '',
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(student_id, course_id, lesson_id)
+    );
+  `);
+
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_lesson_notes_student ON student_lesson_notes(student_id)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_lesson_notes_course ON student_lesson_notes(course_id)");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_notifications (

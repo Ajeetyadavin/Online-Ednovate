@@ -57,6 +57,7 @@ const MODULES: AdminModuleKey[] = [
   "homepage",
   "users",
   "orders",
+  "leads",
   "announcements",
   "technical-support",
   "marketing",

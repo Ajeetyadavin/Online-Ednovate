@@ -3,7 +3,8 @@ import { Link } from "react-router-dom";
 import { ArrowRight, CheckCircle, Headphones, Mail, MapPin, MessageCircle, Phone, QrCode, Send, Clock } from "lucide-react";
 import { toast } from "sonner";
 
-import { createEnquiryLead, normalizePhoneDigits } from "@/lib/contactTools";
+import { normalizePhoneDigits } from "@/lib/contactTools";
+import { adminApi } from "@/services/adminApi";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,7 +49,7 @@ const ContactUs = () => {
     [],
   );
 
-  const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
     if (!form.name.trim()) {
@@ -72,18 +73,28 @@ const ContactUs = () => {
     }
 
     setIsSubmitting(true);
-    
-    createEnquiryLead({
-      name: form.name,
-      location: "Contact Us Page",
-      mobile: normalizePhoneDigits(form.mobile),
-    });
 
-    setTimeout(() => {
+    try {
+      await adminApi.submitPublicEnquiryLead({
+        source: "contact_us",
+        name: form.name,
+        address: "Contact Us Page",
+        mobile: normalizePhoneDigits(form.mobile),
+        email: form.email,
+        message: form.query,
+        streams: [],
+        extraData: {
+          formType: "contact_us",
+        },
+      });
+
       toast.success("Query submitted successfully. Our team will contact you soon.");
       setForm(INITIAL_FORM_STATE);
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to submit your query");
+    } finally {
       setIsSubmitting(false);
-    }, 1000);
+    }
   };
 
   return (

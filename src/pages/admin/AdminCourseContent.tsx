@@ -12,7 +12,7 @@ import {
   Check, ChevronsUpDown, BookOpen, ChevronRight, AlertCircle, X, Eye, GripVertical,
 } from "lucide-react";
 import { decodeVideoUrl, encodeVideoUrl, extractYouTubeVideoId, type LessonVideoSource } from "@/lib/video-utils";
-import { adminApi, fileToBase64 } from "@/services/adminApi";
+import { adminApi } from "@/services/adminApi";
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface NewLesson {
@@ -21,6 +21,12 @@ interface NewLesson {
   videoUrl?: string; resourceUrl?: string; isPreview?: boolean;
 }
 interface EditingChapter { id: string; title: string; description?: string }
+type LessonUploadState = {
+  fileName: string;
+  progress: number;
+  status: "uploading" | "success" | "error" | "cancelled";
+  message?: string;
+};
 
 const INITIAL_LESSON: NewLesson = { title: "", description: "", duration: "", type: "video", videoSource: "direct", videoUrl: "", resourceUrl: "", isPreview: false };
 const INITIAL_CHAPTER = { title: "", description: "" };
@@ -93,6 +99,9 @@ const loadYouTubeDurationSeconds = async (videoId: string) => {
   });
 };
 
+const isUuidLike = (value: string) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value.trim());
+
 /* ─── Constants ──────────────────────────────────────────────── */
 const TYPE_ICON = { video: Video, pdf: FileText, quiz: CheckCircle2 };
 const TYPE_STYLE: Record<string, string> = {
@@ -125,6 +134,9 @@ export default function AdminCourseContent() {
   const [newChapter, setNewChapter] = useState(INITIAL_CHAPTER);
 
   const [isUploadingVideo, setIsUploadingVideo] = useState(false);
+  const [lessonUploadState, setLessonUploadState] = useState<LessonUploadState | null>(null);
+  const [lessonUploadMinimized, setLessonUploadMinimized] = useState(false);
+  const lessonUploadAbortRef = useRef<AbortController | null>(null);
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
@@ -260,15 +272,44 @@ export default function AdminCourseContent() {
 
   const handleVideoFileUpload = async (file?: File | null) => {
     if (!file || newLesson.type !== "video") return;
+    lessonUploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    lessonUploadAbortRef.current = controller;
     setIsUploadingVideo(true);
+    setLessonUploadMinimized(false);
+    setLessonUploadState({ fileName: file.name, progress: 0, status: "uploading", message: "Uploading lesson video..." });
     try {
-      const b64 = await fileToBase64(file);
-      const uploaded = newLesson.videoSource === "upload"
-        ? await adminApi.uploadVideoToBunny(file.name, file.type, b64, "course-videos")
-        : await adminApi.uploadImage(file.name, file.type, b64, "direct-videos");
+      const source = newLesson.videoSource || "direct";
+      const uploaded = await adminApi.uploadVideoFileToBunnyWithProgress(
+        file,
+        source === "upload" ? "course-videos" : "direct-videos",
+        {
+          signal: controller.signal,
+          forceStorage: source !== "upload",
+          onProgress: (percent) => {
+            setLessonUploadState((prev) => {
+              if (!prev || prev.status !== "uploading") return prev;
+              return { ...prev, progress: percent, message: `Uploading lesson video... ${percent}%` };
+            });
+          },
+        },
+      );
       setNewLesson((p) => ({ ...p, videoUrl: uploaded.url }));
-    } catch (e) { alert(e instanceof Error ? e.message : "Video upload failed"); }
-    finally { setIsUploadingVideo(false); }
+      setLessonUploadState((prev) => (prev ? { ...prev, progress: 100, status: "success", message: "Upload complete" } : prev));
+    } catch (e) {
+      const cancelled = e instanceof Error && /cancelled/i.test(e.message);
+      setLessonUploadState((prev) => (prev ? { ...prev, status: cancelled ? "cancelled" : "error", message: cancelled ? "Upload cancelled" : "Upload failed" } : prev));
+      alert(e instanceof Error ? e.message : "Video upload failed");
+    }
+    finally {
+      lessonUploadAbortRef.current = null;
+      setIsUploadingVideo(false);
+    }
+  };
+
+  const handleCancelLessonUpload = () => {
+    if (!lessonUploadState || lessonUploadState.status !== "uploading") return;
+    lessonUploadAbortRef.current?.abort();
   };
 
   /* totals */
@@ -537,19 +578,61 @@ export default function AdminCourseContent() {
           {saveError && <div className="shrink-0 flex items-center gap-2 border-b border-rose-100 bg-rose-50 px-6 py-2.5 text-xs text-rose-700"><AlertCircle className="h-3.5 w-3.5" />{saveError}</div>}
           <div className="flex-1 overflow-y-auto">
             <LessonForm lesson={newLesson} setLesson={setNewLesson} onSave={handleSaveLesson} isEditing={!!editingLessonId}
-              onUploadVideo={handleVideoFileUpload} isUploadingVideo={isUploadingVideo} isSaving={isSaving} />
+              onUploadVideo={handleVideoFileUpload} isUploadingVideo={isUploadingVideo} isSaving={isSaving}
+              uploadProgress={lessonUploadState?.status === "uploading" ? lessonUploadState.progress : 0}
+              onCancelUpload={handleCancelLessonUpload} />
           </div>
         </DialogContent>
       </Dialog>
+
+      {lessonUploadState && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-xs">
+          {lessonUploadMinimized ? (
+            <button
+              type="button"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg"
+              onClick={() => setLessonUploadMinimized(false)}
+            >
+              {lessonUploadState.status === "uploading"
+                ? `Lesson upload ${lessonUploadState.progress}%`
+                : `${lessonUploadState.status.toUpperCase()} - Open`}
+            </button>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="truncate text-xs font-semibold text-slate-800">{lessonUploadState.fileName}</p>
+                <div className="flex items-center gap-1">
+                  <button type="button" className="rounded-md px-1.5 py-1 text-[10px] text-slate-500 hover:bg-slate-100" onClick={() => setLessonUploadMinimized(true)}>Minimize</button>
+                  <button type="button" className="rounded-md px-1.5 py-1 text-[10px] text-slate-500 hover:bg-slate-100" onClick={() => setLessonUploadState(null)}>Close</button>
+                </div>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full transition-all ${lessonUploadState.status === "error" ? "bg-red-500" : lessonUploadState.status === "cancelled" ? "bg-amber-500" : "bg-primary"}`}
+                  style={{ width: `${Math.max(2, lessonUploadState.progress)}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-slate-600">{lessonUploadState.message || lessonUploadState.status}</p>
+                {lessonUploadState.status === "uploading" && (
+                  <Button type="button" variant="outline" size="sm" className="h-7 rounded-lg border-red-200 px-2 text-[10px] text-red-600 hover:bg-red-50" onClick={handleCancelLessonUpload}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }
 
 /* ─── Lesson Form ────────────────────────────────────────────── */
-function LessonForm({ lesson, setLesson, onSave, isEditing, onUploadVideo, isUploadingVideo, isSaving = false }: {
+function LessonForm({ lesson, setLesson, onSave, isEditing, onUploadVideo, isUploadingVideo, isSaving = false, uploadProgress = 0, onCancelUpload }: {
   lesson: NewLesson; setLesson: Dispatch<SetStateAction<NewLesson>>;
   onSave: () => void; isEditing: boolean; onUploadVideo: (file?: File | null) => void;
-  isUploadingVideo: boolean; isSaving?: boolean;
+  isUploadingVideo: boolean; isSaving?: boolean; uploadProgress?: number; onCancelUpload?: () => void;
 }) {
   const [isFetchingDuration, setIsFetchingDuration] = useState(false);
   const [durationFetchError, setDurationFetchError] = useState<string | null>(null);
@@ -560,13 +643,55 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, onUploadVideo, isUpl
     const source = lesson.videoSource || "direct";
     const videoUrl = String(lesson.videoUrl || "").trim();
     if (!videoUrl) { setDurationFetchError(null); setIsFetchingDuration(false); autoDurationKeyRef.current = ""; return; }
-    const nextKey = `${source}|${videoUrl}`;
+    const ytId = extractYouTubeVideoId(videoUrl);
+    const resolvedSource: LessonVideoSource = ytId ? "youtube" : source;
+    const nextKey = `${resolvedSource}|${videoUrl}`;
     if (autoDurationKeyRef.current === nextKey) return;
+
+    if (resolvedSource === "upload" && isUuidLike(videoUrl)) {
+      let cancelled = false;
+      const poll = async () => {
+        setDurationFetchError(null);
+        setIsFetchingDuration(true);
+        try {
+          for (let attempt = 0; attempt < 24; attempt += 1) {
+            if (cancelled) return;
+            const result = await adminApi.getBunnyVideoDuration(videoUrl);
+            if (cancelled) return;
+            if (Number(result?.durationSeconds || 0) > 0) {
+              const fmt = formatSecondsToHms(Number(result.durationSeconds));
+              setLesson((p) => String(p.videoUrl || "").trim() !== videoUrl ? p : { ...p, duration: fmt });
+              autoDurationKeyRef.current = nextKey;
+              setDurationFetchError(null);
+              setIsFetchingDuration(false);
+              return;
+            }
+            await new Promise((resolve) => window.setTimeout(resolve, 5000));
+          }
+
+          if (!cancelled) {
+            setDurationFetchError("Bunny video is still processing. Duration will auto-fill once ready.");
+          }
+        } catch (e) {
+          if (!cancelled) {
+            setDurationFetchError(e instanceof Error ? e.message : "Could not fetch Bunny video duration");
+          }
+        } finally {
+          if (!cancelled) setIsFetchingDuration(false);
+        }
+      };
+
+      void poll();
+      return () => { cancelled = true; };
+    }
+
     let cancelled = false;
     const tid = window.setTimeout(async () => {
       try {
         setDurationFetchError(null); setIsFetchingDuration(true);
-        const secs = source === "youtube" ? await loadYouTubeDurationSeconds(extractYouTubeVideoId(videoUrl) || (() => { throw new Error("Invalid YouTube URL/Video ID"); })()) : await loadVideoDurationFromUrl(videoUrl);
+        const secs = resolvedSource === "youtube"
+          ? await loadYouTubeDurationSeconds(ytId || (() => { throw new Error("Invalid YouTube URL/Video ID"); })())
+          : await loadVideoDurationFromUrl(videoUrl);
         if (cancelled) return;
         const fmt = formatSecondsToHms(secs);
         setLesson((p) => String(p.videoUrl || "").trim() !== videoUrl ? p : { ...p, duration: fmt });
@@ -625,7 +750,12 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, onUploadVideo, isUpl
             <Input className={fCls} placeholder={lesson.videoSource === "youtube" ? "e.g., dQw4w9WgXcQ or full youtube URL" : "https://cdn.example.com/video.mp4"}
               value={lesson.videoUrl} onChange={(e) => setLesson({ ...lesson, videoUrl: e.target.value })} disabled={isSaving} />
             {isFetchingDuration && <p className="flex items-center gap-1 text-[11px] text-slate-400"><Loader2 className="h-3 w-3 animate-spin" />Auto-detecting duration...</p>}
-            {durationFetchError && <p className="text-[11px] text-amber-600">⚠ {durationFetchError} — enter duration manually below</p>}
+            {durationFetchError && (
+              <p className="text-[11px] text-amber-600">
+                ⚠ {durationFetchError}
+                {/still processing|auto-fill/i.test(durationFetchError) ? "" : " — enter duration manually below"}
+              </p>
+            )}
           </div>
           <div className="space-y-1.5">
             <FL2>Duration (HH:MM:SS)</FL2>
@@ -633,11 +763,18 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, onUploadVideo, isUpl
           </div>
           <div className="flex items-center justify-between">
             <div>
-              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-primary/30 hover:text-primary">
-                <Upload className="h-3.5 w-3.5" />
-                {isUploadingVideo ? <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Uploading...</span> : `Upload Video File`}
-                <input type="file" accept="video/*" className="hidden" onChange={(e) => onUploadVideo(e.target.files?.[0])} disabled={isSaving || isUploadingVideo} />
-              </label>
+              <div className="flex items-center gap-2">
+                <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-600 transition-colors hover:border-primary/30 hover:text-primary">
+                  <Upload className="h-3.5 w-3.5" />
+                  {isUploadingVideo ? <span className="flex items-center gap-1"><Loader2 className="h-3 w-3 animate-spin" />Uploading {uploadProgress}%...</span> : `Upload Video File`}
+                  <input type="file" accept="video/*" className="hidden" onChange={(e) => onUploadVideo(e.target.files?.[0])} disabled={isSaving || isUploadingVideo} />
+                </label>
+                {isUploadingVideo && (
+                  <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={onCancelUpload}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
             </div>
             <div className="flex items-center gap-2">
               <span className="text-xs font-semibold text-slate-600">Show as Preview</span>

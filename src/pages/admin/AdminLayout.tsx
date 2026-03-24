@@ -20,6 +20,7 @@ import {
   Gauge,
   GraduationCap,
   ScrollText,
+  UserCheck,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -43,6 +44,7 @@ const navItems = [
   { to: "/admin/users", icon: Users, label: "Students", moduleKey: "users" as const },
   { to: "/admin/student-access", icon: Gauge, label: "Student Access", moduleKey: "users" as const },
   { to: "/admin/orders", icon: ShoppingCart, label: "Orders", moduleKey: "orders" as const },
+  { to: "/admin/leads", icon: UserCheck, label: "Leads", moduleKey: "leads" as const },
   { to: "/admin/announcements", icon: Bell, label: "Announcements", moduleKey: "announcements" as const },
   { to: "/admin/technical-support", icon: Headset, label: "Technical Support", moduleKey: "technical-support" as const },
   { to: "/admin/marketing", icon: Megaphone, label: "Marketing", moduleKey: "marketing" as const },

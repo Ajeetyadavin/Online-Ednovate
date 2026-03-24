@@ -37,6 +37,7 @@ import AdminCourseContent from "./pages/admin/AdminCourseContent";
 import AdminCategories from "./pages/admin/AdminCategories";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminOrders from "./pages/admin/AdminOrders";
+import AdminLeads from "./pages/admin/AdminLeads";
 import AdminAnnouncements from "./pages/admin/AdminAnnouncements";
 import AdminTechnicalSupport from "./pages/admin/AdminTechnicalSupport";
 import AdminHomepage from "./pages/admin/AdminHomepage";
@@ -114,6 +115,7 @@ const AppContent = () => (
                     <Route path="users" element={<AdminUsers />} />
                     <Route path="student-access" element={<AdminStudentAccess />} />
                     <Route path="orders" element={<AdminOrders />} />
+                    <Route path="leads" element={<AdminLeads />} />
                     <Route path="announcements" element={<AdminAnnouncements />} />
                     <Route path="technical-support" element={<AdminTechnicalSupport />} />
                     <Route path="marketing" element={<AdminMarketing />} />

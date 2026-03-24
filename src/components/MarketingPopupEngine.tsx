@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { marketingApi, type ActiveMarketingCampaign } from "@/services/marketingApi";
+import EnquiryModal from "@/components/EnquiryModal";
 
 const SESSION_KEY = "ednovate_marketing_session_id";
 
@@ -31,6 +32,7 @@ const MarketingPopupEngine = () => {
 
   const [activeCampaign, setActiveCampaign] = useState<ActiveMarketingCampaign | null>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [isEnquiryModalOpen, setIsEnquiryModalOpen] = useState(false);
   const [sessionId] = useState(() => getMarketingSessionId());
   const pageStartRef = useRef<number>(Date.now());
   const lastShownCampaignRef = useRef<number | null>(null);
@@ -70,6 +72,7 @@ const MarketingPopupEngine = () => {
     pageStartRef.current = Date.now();
     setIsVisible(false);
     setActiveCampaign(null);
+    setIsEnquiryModalOpen(false);
 
     void loadCampaign();
     const timer = window.setInterval(() => {
@@ -95,6 +98,7 @@ const MarketingPopupEngine = () => {
   const handleDismiss = () => {
     if (!activeCampaign) return;
     setIsVisible(false);
+    setIsEnquiryModalOpen(false);
     void marketingApi.trackEvent({
       campaignId: activeCampaign.id,
       eventType: "dismissed",
@@ -122,6 +126,20 @@ const MarketingPopupEngine = () => {
   };
 
   if (!activeCampaign || !isVisible) return null;
+
+  if (activeCampaign.contentType === "enquiry_form") {
+    return (
+      <EnquiryModal
+        open={isEnquiryModalOpen || isVisible}
+        onOpenChange={(open) => {
+          setIsEnquiryModalOpen(open);
+          if (!open) {
+            handleDismiss();
+          }
+        }}
+      />
+    );
+  }
 
   const isAlert = activeCampaign.contentType === "alert";
 

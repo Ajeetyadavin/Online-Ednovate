@@ -11,14 +11,15 @@ import { checkDatabaseConnection, ensureSchema, pool } from "./db.js";
 
 const app = express();
 const port = Number(process.env.API_PORT ?? process.env.PORT ?? 4000);
+const bodyLimit = process.env.BODY_LIMIT || "25mb";
 
 const corsOrigin = process.env.CORS_ORIGIN
   ? process.env.CORS_ORIGIN.split(",").map((origin) => origin.trim())
   : true;
 
 app.use(cors({ origin: corsOrigin }));
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
+app.use(express.json({ limit: bodyLimit }));
+app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -58,10 +59,19 @@ const mapStudentCourseAccess = (row) => ({
   usedWatchSeconds: Math.max(0, Number(row.used_watch_seconds || 0)),
   remainingWatchSeconds: Math.max(0, Number(row.allowed_watch_seconds || 0) - Number(row.used_watch_seconds || 0)),
   isEnabled: row.is_enabled !== false,
+  preferredVideoQuality: ["auto", "high", "medium", "low"].includes(String(row.preferred_video_quality || "").toLowerCase())
+    ? String(row.preferred_video_quality || "auto").toLowerCase()
+    : "auto",
   notes: row.notes || "",
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
+
+const normalizeVideoQualityPreference = (value) => {
+  const normalized = String(value || "auto").trim().toLowerCase();
+  if (["auto", "high", "medium", "low"].includes(normalized)) return normalized;
+  return "auto";
+};
 
 const mapStudentOrderLine = (row) => ({
   id: Number(row.id),
@@ -96,6 +106,9 @@ const mapStudentOrderLine = (row) => ({
   trackingId: String(row.tracking_id || ""),
   dispatchNote: String(row.dispatch_note || ""),
   dispatchedAt: row.dispatched_at,
+  refundNote: String(row.refund_note || ""),
+  refundedAt: row.refunded_at,
+  refundedBy: String(row.refunded_by || ""),
   createdAt: row.created_at,
   updatedAt: row.updated_at,
 });
@@ -253,6 +266,155 @@ const normalizeStringList = (value) => {
 
 const normalizeLowerList = (value) => normalizeStringList(value).map((item) => item.toLowerCase());
 
+const LEAD_ALLOWED_STATUSES = ["fresh", "contacted", "follow_up", "qualified", "won", "lost"];
+const LEAD_CUSTOM_FIELD_TYPES = ["text", "textarea", "number", "select"];
+
+const sanitizeLeadCustomFieldKey = (value, fallback = "custom_field") => {
+  const normalized = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 40);
+  return normalized || fallback;
+};
+
+const getDefaultLeadFormSettings = () => ({
+  fields: [
+    { key: "name", label: "Full Name", type: "text", enabled: true, mandatory: true },
+    { key: "address", label: "Address", type: "text", enabled: true, mandatory: true },
+    { key: "mobile", label: "Mobile Number", type: "phone", enabled: true, mandatory: true },
+    { key: "email", label: "Email Address", type: "email", enabled: true, mandatory: false },
+    { key: "message", label: "Message", type: "textarea", enabled: true, mandatory: false },
+  ],
+  customFields: [],
+  stream: {
+    enabled: true,
+    label: "Interested Stream",
+    mandatory: false,
+    allowMultiple: true,
+    options: ["Science", "Commerce", "Arts"],
+  },
+});
+
+const normalizeLeadFormSettings = (input) => {
+  const fallback = getDefaultLeadFormSettings();
+  const source = input && typeof input === "object" ? input : {};
+  const sourceFields = Array.isArray(source.fields) ? source.fields : fallback.fields;
+
+  const normalizedFields = sourceFields
+    .map((field) => ({
+      key: String(field?.key || "").trim().toLowerCase(),
+      label: String(field?.label || "").trim(),
+      type: String(field?.type || "text").trim().toLowerCase(),
+      enabled: field?.enabled !== false,
+      mandatory: field?.mandatory === true,
+    }))
+    .filter((field) => ["name", "address", "mobile", "email", "message"].includes(field.key));
+
+  const ensureRequiredField = (key, fallbackLabel, fallbackType, mandatory = false) => {
+    const existing = normalizedFields.find((field) => field.key === key);
+    if (existing) {
+      existing.enabled = true;
+      if (mandatory) existing.mandatory = true;
+      if (!existing.label) existing.label = fallbackLabel;
+      if (!existing.type) existing.type = fallbackType;
+      return;
+    }
+
+    normalizedFields.push({
+      key,
+      label: fallbackLabel,
+      type: fallbackType,
+      enabled: true,
+      mandatory,
+    });
+  };
+
+  ensureRequiredField("name", "Full Name", "text", true);
+  ensureRequiredField("address", "Address", "text", true);
+  ensureRequiredField("mobile", "Mobile Number", "phone", true);
+
+  const sourceCustomFields = Array.isArray(source.customFields) ? source.customFields : [];
+  const usedCustomKeys = new Set();
+  const normalizedCustomFields = sourceCustomFields
+    .map((field, index) => {
+      const label = String(field?.label || "").trim();
+      const type = String(field?.type || "text").trim().toLowerCase();
+      const baseKey = sanitizeLeadCustomFieldKey(field?.key || label || `custom_field_${index + 1}`, `custom_field_${index + 1}`);
+
+      let key = baseKey;
+      let duplicateCounter = 2;
+      while (usedCustomKeys.has(key)) {
+        key = `${baseKey}_${duplicateCounter}`;
+        duplicateCounter += 1;
+      }
+      usedCustomKeys.add(key);
+
+      const normalizedType = LEAD_CUSTOM_FIELD_TYPES.includes(type) ? type : "text";
+      const options = normalizeStringList(field?.options);
+
+      return {
+        key,
+        label: label || `Custom Field ${index + 1}`,
+        type: normalizedType,
+        enabled: field?.enabled !== false,
+        mandatory: field?.mandatory === true,
+        options: normalizedType === "select" ? options : [],
+        placeholder: String(field?.placeholder || "").trim(),
+      };
+    })
+    .slice(0, 20);
+
+  const streamInput = source.stream && typeof source.stream === "object" ? source.stream : fallback.stream;
+  const streamOptions = normalizeStringList(streamInput.options || fallback.stream.options);
+
+  return {
+    fields: normalizedFields,
+    customFields: normalizedCustomFields,
+    stream: {
+      enabled: streamInput.enabled !== false,
+      label: String(streamInput.label || fallback.stream.label).trim() || fallback.stream.label,
+      mandatory: streamInput.mandatory === true,
+      allowMultiple: streamInput.allowMultiple !== false,
+      options: streamOptions.length > 0 ? streamOptions : fallback.stream.options,
+    },
+  };
+};
+
+const mapLeadRow = (row) => ({
+  id: Number(row.id),
+  source: String(row.source || "enquiry_now"),
+  name: String(row.name || ""),
+  address: String(row.address || ""),
+  mobile: String(row.mobile || ""),
+  email: String(row.email || ""),
+  streams: Array.isArray(row.streams) ? row.streams.map((item) => String(item || "")).filter(Boolean) : [],
+  status: LEAD_ALLOWED_STATUSES.includes(String(row.status || "").toLowerCase())
+    ? String(row.status || "fresh").toLowerCase()
+    : "fresh",
+  enquiryMessage: String(row.enquiry_message || ""),
+  extraData: row.extra_data && typeof row.extra_data === "object" ? row.extra_data : {},
+  lastFollowUpAt: row.last_follow_up_at,
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const mapLeadFollowUpRow = (row) => ({
+  id: Number(row.id),
+  leadId: Number(row.lead_id),
+  commentText: String(row.comment_text || ""),
+  nextFollowUpAt: row.next_follow_up_at,
+  status: String(row.status || "follow_up"),
+  createdBy: String(row.created_by || ""),
+  createdAt: row.created_at,
+});
+
+const normalizeLeadStatus = (value) => {
+  const normalized = String(value || "fresh").trim().toLowerCase();
+  return LEAD_ALLOWED_STATUSES.includes(normalized) ? normalized : "fresh";
+};
+
 const mapMarketingCampaign = (row) => ({
   id: Number(row.id),
   campaignKey: row.campaign_key,
@@ -283,7 +445,7 @@ const mapMarketingCampaign = (row) => ({
 
 const parseMarketingCampaignPayload = (payload = {}, actor = "") => {
   const contentTypeRaw = String(payload.contentType || "text").trim().toLowerCase();
-  const contentType = ["text", "banner", "video", "pdf", "alert"].includes(contentTypeRaw) ? contentTypeRaw : "text";
+  const contentType = ["text", "banner", "video", "pdf", "alert", "enquiry_form"].includes(contentTypeRaw) ? contentTypeRaw : "text";
   const pageScopeRaw = String(payload.pageScope || "global").trim().toLowerCase();
   const pageScope = pageScopeRaw === "specific" ? "specific" : "global";
   const title = String(payload.title || "").trim();
@@ -618,6 +780,124 @@ const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSu
   return { sent: true };
 };
 
+const sendSmtpMail = async ({ toEmail, subject, text, html }) => {
+  const settings = sanitizePlatformSettings(await getPlatformSettings());
+  const smtp = settings.smtp;
+  if (!smtp.enabled || !smtp.host || !smtp.username || !smtp.password || !toEmail) {
+    return { sent: false, reason: "SMTP not configured" };
+  }
+
+  const platformName = String(settings.siteSettings?.platformName || "Ednovate");
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure === true,
+    auth: {
+      user: smtp.username,
+      pass: smtp.password,
+    },
+  });
+
+  await transporter.sendMail({
+    from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
+    to: String(toEmail).trim().toLowerCase(),
+    replyTo: smtp.replyTo || undefined,
+    subject: String(subject || "Invoice"),
+    text: String(text || ""),
+    html: String(html || ""),
+  });
+
+  return { sent: true };
+};
+
+const formatMoneyInr = (value) => {
+  const amount = Math.max(0, Number(value || 0));
+  return `INR ${amount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+};
+
+const buildInvoiceDocument = ({ orderId, studentName, studentEmail, orderDate, paymentMethod, currency, items, platformName, logoUrl }) => {
+  const safeItems = Array.isArray(items) ? items : [];
+  const total = safeItems.reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0)), 0);
+  const rowsHtml = safeItems.map((item, index) => {
+    const details = [
+      item.itemType ? `Type: ${item.itemType}` : "",
+      item.modeLabel ? `Mode: ${item.modeLabel}` : "",
+      item.bookLabel ? `Book: ${item.bookLabel}` : "",
+    ].filter(Boolean).join(" | ");
+
+    return `
+      <tr>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${index + 1}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${String(item.courseTitle || "Course")}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;color:#4b5563;">${details || "-"}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">${formatMoneyInr(item.amount)}</td>
+      </tr>
+    `;
+  }).join("");
+
+  const headerLogoHtml = logoUrl
+    ? `<img src="${logoUrl}" alt="${platformName}" style="height:36px;object-fit:contain;" />`
+    : `<div style="font-weight:800;font-size:18px;letter-spacing:.08em;color:#1f3c88;">${platformName}</div>`;
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
+      <div style="max-width:780px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
+        <div style="padding:18px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:12px;">
+          <div>${headerLogoHtml}</div>
+          <div style="text-align:right;">
+            <div style="font-size:12px;color:#6b7280;">TAX INVOICE</div>
+            <div style="font-size:14px;font-weight:700;color:#111827;">Order ${String(orderId || "")}</div>
+          </div>
+        </div>
+        <div style="padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;color:#374151;">
+          <div>
+            <div style="font-size:11px;color:#6b7280;">BILLED TO</div>
+            <div style="font-weight:700;color:#111827;">${String(studentName || "Student")}</div>
+            <div>${String(studentEmail || "")}</div>
+          </div>
+          <div style="text-align:right;">
+            <div><span style="color:#6b7280;">Date:</span> ${String(orderDate || "")}</div>
+            <div><span style="color:#6b7280;">Payment:</span> ${String(paymentMethod || "Online")}</div>
+            <div><span style="color:#6b7280;">Currency:</span> ${String(currency || "INR")}</div>
+          </div>
+        </div>
+        <div style="padding:0 20px 20px 20px;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+            <thead>
+              <tr style="background:#f1f5f9;color:#334155;text-align:left;">
+                <th style="padding:10px;">#</th>
+                <th style="padding:10px;">Item</th>
+                <th style="padding:10px;">Details</th>
+                <th style="padding:10px;text-align:right;">Amount</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          <div style="margin-top:16px;text-align:right;">
+            <div style="font-size:12px;color:#6b7280;">Total Payable</div>
+            <div style="font-size:18px;font-weight:800;color:#0f172a;">${formatMoneyInr(total)}</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  `;
+
+  const text = [
+    `${platformName} Invoice`,
+    `Order: ${String(orderId || "")}`,
+    `Student: ${String(studentName || "Student")}`,
+    `Email: ${String(studentEmail || "")}`,
+    `Date: ${String(orderDate || "")}`,
+    `Payment: ${String(paymentMethod || "Online")}`,
+    "",
+    ...safeItems.map((item, index) => `${index + 1}. ${String(item.courseTitle || "Course")} - ${formatMoneyInr(item.amount)}`),
+    "",
+    `Total: ${formatMoneyInr(total)}`,
+  ].join("\n");
+
+  return { html, text, total };
+};
+
 const toBase64Url = (buffer) =>
   buffer
     .toString("base64")
@@ -641,6 +921,7 @@ const ADMIN_MODULES = [
   "homepage",
   "users",
   "orders",
+  "leads",
   "announcements",
   "technical-support",
   "marketing",
@@ -886,6 +1167,8 @@ const resolveStudentSessionFromRequest = async (request) => {
 const getModuleFromPath = (pathName) => {
   if (pathName.startsWith("/api/students") || pathName.startsWith("/api/admin/quick-login")) return "users";
   if (pathName.startsWith("/api/auth/student/support") || pathName.startsWith("/api/admin/technical-support")) return "technical-support";
+  if (pathName.startsWith("/api/admin/lead-form-settings")) return "leads";
+  if (pathName.startsWith("/api/admin/leads")) return "leads";
   if (pathName.startsWith("/api/admin/marketing")) return "marketing";
   if (pathName.startsWith("/api/admin/faculty")) return "faculty";
   if (pathName.startsWith("/api/courses/")) return "courses";
@@ -1005,6 +1288,16 @@ app.post("/api/admin/login", async (request, response) => {
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Admin login failed" });
   }
+});
+
+app.use((error, _request, response, next) => {
+  if (error?.type === "entity.too.large") {
+    response.status(413).json({
+      message: `Upload too large. Max payload is ${bodyLimit}.`,
+    });
+    return;
+  }
+  next(error);
 });
 
 app.get("/api/admin/subadmins", requireAdminPermission("subadmins", "read"), async (_request, response) => {
@@ -1931,6 +2224,42 @@ app.get("/api/auth/student/course-access", requireStudentSession, async (request
   }
 });
 
+app.patch("/api/auth/student/course-access/:courseId/video-quality", requireStudentSession, async (request, response) => {
+  try {
+    const studentId = request.studentSession.studentId;
+    const courseId = String(request.params.courseId || "").trim();
+    const preferredVideoQuality = normalizeVideoQualityPreference(request.body?.preferredVideoQuality);
+
+    if (!courseId) {
+      response.status(400).json({ message: "courseId is required" });
+      return;
+    }
+
+    const updateResult = await pool.query(
+      `
+      UPDATE student_course_access
+      SET preferred_video_quality = $3,
+          updated_at = NOW()
+      WHERE student_id = $1 AND course_id = $2
+      RETURNING *
+      `,
+      [studentId, courseId, preferredVideoQuality],
+    );
+
+    if (updateResult.rowCount === 0) {
+      response.status(404).json({ message: "Course access not found" });
+      return;
+    }
+
+    response.json({
+      ok: true,
+      item: mapStudentCourseAccess(updateResult.rows[0]),
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to update video quality preference" });
+  }
+});
+
 app.post("/api/auth/student/purchase", requireStudentSession, async (request, response) => {
   try {
     const studentId = request.studentSession.studentId;
@@ -2166,6 +2495,76 @@ app.post("/api/auth/student/video-activity", requireStudentSession, async (reque
     response.json({ ok: true });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to log video activity" });
+  }
+});
+
+app.get("/api/auth/student/lesson-note", requireStudentSession, async (request, response) => {
+  try {
+    const studentId = request.studentSession.studentId;
+    const courseId = String(request.query?.courseId || "").trim();
+    const lessonId = String(request.query?.lessonId || "").trim();
+
+    if (!courseId || !lessonId) {
+      response.status(400).json({ message: "courseId and lessonId are required" });
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT note_text, updated_at
+      FROM student_lesson_notes
+      WHERE student_id = $1 AND course_id = $2 AND lesson_id = $3
+      LIMIT 1
+      `,
+      [studentId, courseId, lessonId],
+    );
+
+    response.json({
+      noteText: String(result.rows[0]?.note_text || ""),
+      updatedAt: result.rows[0]?.updated_at || null,
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load lesson note" });
+  }
+});
+
+app.post("/api/auth/student/lesson-note", requireStudentSession, async (request, response) => {
+  try {
+    const studentId = request.studentSession.studentId;
+    const courseId = String(request.body?.courseId || "").trim();
+    const lessonId = String(request.body?.lessonId || "").trim();
+    const chapterTitle = String(request.body?.chapterTitle || "").trim();
+    const lessonTitle = String(request.body?.lessonTitle || "").trim();
+    const noteText = String(request.body?.noteText || "").slice(0, 20000);
+
+    if (!courseId || !lessonId) {
+      response.status(400).json({ message: "courseId and lessonId are required" });
+      return;
+    }
+
+    const upsertResult = await pool.query(
+      `
+      INSERT INTO student_lesson_notes
+      (student_id, course_id, lesson_id, chapter_title, lesson_title, note_text, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,NOW())
+      ON CONFLICT (student_id, course_id, lesson_id)
+      DO UPDATE SET
+        chapter_title = EXCLUDED.chapter_title,
+        lesson_title = EXCLUDED.lesson_title,
+        note_text = EXCLUDED.note_text,
+        updated_at = NOW()
+      RETURNING note_text, updated_at
+      `,
+      [studentId, courseId, lessonId, chapterTitle || null, lessonTitle || null, noteText],
+    );
+
+    response.json({
+      ok: true,
+      noteText: String(upsertResult.rows[0]?.note_text || ""),
+      updatedAt: upsertResult.rows[0]?.updated_at || null,
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save lesson note" });
   }
 });
 
@@ -2703,7 +3102,7 @@ app.patch("/api/admin/orders/:id/dispatch", requireAdminPermission("orders", "ed
     }
 
     const rawStatus = String(request.body?.dispatchStatus || "").trim().toLowerCase();
-    const allowedStatuses = ["pending", "processing", "dispatched", "delivered", "cancelled"];
+    const allowedStatuses = ["pending", "processing", "dispatched", "delivered", "cancelled", "refunded"];
     const dispatchStatus = allowedStatuses.includes(rawStatus) ? rawStatus : "pending";
     const trackingId = String(request.body?.trackingId || "").trim();
     const dispatchNote = String(request.body?.dispatchNote || "").trim();
@@ -2792,6 +3191,191 @@ app.delete("/api/admin/orders/:id", requireAdminPermission("orders", "edit"), as
     response.json({ ok: true, item: mapStudentOrderLine(deleted) });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete order" });
+  }
+});
+
+app.post("/api/admin/orders/:id/send-invoice", requireAdminPermission("orders", "edit"), async (request, response) => {
+  try {
+    const orderLineId = Number(request.params.id || 0);
+    if (!orderLineId || Number.isNaN(orderLineId)) {
+      response.status(400).json({ message: "Valid order line id is required" });
+      return;
+    }
+
+    const lineResult = await pool.query(
+      `
+      SELECT o.*, s.name AS student_name, s.email AS student_email
+      FROM student_orders o
+      JOIN students s ON s.id = o.student_id
+      WHERE o.id = $1
+      LIMIT 1
+      `,
+      [orderLineId],
+    );
+
+    if (lineResult.rowCount === 0) {
+      response.status(404).json({ message: "Order line not found" });
+      return;
+    }
+
+    const line = lineResult.rows[0];
+    const allLinesResult = await pool.query(
+      `
+      SELECT * FROM student_orders
+      WHERE order_id = $1 AND student_id = $2
+      ORDER BY id ASC
+      `,
+      [String(line.order_id || ""), String(line.student_id || "")],
+    );
+
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const platformName = String(settings.siteSettings?.platformName || "Ednovate");
+    const logoUrlRaw = String(settings.siteSettings?.logo || "").trim();
+    const logoUrl = logoUrlRaw && /^https?:\/\//i.test(logoUrlRaw)
+      ? logoUrlRaw
+      : (logoUrlRaw ? `${request.protocol}://${request.get("host")}${logoUrlRaw.startsWith("/") ? "" : "/"}${logoUrlRaw}` : "");
+
+    const invoice = buildInvoiceDocument({
+      orderId: String(line.order_id || ""),
+      studentName: String(line.student_name || "Student"),
+      studentEmail: String(line.student_email || ""),
+      orderDate: String(line.order_date || ""),
+      paymentMethod: String(line.payment_method || "Online"),
+      currency: String(line.currency || "INR"),
+      platformName,
+      logoUrl,
+      items: allLinesResult.rows.map((row) => ({
+        courseTitle: String(row.course_title || "Course"),
+        itemType: String(row.item_type || "course"),
+        modeLabel: String(row.mode_label || ""),
+        bookLabel: String(row.book_label || ""),
+        amount: Number(row.amount || 0),
+      })),
+    });
+
+    const sendResult = await sendSmtpMail({
+      toEmail: String(line.student_email || "").trim().toLowerCase(),
+      subject: `Invoice ${String(line.order_id || "")} - ${platformName}`,
+      text: invoice.text,
+      html: invoice.html,
+    });
+
+    if (!sendResult.sent) {
+      response.status(400).json({ message: sendResult.reason || "Unable to send invoice email" });
+      return;
+    }
+
+    await pool.query(
+      `
+      INSERT INTO student_notifications (student_id, channel, subject, message, status, sent_by)
+      VALUES ($1, 'email', $2, $3, 'sent', 'admin')
+      `,
+      [
+        String(line.student_id || ""),
+        `Invoice Sent: ${String(line.order_id || "")}`,
+        "Your invoice has been sent to your registered email address.",
+      ],
+    );
+
+    response.json({ ok: true });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to send invoice" });
+  }
+});
+
+app.post("/api/admin/orders/:id/refund", requireAdminPermission("orders", "edit"), async (request, response) => {
+  const client = await pool.connect();
+  try {
+    const orderLineId = Number(request.params.id || 0);
+    const refundNote = String(request.body?.refundNote || "").trim();
+
+    if (!orderLineId || Number.isNaN(orderLineId)) {
+      response.status(400).json({ message: "Valid order line id is required" });
+      return;
+    }
+
+    await client.query("BEGIN");
+
+    const existingResult = await client.query(
+      `
+      SELECT *
+      FROM student_orders
+      WHERE id = $1
+      FOR UPDATE
+      `,
+      [orderLineId],
+    );
+
+    if (existingResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      response.status(404).json({ message: "Order line not found" });
+      return;
+    }
+
+    const existing = existingResult.rows[0];
+    const accessCourseIds = new Set();
+    const directCourseId = String(existing.course_id || "").trim();
+    if (directCourseId) accessCourseIds.add(directCourseId);
+    if (Array.isArray(existing.package_course_ids)) {
+      existing.package_course_ids
+        .map((value) => String(value || "").trim())
+        .filter(Boolean)
+        .forEach((value) => accessCourseIds.add(value));
+    }
+
+    const updateResult = await client.query(
+      `
+      UPDATE student_orders
+      SET
+        status = 'refunded',
+        dispatch_status = 'refunded',
+        dispatch_note = CASE
+          WHEN $2 <> '' THEN $2
+          WHEN COALESCE(dispatch_note, '') = '' THEN 'Refunded by admin'
+          ELSE dispatch_note
+        END,
+        refund_note = CASE WHEN $2 <> '' THEN $2 ELSE refund_note END,
+        refunded_at = NOW(),
+        refunded_by = 'admin',
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [orderLineId, refundNote],
+    );
+
+    const updated = updateResult.rows[0];
+
+    const accessIds = Array.from(accessCourseIds);
+    if (accessIds.length > 0) {
+      await client.query(
+        `
+        DELETE FROM student_course_access
+        WHERE student_id = $1 AND course_id = ANY($2::text[])
+        `,
+        [String(updated.student_id || ""), accessIds],
+      );
+    }
+
+    await client.query(
+      `
+      INSERT INTO student_notifications (student_id, channel, subject, message, status, sent_by)
+      VALUES ($1, 'in_app', $2, $3, 'sent', 'admin')
+      `,
+      [
+        String(updated.student_id || ""),
+        `Refund Processed: ${String(updated.course_title || "Course")}`,
+        `Your order ${String(updated.order_id || "")} has been refunded. Course access has been removed.`,
+      ],
+    );
+
+    await client.query("COMMIT");
+    response.json({ ok: true, item: mapStudentOrderLine(updated) });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to refund order" });
+  } finally {
+    client.release();
   }
 });
 
@@ -4511,6 +5095,427 @@ app.put("/api/homepage", requireAdminPermission("homepage", "edit"), async (requ
   }
 });
 
+app.get("/api/lead-form-settings", async (_request, response) => {
+  try {
+    const result = await pool.query("SELECT data FROM lead_form_settings WHERE id = 1 LIMIT 1");
+    const normalized = normalizeLeadFormSettings(result.rows[0]?.data || {});
+    response.json({ settings: normalized });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load lead form settings" });
+  }
+});
+
+app.post("/api/leads/enquiry", async (request, response) => {
+  try {
+    const settingsResult = await pool.query("SELECT data FROM lead_form_settings WHERE id = 1 LIMIT 1");
+    const settings = normalizeLeadFormSettings(settingsResult.rows[0]?.data || {});
+    const body = request.body || {};
+    const fieldMap = Object.fromEntries(settings.fields.map((field) => [field.key, field]));
+
+    const name = String(body.name || "").trim();
+    const address = String(body.address || "").trim();
+    const mobile = String(body.mobile || "").replace(/\D/g, "").slice(-10);
+    const email = String(body.email || "").trim();
+    const enquiryMessage = String(body.message || "").trim();
+    const source = String(body.source || "enquiry_now").trim().toLowerCase() || "enquiry_now";
+    const streams = normalizeStringList(Array.isArray(body.streams) ? body.streams : [body.streams]);
+    const submittedCustomValues = body.customFieldValues && typeof body.customFieldValues === "object"
+      ? body.customFieldValues
+      : {};
+
+    if (fieldMap.name?.enabled !== false && fieldMap.name?.mandatory && !name) {
+      response.status(400).json({ message: "Name is required" });
+      return;
+    }
+
+    if (fieldMap.address?.enabled !== false && fieldMap.address?.mandatory && !address) {
+      response.status(400).json({ message: "Address is required" });
+      return;
+    }
+
+    if (fieldMap.mobile?.enabled !== false && fieldMap.mobile?.mandatory && mobile.length !== 10) {
+      response.status(400).json({ message: "Valid 10-digit mobile number is required" });
+      return;
+    }
+
+    if (fieldMap.email?.enabled !== false && email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      response.status(400).json({ message: "Enter a valid email address" });
+      return;
+    }
+
+    const allowedStreamOptions = new Set(settings.stream.options.map((item) => item.toLowerCase()));
+    const sanitizedStreams = streams.filter((item) => allowedStreamOptions.has(item.toLowerCase()));
+
+    if (settings.stream.enabled && settings.stream.mandatory && sanitizedStreams.length === 0) {
+      response.status(400).json({ message: "Please select at least one stream" });
+      return;
+    }
+
+    const finalStreams = settings.stream.allowMultiple ? sanitizedStreams : sanitizedStreams.slice(0, 1);
+
+    const customFieldValues = {};
+
+    for (const customField of settings.customFields || []) {
+      if (customField.enabled === false) continue;
+
+      const rawValue = submittedCustomValues[customField.key];
+      if (customField.type === "select") {
+        const selected = String(rawValue || "").trim();
+        if (customField.mandatory && !selected) {
+          response.status(400).json({ message: `${customField.label} is required` });
+          return;
+        }
+
+        if (selected) {
+          const allowed = new Set((customField.options || []).map((item) => String(item || "").toLowerCase()));
+          if (!allowed.has(selected.toLowerCase())) {
+            response.status(400).json({ message: `Invalid value selected for ${customField.label}` });
+            return;
+          }
+          customFieldValues[customField.key] = selected;
+        }
+        continue;
+      }
+
+      if (customField.type === "number") {
+        const textValue = String(rawValue ?? "").trim();
+        if (customField.mandatory && !textValue) {
+          response.status(400).json({ message: `${customField.label} is required` });
+          return;
+        }
+        if (textValue) {
+          const numberValue = Number(textValue);
+          if (!Number.isFinite(numberValue)) {
+            response.status(400).json({ message: `${customField.label} must be a valid number` });
+            return;
+          }
+          customFieldValues[customField.key] = numberValue;
+        }
+        continue;
+      }
+
+      const textValue = String(rawValue ?? "").trim();
+      if (customField.mandatory && !textValue) {
+        response.status(400).json({ message: `${customField.label} is required` });
+        return;
+      }
+      if (textValue) {
+        customFieldValues[customField.key] = textValue;
+      }
+    }
+
+    const rawExtraData = body.extraData && typeof body.extraData === "object" ? body.extraData : {};
+    const extraData = {
+      ...rawExtraData,
+      customFieldValues,
+    };
+
+    const insertResult = await pool.query(
+      `
+      INSERT INTO enquiry_leads
+      (source, name, address, mobile, email, streams, status, enquiry_message, extra_data, created_at, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6::jsonb,'fresh',$7,$8::jsonb,NOW(),NOW())
+      RETURNING *
+      `,
+      [
+        source,
+        name,
+        address,
+        mobile,
+        email || null,
+        JSON.stringify(finalStreams),
+        enquiryMessage || null,
+        JSON.stringify(extraData),
+      ],
+    );
+
+    response.status(201).json({ ok: true, item: mapLeadRow(insertResult.rows[0]) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to submit enquiry" });
+  }
+});
+
+app.get("/api/admin/lead-form-settings", requireAdminPermission("leads", "read"), async (_request, response) => {
+  try {
+    const result = await pool.query("SELECT data FROM lead_form_settings WHERE id = 1 LIMIT 1");
+    const settings = normalizeLeadFormSettings(result.rows[0]?.data || {});
+    response.json({ settings });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load lead form settings" });
+  }
+});
+
+app.put("/api/admin/lead-form-settings", requireAdminPermission("leads", "edit"), async (request, response) => {
+  try {
+    const incoming = request.body?.settings && typeof request.body.settings === "object" ? request.body.settings : {};
+    const settings = normalizeLeadFormSettings(incoming);
+
+    await pool.query(
+      `
+      INSERT INTO lead_form_settings (id, data, updated_at)
+      VALUES (1, $1::jsonb, NOW())
+      ON CONFLICT (id)
+      DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()
+      `,
+      [JSON.stringify(settings)],
+    );
+
+    response.json({ ok: true, settings });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save lead form settings" });
+  }
+});
+
+app.get("/api/admin/leads", requireAdminPermission("leads", "read"), async (request, response) => {
+  try {
+    const search = String(request.query.search || "").trim().toLowerCase();
+    const status = normalizeLeadStatus(String(request.query.status || "all").trim().toLowerCase());
+    const rawStatus = String(request.query.status || "all").trim().toLowerCase();
+    const source = String(request.query.source || "all").trim().toLowerCase();
+    const stream = String(request.query.stream || "").trim().toLowerCase();
+    const from = String(request.query.from || "").trim();
+    const to = String(request.query.to || "").trim();
+    const limit = Math.max(10, Math.min(2000, Number(request.query.limit || 500)));
+
+    const where = [];
+    const params = [];
+    let index = 1;
+
+    if (search) {
+      where.push(`(
+        LOWER(l.name) LIKE $${index}
+        OR LOWER(l.mobile) LIKE $${index}
+        OR LOWER(COALESCE(l.email, '')) LIKE $${index}
+        OR LOWER(COALESCE(l.address, '')) LIKE $${index}
+      )`);
+      params.push(`%${search}%`);
+      index += 1;
+    }
+
+    if (rawStatus !== "all") {
+      where.push(`LOWER(l.status) = $${index}`);
+      params.push(status);
+      index += 1;
+    }
+
+    if (source !== "all") {
+      where.push(`LOWER(l.source) = $${index}`);
+      params.push(source);
+      index += 1;
+    }
+
+    if (stream) {
+      where.push(`EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(COALESCE(l.streams, '[]'::jsonb)) AS s(value)
+        WHERE LOWER(s.value) = $${index}
+      )`);
+      params.push(stream);
+      index += 1;
+    }
+
+    if (from) {
+      const parsed = new Date(from);
+      if (!Number.isNaN(parsed.getTime())) {
+        where.push(`l.created_at >= $${index}`);
+        params.push(parsed.toISOString());
+        index += 1;
+      }
+    }
+
+    if (to) {
+      const parsed = new Date(to);
+      if (!Number.isNaN(parsed.getTime())) {
+        where.push(`l.created_at <= $${index}`);
+        params.push(parsed.toISOString());
+        index += 1;
+      }
+    }
+
+    const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+
+    params.push(limit);
+    const listResult = await pool.query(
+      `
+      SELECT
+        l.*,
+        COUNT(f.id)::int AS follow_up_count,
+        MAX(f.created_at) AS latest_follow_up_at
+      FROM enquiry_leads l
+      LEFT JOIN lead_follow_ups f ON f.lead_id = l.id
+      ${whereClause}
+      GROUP BY l.id
+      ORDER BY l.created_at DESC
+      LIMIT $${index}
+      `,
+      params,
+    );
+
+    const summaryResult = await pool.query(
+      `
+      SELECT
+        COUNT(*)::int AS total,
+        COUNT(*) FILTER (WHERE LOWER(status) = 'fresh')::int AS fresh_count,
+        COUNT(*) FILTER (WHERE LOWER(status) = 'follow_up')::int AS follow_up_count,
+        COUNT(*) FILTER (WHERE LOWER(status) = 'qualified')::int AS qualified_count,
+        COUNT(*) FILTER (WHERE LOWER(status) = 'won')::int AS won_count,
+        COUNT(*) FILTER (WHERE LOWER(status) = 'lost')::int AS lost_count
+      FROM enquiry_leads
+      `,
+    );
+
+    const summary = summaryResult.rows[0] || {};
+    const items = listResult.rows.map((row) => ({
+      ...mapLeadRow(row),
+      followUpCount: Number(row.follow_up_count || 0),
+      latestFollowUpAt: row.latest_follow_up_at,
+    }));
+
+    response.json({
+      items,
+      summary: {
+        total: Number(summary.total || 0),
+        freshCount: Number(summary.fresh_count || 0),
+        followUpCount: Number(summary.follow_up_count || 0),
+        qualifiedCount: Number(summary.qualified_count || 0),
+        wonCount: Number(summary.won_count || 0),
+        lostCount: Number(summary.lost_count || 0),
+      },
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load leads" });
+  }
+});
+
+app.get("/api/admin/leads/:id", requireAdminPermission("leads", "read"), async (request, response) => {
+  try {
+    const leadId = Number(request.params.id || 0);
+    if (!leadId || Number.isNaN(leadId)) {
+      response.status(400).json({ message: "Valid lead id is required" });
+      return;
+    }
+
+    const [leadResult, followUpsResult] = await Promise.all([
+      pool.query("SELECT * FROM enquiry_leads WHERE id = $1 LIMIT 1", [leadId]),
+      pool.query("SELECT * FROM lead_follow_ups WHERE lead_id = $1 ORDER BY created_at DESC", [leadId]),
+    ]);
+
+    if (leadResult.rowCount === 0) {
+      response.status(404).json({ message: "Lead not found" });
+      return;
+    }
+
+    response.json({
+      lead: mapLeadRow(leadResult.rows[0]),
+      followUps: followUpsResult.rows.map(mapLeadFollowUpRow),
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load lead details" });
+  }
+});
+
+app.patch("/api/admin/leads/:id", requireAdminPermission("leads", "edit"), async (request, response) => {
+  try {
+    const leadId = Number(request.params.id || 0);
+    const nextStatus = normalizeLeadStatus(request.body?.status || "fresh");
+    if (!leadId || Number.isNaN(leadId)) {
+      response.status(400).json({ message: "Valid lead id is required" });
+      return;
+    }
+
+    const updateResult = await pool.query(
+      `
+      UPDATE enquiry_leads
+      SET status = $2,
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [leadId, nextStatus],
+    );
+
+    if (updateResult.rowCount === 0) {
+      response.status(404).json({ message: "Lead not found" });
+      return;
+    }
+
+    response.json({ item: mapLeadRow(updateResult.rows[0]) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to update lead" });
+  }
+});
+
+app.post("/api/admin/leads/:id/follow-ups", requireAdminPermission("leads", "edit"), async (request, response) => {
+  const client = await pool.connect();
+  try {
+    const leadId = Number(request.params.id || 0);
+    const commentText = String(request.body?.commentText || "").trim();
+    const status = normalizeLeadStatus(request.body?.status || "follow_up");
+    const createdBy = String(request.adminSession?.admin?.email || request.adminSession?.admin?.id || "admin");
+    const nextFollowUpRaw = String(request.body?.nextFollowUpAt || "").trim();
+    const nextFollowUpAt = nextFollowUpRaw ? new Date(nextFollowUpRaw) : null;
+
+    if (!leadId || Number.isNaN(leadId)) {
+      response.status(400).json({ message: "Valid lead id is required" });
+      return;
+    }
+
+    if (!commentText) {
+      response.status(400).json({ message: "Follow-up comment is required" });
+      return;
+    }
+
+    if (nextFollowUpAt && Number.isNaN(nextFollowUpAt.getTime())) {
+      response.status(400).json({ message: "Invalid next follow-up date" });
+      return;
+    }
+
+    await client.query("BEGIN");
+
+    const leadResult = await client.query("SELECT id FROM enquiry_leads WHERE id = $1 FOR UPDATE", [leadId]);
+    if (leadResult.rowCount === 0) {
+      await client.query("ROLLBACK");
+      response.status(404).json({ message: "Lead not found" });
+      return;
+    }
+
+    const followResult = await client.query(
+      `
+      INSERT INTO lead_follow_ups
+      (lead_id, comment_text, next_follow_up_at, status, created_by, created_at)
+      VALUES ($1,$2,$3,$4,$5,NOW())
+      RETURNING *
+      `,
+      [leadId, commentText, nextFollowUpAt ? nextFollowUpAt.toISOString() : null, status, createdBy],
+    );
+
+    const leadUpdateResult = await client.query(
+      `
+      UPDATE enquiry_leads
+      SET
+        status = $2,
+        last_follow_up_at = NOW(),
+        updated_at = NOW()
+      WHERE id = $1
+      RETURNING *
+      `,
+      [leadId, status],
+    );
+
+    await client.query("COMMIT");
+    response.json({
+      ok: true,
+      followUp: mapLeadFollowUpRow(followResult.rows[0]),
+      lead: mapLeadRow(leadUpdateResult.rows[0]),
+    });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to add follow-up" });
+  } finally {
+    client.release();
+  }
+});
+
 app.post("/api/uploads/image", requireAdminPermission("course-content", "create"), async (request, response) => {
   try {
     const fileName = sanitizeFileName(request.body?.fileName || `image-${Date.now()}.png`);
@@ -4535,20 +5540,32 @@ app.post("/api/uploads/bunny-video", requireAdminPermission("course-content", "c
   try {
     const platformSettings = await getPlatformSettings();
     const bunnySettings = sanitizePlatformSettings(platformSettings).bunnyStreamApi;
+    const forceStorageUpload = String(request.headers["x-force-storage"] || request.body?.forceStorage || "") === "1";
 
-    const fileName = sanitizeFileName(request.body?.fileName || `video-${Date.now()}.mp4`);
-    const binary = decodeBase64File(request.body?.base64Data);
-    if (!binary) {
+    const rawFileNameHeader = String(request.headers["x-file-name"] || "").trim();
+    const decodedFileName = (() => {
+      if (!rawFileNameHeader) return "";
+      try {
+        return decodeURIComponent(rawFileNameHeader);
+      } catch {
+        return rawFileNameHeader;
+      }
+    })();
+    const headerFolder = String(request.headers["x-upload-folder"] || "").trim();
+    const fileName = sanitizeFileName(decodedFileName || request.body?.fileName || `video-${Date.now()}.mp4`);
+    const isRawUpload = !request.body?.base64Data && Number(request.headers["content-length"] || 0) > 0;
+    const binary = isRawUpload ? null : decodeBase64File(request.body?.base64Data);
+    if (!isRawUpload && !binary) {
       response.status(400).json({ message: "base64Data is required" });
       return;
     }
 
     // Prefer Bunny Stream upload using admin-configured Library ID + API Key.
-    if (bunnySettings.enabled && bunnySettings.libraryId && bunnySettings.apiKey) {
+    if (!forceStorageUpload && bunnySettings.enabled && bunnySettings.libraryId && bunnySettings.apiKey) {
       const title = fileName.replace(/\.[a-z0-9]+$/i, "") || `video-${Date.now()}`;
 
       const createRes = await fetch(
-        `https://api.bunnycdn.com/videolibrary/${encodeURIComponent(bunnySettings.libraryId)}/videos`,
+        `https://video.bunnycdn.com/library/${encodeURIComponent(bunnySettings.libraryId)}/videos`,
         {
           method: "POST",
           headers: {
@@ -4578,9 +5595,10 @@ app.post("/api/uploads/bunny-video", requireAdminPermission("course-content", "c
           method: "PUT",
           headers: {
             AccessKey: bunnySettings.apiKey,
-            "Content-Type": request.body?.mimeType || "application/octet-stream",
+            "Content-Type": String(request.headers["content-type"] || request.body?.mimeType || "application/octet-stream"),
           },
-          body: binary,
+          body: isRawUpload ? request : binary,
+          ...(isRawUpload ? { duplex: "half" } : {}),
         },
       );
 
@@ -4604,7 +5622,7 @@ app.post("/api/uploads/bunny-video", requireAdminPermission("course-content", "c
       return;
     }
 
-    const folder = sanitizeFileName(request.body?.folder || "videos");
+    const folder = sanitizeFileName(headerFolder || request.body?.folder || "videos");
     const remotePath = `${folder}/${Date.now()}-${fileName}`;
 
     const host = region ? `${region}.storage.bunnycdn.com` : "storage.bunnycdn.com";
@@ -4613,9 +5631,10 @@ app.post("/api/uploads/bunny-video", requireAdminPermission("course-content", "c
       method: "PUT",
       headers: {
         AccessKey: accessKey,
-        "Content-Type": request.body?.mimeType || "application/octet-stream",
+        "Content-Type": String(request.headers["content-type"] || request.body?.mimeType || "application/octet-stream"),
       },
-      body: binary,
+      body: isRawUpload ? request : binary,
+      ...(isRawUpload ? { duplex: "half" } : {}),
     });
 
     if (!bunnyRes.ok) {
@@ -4627,7 +5646,11 @@ app.post("/api/uploads/bunny-video", requireAdminPermission("course-content", "c
     const url = publicBase ? `${publicBase.replace(/\/$/, "")}/${remotePath}` : uploadUrl;
     response.json({ url, remotePath });
   } catch (error) {
-    response.status(500).json({ message: error instanceof Error ? error.message : "Video upload failed" });
+    const base = error instanceof Error ? error.message : "Video upload failed";
+    const cause = error && typeof error === "object" && "cause" in error
+      ? (error.cause instanceof Error ? error.cause.message : String(error.cause || ""))
+      : "";
+    response.status(500).json({ message: cause ? `${base} | cause: ${cause}` : base });
   }
 });
 
@@ -4675,6 +5698,60 @@ app.post("/api/bunny/signed-playback", async (request, response) => {
     });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to generate signed playback URL" });
+  }
+});
+
+app.get("/api/admin/bunny/video-duration/:videoId", requireAdminPermission("course-content", "read"), async (request, response) => {
+  try {
+    const rawVideoId = String(request.params?.videoId || "").trim();
+    if (!rawVideoId) {
+      response.status(400).json({ message: "videoId is required" });
+      return;
+    }
+
+    const videoId = sanitizeFileName(rawVideoId);
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const bunny = settings.bunnyStreamApi || {};
+
+    if (!bunny.enabled || !bunny.libraryId || !bunny.apiKey) {
+      response.status(400).json({ message: "Bunny Stream is not configured" });
+      return;
+    }
+
+    const metaRes = await fetch(
+      `https://video.bunnycdn.com/library/${encodeURIComponent(bunny.libraryId)}/videos/${encodeURIComponent(videoId)}`,
+      {
+        method: "GET",
+        headers: {
+          AccessKey: bunny.apiKey,
+          Accept: "application/json",
+        },
+      },
+    );
+
+    if (!metaRes.ok) {
+      const raw = await metaRes.text();
+      response.status(502).json({ message: "Bunny Stream metadata fetch failed", details: raw.slice(0, 500) });
+      return;
+    }
+
+    const meta = await metaRes.json().catch(() => ({}));
+    const durationCandidates = [
+      Number(meta?.length),
+      Number(meta?.duration),
+      Number(meta?.videoLength),
+      Number(meta?.metaTags?.duration),
+    ].filter((value) => Number.isFinite(value) && value > 0);
+    const durationSeconds = durationCandidates.length > 0 ? Math.floor(durationCandidates[0]) : 0;
+
+    response.json({
+      videoId,
+      durationSeconds,
+      ready: durationSeconds > 0,
+      status: String(meta?.status || meta?.encodeProgress || "processing"),
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load Bunny video duration" });
   }
 });
 

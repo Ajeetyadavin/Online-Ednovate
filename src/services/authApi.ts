@@ -281,6 +281,7 @@ export interface StudentCourseAccessSelf {
   usedWatchSeconds?: number;
   remainingWatchSeconds?: number;
   isEnabled: boolean;
+  preferredVideoQuality?: "auto" | "high" | "medium" | "low";
   createdAt?: string;
 }
 
@@ -294,6 +295,11 @@ export interface StudentWatchProgressResult {
   consumedSeconds: number;
   access: StudentCourseAccessSelf;
   accessActive: boolean;
+}
+
+export interface StudentLessonNoteResult {
+  noteText: string;
+  updatedAt?: string | null;
 }
 
 export interface StudentDashboardData {
@@ -455,6 +461,35 @@ export const getStudentCourseAccessApi = async (): Promise<AuthActionResult<Stud
   }
 };
 
+export const updateStudentCourseVideoQualityApi = async (payload: {
+  courseId: string;
+  preferredVideoQuality: "auto" | "high" | "medium" | "low";
+}): Promise<AuthActionResult<StudentCourseAccessSelf>> => {
+  try {
+    const response = await fetch(
+      `/api/auth/student/course-access/${encodeURIComponent(payload.courseId)}/video-quality`,
+      {
+        method: "PATCH",
+        headers: authHeaders(),
+        body: JSON.stringify({ preferredVideoQuality: payload.preferredVideoQuality }),
+      },
+    );
+    const parsed = await parseResponseMessage(response, "Failed to update video quality setting.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    const item = (parsed.payload as { item?: StudentCourseAccessSelf })?.item;
+    return {
+      ok: true,
+      message: "Saved",
+      data: item,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to update video quality setting." };
+  }
+};
+
 export const recordStudentVideoActivityApi = async (payload: {
   courseId: string;
   chapterTitle?: string;
@@ -598,6 +633,58 @@ export const completeStudentLessonApi = async (payload: {
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Failed to complete lesson." };
+  }
+};
+
+export const getStudentLessonNoteApi = async (
+  courseId: string,
+  lessonId: string,
+): Promise<AuthActionResult<StudentLessonNoteResult>> => {
+  try {
+    const query = new URLSearchParams({ courseId, lessonId });
+    const response = await fetch(`/api/auth/student/lesson-note?${query.toString()}`, {
+      headers: authHeaders(false),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to load lesson note.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    return {
+      ok: true,
+      message: "Loaded",
+      data: parsed.payload as StudentLessonNoteResult,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to load lesson note." };
+  }
+};
+
+export const saveStudentLessonNoteApi = async (payload: {
+  courseId: string;
+  lessonId: string;
+  chapterTitle?: string;
+  lessonTitle?: string;
+  noteText: string;
+}): Promise<AuthActionResult<StudentLessonNoteResult>> => {
+  try {
+    const response = await fetch("/api/auth/student/lesson-note", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify(payload),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to save lesson note.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
+
+    return {
+      ok: true,
+      message: parsed.message,
+      data: parsed.payload as StudentLessonNoteResult,
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to save lesson note." };
   }
 };
 

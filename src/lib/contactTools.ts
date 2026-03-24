@@ -2,7 +2,12 @@ export interface EnquiryLead {
   id: string;
   name: string;
   location: string;
+  address?: string;
   mobile: string;
+  email?: string;
+  message?: string;
+  streams?: string[];
+  source?: string;
   createdAt: string;
 }
 
@@ -41,7 +46,12 @@ const readStoredLeads = (): EnquiryLead[] => {
         id: String(item.id || ""),
         name: String(item.name || ""),
         location: String(item.location || ""),
+        address: String(item.address || item.location || ""),
         mobile: String(item.mobile || ""),
+        email: String(item.email || ""),
+        message: String(item.message || ""),
+        streams: Array.isArray(item.streams) ? item.streams.map((entry) => String(entry || "")).filter(Boolean) : [],
+        source: String(item.source || "enquiry_now"),
         createdAt: String(item.createdAt || ""),
       }))
       .filter((item) => item.id && item.name && item.mobile && item.createdAt);
@@ -70,13 +80,44 @@ export const createEnquiryLead = (lead: Omit<EnquiryLead, "id" | "createdAt">) =
       ? crypto.randomUUID()
       : `lead-${Date.now()}`,
     name: lead.name.trim(),
-    location: lead.location.trim(),
+    location: String(lead.location || lead.address || "").trim(),
+    address: String(lead.address || lead.location || "").trim(),
     mobile: lead.mobile.trim(),
+    email: String(lead.email || "").trim(),
+    message: String(lead.message || "").trim(),
+    streams: Array.isArray(lead.streams) ? lead.streams.map((item) => String(item || "").trim()).filter(Boolean) : [],
+    source: String(lead.source || "enquiry_now").trim() || "enquiry_now",
     createdAt: new Date().toISOString(),
   };
 
-  writeStoredLeads([nextLead, ...getEnquiryLeads()]);
-  return nextLead;
+  const payload = {
+    source: nextLead.source,
+    name: nextLead.name,
+    address: nextLead.address,
+    mobile: nextLead.mobile,
+    email: nextLead.email,
+    message: nextLead.message,
+    streams: nextLead.streams,
+  };
+
+  return fetch("/api/leads/enquiry", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  })
+    .then(async (response) => {
+      if (!response.ok) {
+        const maybeJson = await response.json().catch(() => null);
+        throw new Error(maybeJson?.message || `Request failed with ${response.status}`);
+      }
+      return response.json().catch(() => ({ ok: true }));
+    })
+    .then(() => nextLead)
+    .catch(() => {
+      // Keep a local fallback for resilience when API is unavailable.
+      writeStoredLeads([nextLead, ...getEnquiryLeads()]);
+      return nextLead;
+    });
 };
 
 export const deleteEnquiryLead = (id: string) => {

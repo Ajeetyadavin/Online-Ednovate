@@ -23,10 +23,13 @@ import {
 import { decodeVideoUrl } from "@/lib/video-utils";
 import { isCourseAccessActive } from "@/lib/studentAccess";
 import { adminApi } from "@/services/adminApi";
+import { toast } from "@/hooks/use-toast";
 import {
   completeStudentLessonApi,
+  getStudentLessonNoteApi,
   getStudentCourseAccessApi,
   recordStudentVideoActivityApi,
+  saveStudentLessonNoteApi,
   syncStudentWatchProgressApi,
   type StudentCourseAccessSelf,
 } from "@/services/authApi";
@@ -59,14 +62,20 @@ const CourseLMS = () => {
   const [curriculum, setCurriculum] = useState<Chapter[]>([]);
   const [activeLesson, setActiveLesson] = useState<Lesson | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [openChapterIds, setOpenChapterIds] = useState<string[]>([]);
   const playerShellRef = useRef<HTMLDivElement | null>(null);
   const [isPlayerFullscreen, setIsPlayerFullscreen] = useState(false);
   const [isContentExpanded, setIsContentExpanded] = useState(false);
+  const [isLessonMetaExpanded, setIsLessonMetaExpanded] = useState(false);
+  const [lessonNotesDraft, setLessonNotesDraft] = useState("");
+  const [isNotesLoading, setIsNotesLoading] = useState(false);
+  const [isNotesSaving, setIsNotesSaving] = useState(false);
 
   useEffect(() => {
     if (!course) {
       setCurriculum([]);
       setActiveLesson(null);
+      setOpenChapterIds([]);
       return;
     }
 
@@ -153,6 +162,43 @@ const CourseLMS = () => {
   const allLessons = curriculum.flatMap((ch) => ch.lessons);
   const currentLessonId = activeLesson?.id || allLessons[0]?.id || "";
   const currentChapter = curriculum.find((ch) => ch.lessons.some((l) => l.id === currentLessonId));
+  const notesStorageKey = course?.id && currentLessonId
+    ? `lms-notes:${course.id}:${currentLessonId}`
+    : "";
+
+  useEffect(() => {
+    if (!notesStorageKey) {
+      setLessonNotesDraft("");
+      return;
+    }
+
+    let ignore = false;
+    setIsNotesLoading(true);
+
+    getStudentLessonNoteApi(course?.id || "", currentLessonId)
+      .then((result) => {
+        if (ignore) return;
+        if (!result.ok) {
+          setLessonNotesDraft("");
+          return;
+        }
+        setLessonNotesDraft(String(result.data?.noteText || ""));
+      })
+      .catch(() => {
+        if (!ignore) {
+          setLessonNotesDraft("");
+        }
+      })
+      .finally(() => {
+        if (!ignore) {
+          setIsNotesLoading(false);
+        }
+      });
+
+    return () => {
+      ignore = true;
+    };
+  }, [notesStorageKey]);
 
   useEffect(() => {
     if (!course?.id || !activeLesson?.id) return;
@@ -188,10 +234,12 @@ const CourseLMS = () => {
   const currentIndex = allLessons.findIndex((l) => l.id === currentLessonId);
   const isLessonAccessible = (lesson: Lesson) => !lesson.locked || Boolean(lesson.isPreview);
 
-  const handleLessonClick = (lesson: Lesson) => {
+  const handleLessonClick = (lesson: Lesson, chapterId: string) => {
     if (!isLessonAccessible(lesson)) return;
     setActiveLesson(lesson);
+    setOpenChapterIds((prev) => (prev.includes(chapterId) ? prev : [...prev, chapterId]));
     setSidebarOpen(false);
+    setIsLessonMetaExpanded(false);
   };
 
   const goToNextLesson = () => {
@@ -458,6 +506,7 @@ const CourseLMS = () => {
 
   const lessonVideoUrl = decodeVideoUrl(activeLesson.videoUrl || "") || fallbackVideoUrl;
   const lessonVideoSource = activeLesson.videoSource || "direct";
+  const preferredQualityMode = accessItem?.preferredVideoQuality || "auto";
   const isUnlimitedViews = accessItem?.isUnlimitedViews === true;
   const baseRemainingWatchSeconds = Math.max(
     0,
@@ -474,7 +523,7 @@ const CourseLMS = () => {
       })()
     : "No expiry";
 
-  const watermarkEmail = user?.email?.trim() || "";
+  const watermarkMobile = String(user?.mobile || "").trim();
 
   const togglePlayerFullscreen = async () => {
     const container = playerShellRef.current;
@@ -489,6 +538,31 @@ const CourseLMS = () => {
     } catch {
       // Ignore fullscreen API failures and keep normal mode.
     }
+  };
+
+  const handleSaveNotes = async () => {
+    if (!course?.id || !currentLessonId) return;
+
+    setIsNotesSaving(true);
+    const result = await saveStudentLessonNoteApi({
+      courseId: course.id,
+      lessonId: currentLessonId,
+      chapterTitle: currentChapter?.title || "",
+      lessonTitle: activeLesson?.title || "",
+      noteText: lessonNotesDraft,
+    });
+    setIsNotesSaving(false);
+
+    if (!result.ok) {
+      toast({
+        title: "Save failed",
+        description: result.message || "Could not save notes.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    toast({ title: "Notes saved", description: "Your notes are synced to your account." });
   };
 
   return (
@@ -553,7 +627,12 @@ const CourseLMS = () => {
 
           {/* Lessons List */}
           <div className="flex-1 overflow-y-auto scrollbar-thin">
-            <Accordion type="multiple" defaultValue={["ch1", "ch2"]} className="w-full">
+            <Accordion
+              type="multiple"
+              value={openChapterIds}
+              onValueChange={setOpenChapterIds}
+              className="w-full"
+            >
               {curriculum.map((chapter, chIdx) => {
                 const chCompleted = chapter.lessons.filter((l) => l.completed).length;
                 const isActiveChapter = chapter.lessons.some((l) => l.id === activeLesson.id);
@@ -582,7 +661,7 @@ const CourseLMS = () => {
                       {chapter.lessons.map((lesson, lIdx) => (
                         <button
                           key={lesson.id}
-                          onClick={() => handleLessonClick(lesson)}
+                          onClick={() => handleLessonClick(lesson, chapter.id)}
                           disabled={!isLessonAccessible(lesson)}
                           className={`w-full flex items-center gap-3 px-4 py-2.5 text-left transition-all duration-200 group
                             ${activeLesson.id === lesson.id 
@@ -661,6 +740,8 @@ const CourseLMS = () => {
                     autoplay
                     controls
                     disableNativeFullscreen
+                    restrictControls
+                    preferredQualityMode={preferredQualityMode}
                     aspectRatio="aspect-video"
                     onProgress={({ currentTime, duration, progressPercent }) => {
                       setCurrentTimeSec(currentTime);
@@ -695,11 +776,11 @@ const CourseLMS = () => {
                   />
                   </div>
 
-                  {watermarkEmail && (
+                  {watermarkMobile && (
                     <div className="pointer-events-none absolute inset-0 select-none">
-                      <span className="absolute left-[6%] top-[14%] text-white/35 text-[10px] sm:text-xs font-semibold tracking-wide max-w-[70%] truncate">{watermarkEmail}</span>
-                      <span className="absolute right-[8%] top-[48%] text-white/30 text-[10px] sm:text-xs font-semibold tracking-wide max-w-[70%] truncate">{watermarkEmail}</span>
-                      <span className="absolute left-[24%] bottom-[12%] text-white/30 text-[10px] sm:text-xs font-semibold tracking-wide max-w-[70%] truncate">{watermarkEmail}</span>
+                      <span className="absolute left-[6%] top-[14%] text-white/35 text-[10px] sm:text-xs font-semibold tracking-wide max-w-[70%] truncate">{watermarkMobile}</span>
+                      <span className="absolute right-[8%] top-[48%] text-white/30 text-[10px] sm:text-xs font-semibold tracking-wide max-w-[70%] truncate">{watermarkMobile}</span>
+                      <span className="absolute left-[24%] bottom-[12%] text-white/30 text-[10px] sm:text-xs font-semibold tracking-wide max-w-[70%] truncate">{watermarkMobile}</span>
                     </div>
                   )}
                 </>
@@ -749,11 +830,29 @@ const CourseLMS = () => {
           {/* Lesson Info Bar */}
           <div className="bg-card border-b border-border px-4 md:px-6 py-3">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-              <div className="flex items-center gap-3 min-w-0">
-                <div className="flex items-center gap-1.5">
+              <div className="min-w-0 flex-1">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0 flex-1">
+                    <h2 className="text-sm md:text-base font-bold text-foreground leading-tight break-words sm:truncate">{activeLesson.title}</h2>
+                    <p className="text-[11px] text-muted-foreground break-words sm:truncate mt-0.5">
+                      {currentChapter?.title} • {activeLesson.duration}
+                    </p>
+                  </div>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="sm:hidden h-7 px-2 text-[11px] font-semibold"
+                    onClick={() => setIsLessonMetaExpanded((prev) => !prev)}
+                  >
+                    {isLessonMetaExpanded ? "Hide details" : "Show details"}
+                  </Button>
+                </div>
+
+                <div className={`${isLessonMetaExpanded ? "flex" : "hidden"} sm:flex flex-wrap items-center gap-1.5 mt-2`}>
                   <Badge variant="outline" className={`text-[10px] font-bold border-0 px-2 py-0.5
-                    ${activeLesson.type === "video" ? "bg-primary/8 text-primary" : 
-                      activeLesson.type === "pdf" ? "bg-muted text-muted-foreground" : 
+                    ${activeLesson.type === "video" ? "bg-primary/8 text-primary" :
+                      activeLesson.type === "pdf" ? "bg-muted text-muted-foreground" :
                       "bg-accent/8 text-accent"
                     }`}>
                     {activeLesson.type === "video" ? "VIDEO" : activeLesson.type === "pdf" ? "PDF" : "QUIZ"}
@@ -767,19 +866,13 @@ const CourseLMS = () => {
                     <Badge className="bg-green-100 text-green-700 text-[10px] border-0">Preview</Badge>
                   )}
                   {!isUnlimitedViews && (
-                    <Badge className="bg-rose-100 text-rose-700 text-[10px] border-0">
+                    <Badge className="bg-rose-100 text-rose-700 text-[10px] border-0 whitespace-nowrap">
                       Watch Time: {formatHms(remainingWatchSeconds)}
                     </Badge>
                   )}
-                  <Badge className="bg-indigo-100 text-indigo-700 text-[10px] border-0">
+                  <Badge className="bg-indigo-100 text-indigo-700 text-[10px] border-0 whitespace-nowrap">
                     Validity: {validityLeftLabel}
                   </Badge>
-                </div>
-                <div className="min-w-0">
-                  <h2 className="text-sm md:text-base font-bold text-foreground truncate">{activeLesson.title}</h2>
-                  <p className="text-[11px] text-muted-foreground">
-                    {currentChapter?.title} • {activeLesson.duration}
-                  </p>
                 </div>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -851,38 +944,6 @@ const CourseLMS = () => {
                             </div>
                           ))}
                         </div>
-                        {/* Resources */}
-                        <div>
-                          <h3 className="text-sm font-bold text-foreground mb-2">Resources</h3>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="rounded-full text-xs h-8 gap-1.5"
-                              onClick={() => downloadStudyMaterialPdf(`${course.title}-lecture-notes`)}
-                            >
-                              <Download className="w-3.5 h-3.5" /> Lecture Notes
-                            </Button>
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              className="rounded-full text-xs h-8 gap-1.5"
-                              onClick={() => downloadStudyMaterialPdf(`${course.title}-practice-sheet`)}
-                            >
-                              <FileText className="w-3.5 h-3.5" /> Practice Sheet
-                            </Button>
-                            {activeLesson.resourceUrl && (
-                              <Button
-                                variant="outline"
-                                size="sm"
-                                className="rounded-full text-xs h-8 gap-1.5"
-                                onClick={() => window.open(activeLesson.resourceUrl, "_blank", "noopener,noreferrer")}
-                              >
-                                <Download className="w-3.5 h-3.5" /> Custom Resource
-                              </Button>
-                            )}
-                          </div>
-                        </div>
                       </div>
                     )}
                   </div>
@@ -892,13 +953,24 @@ const CourseLMS = () => {
               <TabsContent value="notes" className="mt-0">
                 <div className="bg-card rounded-xl border border-border p-5">
                   <h3 className="text-sm font-bold text-foreground mb-3">Your Notes</h3>
+                  {isNotesLoading && (
+                    <p className="text-xs text-muted-foreground mb-2">Loading your synced notes...</p>
+                  )}
                   <textarea
+                    value={lessonNotesDraft}
+                    onChange={(event) => setLessonNotesDraft(event.target.value)}
                     placeholder="Write your notes here for this lecture... These are private and only visible to you."
+                    disabled={isNotesLoading || isNotesSaving}
                     className="w-full h-44 p-4 rounded-xl border border-input bg-secondary/30 text-sm resize-none focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary placeholder:text-muted-foreground/50 leading-relaxed"
                   />
                   <div className="flex justify-end mt-3">
-                    <Button size="sm" className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-5 text-xs font-semibold">
-                      Save Notes
+                    <Button
+                      size="sm"
+                      className="bg-primary hover:bg-primary/90 text-primary-foreground rounded-full px-5 text-xs font-semibold"
+                      onClick={() => void handleSaveNotes()}
+                      disabled={isNotesLoading || isNotesSaving}
+                    >
+                      {isNotesSaving ? "Saving..." : "Save Notes"}
                     </Button>
                   </div>
                 </div>

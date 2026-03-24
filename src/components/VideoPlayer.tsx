@@ -40,7 +40,27 @@ interface VideoPlayerProps {
   }) => void;
   /** Called when media playback ends */
   onEnded?: () => void;
+  /** Restrict extra player controls in sensitive contexts like LMS */
+  restrictControls?: boolean;
+  /** Default quality mode preference for HLS streams */
+  preferredQualityMode?: "auto" | "high" | "medium" | "low";
 }
+
+type QualityOption = {
+  level: number;
+  label: string;
+};
+
+const getPreferredLevel = (
+  mode: "auto" | "high" | "medium" | "low",
+  options: QualityOption[],
+): number => {
+  if (mode === "auto" || options.length === 0) return -1;
+  if (mode === "high") return options[0]?.level ?? -1;
+  if (mode === "low") return options[options.length - 1]?.level ?? -1;
+  const middleIndex = Math.floor((options.length - 1) / 2);
+  return options[middleIndex]?.level ?? -1;
+};
 
 export default function VideoPlayer({
   videoUrl,
@@ -55,6 +75,8 @@ export default function VideoPlayer({
   compact = false,
   onProgress,
   onEnded,
+  restrictControls = false,
+  preferredQualityMode = "auto",
 }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const hlsRef = useRef<Hls | null>(null);
@@ -200,6 +222,28 @@ export default function VideoPlayer({
           startLevel: -1, // Auto select quality
         });
 
+        hls.on(Hls.Events.MANIFEST_PARSED, (_, data) => {
+          const bestByHeight = new Map<number, { level: number; height: number; bitrate: number }>();
+
+          data.levels.forEach((level, index) => {
+            const height = Number(level.height || 0);
+            const bitrate = Number(level.bitrate || 0);
+            if (height <= 0) return;
+
+            const existing = bestByHeight.get(height);
+            if (!existing || bitrate > existing.bitrate) {
+              bestByHeight.set(height, { level: index, height, bitrate });
+            }
+          });
+
+          const nextOptions = Array.from(bestByHeight.values())
+            .sort((a, b) => b.height - a.height)
+            .map((item) => ({ level: item.level, label: `${item.height}p` }));
+
+          const preferredLevel = getPreferredLevel(preferredQualityMode, nextOptions);
+          hls.currentLevel = preferredLevel;
+        });
+
         hlsRef.current = hls;
         hls.loadSource(finalVideoSrc);
         hls.attachMedia(videoEl);
@@ -218,7 +262,7 @@ export default function VideoPlayer({
       console.error("HLS setup error:", error);
       videoEl.src = finalVideoSrc; // Fallback
     }
-  }, [finalVideoSrc, isHlsStream]);
+  }, [finalVideoSrc, isHlsStream, preferredQualityMode]);
 
   const emitProgress = () => {
     const el = videoRef.current;
@@ -309,7 +353,15 @@ export default function VideoPlayer({
           autoPlay={autoplay}
           poster={poster}
           preload="metadata"
-          controlsList={disableNativeFullscreen ? "nodownload nofullscreen" : "nodownload"}
+          controlsList={
+            restrictControls
+              ? (disableNativeFullscreen
+                ? "nodownload nofullscreen noplaybackrate noremoteplayback"
+                : "nodownload noplaybackrate noremoteplayback")
+              : (disableNativeFullscreen ? "nodownload nofullscreen" : "nodownload")
+          }
+          disablePictureInPicture={restrictControls}
+          playsInline
           onContextMenu={(e) => e.preventDefault()}
           onLoadedMetadata={emitProgress}
           onTimeUpdate={emitProgress}
@@ -328,6 +380,7 @@ export default function VideoPlayer({
           {/* For HLS streams, src is set via JavaScript */}
           Your browser does not support the video tag.
         </video>
+
       </div>
 
       {/* Title below video */}

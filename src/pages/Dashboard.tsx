@@ -19,7 +19,9 @@ import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import LoginModal from "@/components/LoginModal";
-import { changeStudentPasswordApi, getStudentDashboardApi, updateStudentProfileApi } from "@/services/authApi";
+import { changeStudentPasswordApi, getStudentDashboardApi, updateStudentCourseVideoQualityApi, updateStudentProfileApi } from "@/services/authApi";
+
+type VideoQualityPref = "auto" | "high" | "medium" | "low";
 
 const quickActions = [
   { label: "Browse Courses", icon: BookOpen, color: "bg-orange-100 text-[#E74623]", href: "/packages" },
@@ -53,6 +55,8 @@ const Dashboard = () => {
   const [isNotificationsLoading, setIsNotificationsLoading] = useState(false);
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
+  const [courseQualityPrefs, setCourseQualityPrefs] = useState<Record<string, VideoQualityPref>>({});
+  const [qualitySavingCourseId, setQualitySavingCourseId] = useState<string>("");
 
   useEffect(() => {
     if (!user) return;
@@ -84,6 +88,14 @@ const Dashboard = () => {
             }))
           : [];
         setNotifications(next);
+
+        const prefMap = Object.fromEntries(
+          (result.data.courseAccess || []).map((item) => [
+            item.courseId,
+            (item.preferredVideoQuality || "auto") as VideoQualityPref,
+          ]),
+        );
+        setCourseQualityPrefs(prefMap);
       } finally {
         if (active) setIsNotificationsLoading(false);
       }
@@ -179,6 +191,32 @@ const Dashboard = () => {
       alert("Password changed successfully");
     } finally {
       setIsPasswordSaving(false);
+    }
+  };
+
+  const handleCourseQualityChange = async (courseId: string, nextValue: VideoQualityPref) => {
+    setCourseQualityPrefs((prev) => ({ ...prev, [courseId]: nextValue }));
+    setQualitySavingCourseId(courseId);
+
+    const result = await updateStudentCourseVideoQualityApi({
+      courseId,
+      preferredVideoQuality: nextValue,
+    });
+
+    setQualitySavingCourseId("");
+
+    if (!result.ok) {
+      alert(result.message || "Failed to save quality preference");
+      void getStudentDashboardApi().then((fresh) => {
+        if (!fresh.ok || !fresh.data) return;
+        const prefMap = Object.fromEntries(
+          (fresh.data.courseAccess || []).map((item) => [
+            item.courseId,
+            (item.preferredVideoQuality || "auto") as VideoQualityPref,
+          ]),
+        );
+        setCourseQualityPrefs(prefMap);
+      });
     }
   };
 
@@ -340,6 +378,20 @@ const Dashboard = () => {
                             BUNDLE
                           </span>
                         )}
+                      </div>
+                      <div className="absolute top-2 right-2">
+                        <select
+                          aria-label="Video quality preference"
+                          className="h-7 rounded-md border border-white/30 bg-black/60 px-2 text-[10px] font-semibold text-white backdrop-blur-sm focus:outline-none"
+                          value={(courseQualityPrefs[course.id] || "auto") as VideoQualityPref}
+                          onChange={(event) => void handleCourseQualityChange(course.id, event.target.value as VideoQualityPref)}
+                          disabled={qualitySavingCourseId === course.id}
+                        >
+                          <option value="auto">Auto</option>
+                          <option value="high">High</option>
+                          <option value="medium">Medium</option>
+                          <option value="low">Low</option>
+                        </select>
                       </div>
                       <div className="absolute bottom-2 left-2 right-2">
                         <div className="flex items-center justify-between text-[11px] text-white/90">

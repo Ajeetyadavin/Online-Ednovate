@@ -12,10 +12,14 @@ export default defineConfig(({ mode }) => ({
       "/api": {
         target: "http://localhost:4000",
         changeOrigin: true,
+        timeout: 30 * 60 * 1000,
+        proxyTimeout: 30 * 60 * 1000,
       },
       "/uploads": {
         target: "http://localhost:4000",
         changeOrigin: true,
+        timeout: 30 * 60 * 1000,
+        proxyTimeout: 30 * 60 * 1000,
       },
       "/portal-api": {
         target: "https://letsednovate.com",

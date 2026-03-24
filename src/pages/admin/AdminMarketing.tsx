@@ -51,6 +51,7 @@ const TYPE_STYLE: Record<string, { bg: string; text: string; label: string }> = 
   alert:  { bg: "bg-amber-100", text: "text-amber-700", label: "Alert" },
   video:  { bg: "bg-purple-100", text: "text-purple-700", label: "Video" },
   pdf:    { bg: "bg-rose-100", text: "text-rose-700", label: "PDF" },
+  enquiry_form: { bg: "bg-emerald-100", text: "text-emerald-700", label: "Enquiry Form" },
 };
 
 const TagChip = ({ label, onRemove }: { label: string; onRemove: () => void }) => (
@@ -188,7 +189,10 @@ export default function AdminMarketing() {
         "Students": c.targetStudentIds?.length || 0, "Courses": c.targetCourseIds?.length || 0,
       }));
       const { utils, writeFile } = await import("xlsx");
-      writeFile(utils.json_to_sheet(rows), "campaigns.xlsx");
+      const worksheet = utils.json_to_sheet(rows);
+      const workbook = utils.book_new();
+      utils.book_append_sheet(workbook, worksheet, "Campaigns");
+      writeFile(workbook, "campaigns.xlsx");
     } catch { alert("Export failed"); }
     finally { setIsExporting(false); }
   };
@@ -442,6 +446,7 @@ export default function AdminMarketing() {
                       <SelectItem value="alert">Alert</SelectItem>
                       <SelectItem value="video">Video</SelectItem>
                       <SelectItem value="pdf">PDF</SelectItem>
+                      <SelectItem value="enquiry_form">Enquiry Form Popup</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -459,6 +464,9 @@ export default function AdminMarketing() {
               <div className="grid gap-2">
                 <Label>Media URL</Label>
                 <Input value={form.mediaUrl || ""} onChange={(e) => sf({ mediaUrl: e.target.value })} placeholder="https://..." />
+                {form.contentType === "enquiry_form" && (
+                  <p className="text-xs text-emerald-700">This campaign opens the Enquiry Form modal directly on targeted pages.</p>
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">

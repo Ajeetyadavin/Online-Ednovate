@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { type ManagedCourse, usePlatformData } from "@/context/PlatformDataContext";
 import { adminApi } from "@/services/adminApi";
 import { decodeVideoUrl } from "@/lib/video-utils";
@@ -139,6 +139,13 @@ const BLANK_FORM: CourseForm = {
 };
 
 type DialogTab = "basic" | "demo" | "pricing" | "delivery" | "content";
+type VideoUploadState = {
+  scope: "course" | "package";
+  fileName: string;
+  progress: number;
+  status: "uploading" | "success" | "error" | "cancelled";
+  message?: string;
+};
 
 /* ─── small reusable bits ─────────────────────────────────────── */
 const Label = ({ children }: { children: React.ReactNode }) => (
@@ -164,6 +171,13 @@ export default function AdminCourses() {
   const [dialogOpen, setDialogOpen] = useState(false);
   const [dialogTab, setDialogTab] = useState<DialogTab>("basic");
   const [isSaving, setIsSaving] = useState(false);
+  const [courseThumbnailUploading, setCourseThumbnailUploading] = useState(false);
+  const [courseDemoVideoUploading, setCourseDemoVideoUploading] = useState(false);
+  const [courseDemoThumbUploading, setCourseDemoThumbUploading] = useState(false);
+  const [videoUploadState, setVideoUploadState] = useState<VideoUploadState | null>(null);
+  const [uploadPanelMinimized, setUploadPanelMinimized] = useState(false);
+  const courseUploadAbortRef = useRef<AbortController | null>(null);
+  const pkgUploadAbortRef = useRef<AbortController | null>(null);
   const [curriculumMetaByCourse, setCurriculumMetaByCourse] = useState<Record<string, { lectures: number; totalSeconds: number; hours: number }>>({});
 
   // ── Package Builder state ──────────────────────────────────
@@ -210,6 +224,8 @@ export default function AdminCourses() {
   const [pkgDemoVideoSource, setPkgDemoVideoSource] = useState<"youtube" | "direct" | "upload">("youtube");
   const [pkgDemoVideoUrl, setPkgDemoVideoUrl] = useState("");
   const [pkgDemoVideoThumbnailUrl, setPkgDemoVideoThumbnailUrl] = useState("");
+  const [pkgDemoVideoUploading, setPkgDemoVideoUploading] = useState(false);
+  const [pkgDemoThumbUploading, setPkgDemoThumbUploading] = useState(false);
   // About + ratings/reviews + sidebar display controls
   const [pkgAboutCourseEnabled, setPkgAboutCourseEnabled] = useState(false);
   const [pkgAboutCourseText, setPkgAboutCourseText] = useState("");
@@ -228,8 +244,18 @@ export default function AdminCourses() {
   const [pkgShowMetaPerHour, setPkgShowMetaPerHour] = useState(true);
   const [pkgShowMetaLanguage, setPkgShowMetaLanguage] = useState(true);
 
+  const courseUploadPercent = videoUploadState?.scope === "course" ? videoUploadState.progress : 0;
+  const pkgUploadPercent = videoUploadState?.scope === "package" ? videoUploadState.progress : 0;
+
 
   const sf = (updates: Partial<CourseForm>) => setForm((p) => ({ ...p, ...updates }));
+
+  const fileToBase64 = useCallback((file: File) => new Promise<string>((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result || ""));
+    reader.onerror = () => reject(new Error("read error"));
+    reader.readAsDataURL(file);
+  }), []);
 
   const loadCurriculumMeta = useCallback(async () => {
     try {
@@ -315,6 +341,9 @@ export default function AdminCourses() {
     const firstCat = parentCategories[0]?.id || "general";
     setEditingId(null);
     setForm({ ...BLANK_FORM, id: `course-${Date.now()}`, category: firstCat, subcategory: categories.find((c) => c.parentId === firstCat)?.id || "general" });
+    setCourseThumbnailUploading(false);
+    setCourseDemoVideoUploading(false);
+    setCourseDemoThumbUploading(false);
     setDialogTab("basic");
     setDialogOpen(true);
   };
@@ -322,8 +351,79 @@ export default function AdminCourses() {
   const openEditDialog = (course: ManagedCourse) => {
     setEditingId(course.id);
     setForm(toCourseForm(course));
+    setCourseThumbnailUploading(false);
+    setCourseDemoVideoUploading(false);
+    setCourseDemoThumbUploading(false);
     setDialogTab("basic");
     setDialogOpen(true);
+  };
+
+  const handleUploadCourseThumbnail = async (file?: File | null) => {
+    if (!file) return;
+    setCourseThumbnailUploading(true);
+    try {
+      const base64Data = await fileToBase64(file);
+      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "courses");
+      sf({ thumbnail: uploaded.url });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Thumbnail upload failed");
+    } finally {
+      setCourseThumbnailUploading(false);
+    }
+  };
+
+  const handleUploadCourseDemoVideo = async (file?: File | null) => {
+    if (!file) return;
+    courseUploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    courseUploadAbortRef.current = controller;
+    setCourseDemoVideoUploading(true);
+    setUploadPanelMinimized(false);
+    setVideoUploadState({
+      scope: "course",
+      fileName: file.name,
+      progress: 0,
+      status: "uploading",
+      message: "Uploading demo video...",
+    });
+    try {
+      const uploaded = await adminApi.uploadVideoFileToBunnyWithProgress(file, "demo-videos", {
+        signal: controller.signal,
+        onProgress: (percent) => {
+          setVideoUploadState((prev) => {
+            if (!prev || prev.scope !== "course" || prev.status !== "uploading") return prev;
+            return { ...prev, progress: percent, message: `Uploading demo video... ${percent}%` };
+          });
+        },
+      });
+      sf({ demoVideoUrl: uploaded.url });
+      setVideoUploadState((prev) => (prev && prev.scope === "course"
+        ? { ...prev, progress: 100, status: "success", message: "Upload complete" }
+        : prev));
+    } catch (e) {
+      const cancelled = e instanceof Error && /cancelled/i.test(e.message);
+      setVideoUploadState((prev) => (prev && prev.scope === "course"
+        ? { ...prev, status: cancelled ? "cancelled" : "error", message: cancelled ? "Upload cancelled" : "Upload failed" }
+        : prev));
+      alert(e instanceof Error ? e.message : "Demo video upload failed");
+    } finally {
+      courseUploadAbortRef.current = null;
+      setCourseDemoVideoUploading(false);
+    }
+  };
+
+  const handleUploadCourseDemoThumbnail = async (file?: File | null) => {
+    if (!file) return;
+    setCourseDemoThumbUploading(true);
+    try {
+      const base64Data = await fileToBase64(file);
+      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "demo-thumbnails");
+      sf({ demoVideoThumbnailUrl: uploaded.url });
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Demo thumbnail upload failed");
+    } finally {
+      setCourseDemoThumbUploading(false);
+    }
   };
 
   const handleSaveCourse = async () => {
@@ -510,15 +610,73 @@ export default function AdminCourses() {
     if (!file) return;
     setPkgThumbnailUploading(true);
     try {
-      const base64Data = await new Promise<string>((resolve, reject) => {
-        const reader = new FileReader();
-        reader.onload = () => resolve(String(reader.result || ""));
-        reader.onerror = () => reject(new Error("read error"));
-        reader.readAsDataURL(file);
-      });
+      const base64Data = await fileToBase64(file);
       const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "packages");
       setPkgThumbnail(uploaded.url);
     } catch { /* ignore */ } finally { setPkgThumbnailUploading(false); }
+  };
+
+  const handleUploadPkgDemoVideo = async (file?: File | null) => {
+    if (!file) return;
+    pkgUploadAbortRef.current?.abort();
+    const controller = new AbortController();
+    pkgUploadAbortRef.current = controller;
+    setPkgDemoVideoUploading(true);
+    setUploadPanelMinimized(false);
+    setVideoUploadState({
+      scope: "package",
+      fileName: file.name,
+      progress: 0,
+      status: "uploading",
+      message: "Uploading package demo video...",
+    });
+    try {
+      const uploaded = await adminApi.uploadVideoFileToBunnyWithProgress(file, "demo-videos", {
+        signal: controller.signal,
+        onProgress: (percent) => {
+          setVideoUploadState((prev) => {
+            if (!prev || prev.scope !== "package" || prev.status !== "uploading") return prev;
+            return { ...prev, progress: percent, message: `Uploading package demo video... ${percent}%` };
+          });
+        },
+      });
+      setPkgDemoVideoUrl(uploaded.url);
+      setVideoUploadState((prev) => (prev && prev.scope === "package"
+        ? { ...prev, progress: 100, status: "success", message: "Upload complete" }
+        : prev));
+    } catch (e) {
+      const cancelled = e instanceof Error && /cancelled/i.test(e.message);
+      setVideoUploadState((prev) => (prev && prev.scope === "package"
+        ? { ...prev, status: cancelled ? "cancelled" : "error", message: cancelled ? "Upload cancelled" : "Upload failed" }
+        : prev));
+      alert(e instanceof Error ? e.message : "Demo video upload failed");
+    } finally {
+      pkgUploadAbortRef.current = null;
+      setPkgDemoVideoUploading(false);
+    }
+  };
+
+  const handleCancelActiveUpload = () => {
+    if (!videoUploadState || videoUploadState.status !== "uploading") return;
+    if (videoUploadState.scope === "course") {
+      courseUploadAbortRef.current?.abort();
+      return;
+    }
+    pkgUploadAbortRef.current?.abort();
+  };
+
+  const handleUploadPkgDemoThumbnail = async (file?: File | null) => {
+    if (!file) return;
+    setPkgDemoThumbUploading(true);
+    try {
+      const base64Data = await fileToBase64(file);
+      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "demo-thumbnails");
+      setPkgDemoVideoThumbnailUrl(uploaded.url);
+    } catch (e) {
+      alert(e instanceof Error ? e.message : "Demo thumbnail upload failed");
+    } finally {
+      setPkgDemoThumbUploading(false);
+    }
   };
 
   const handleSavePackage = async () => {
@@ -862,6 +1020,20 @@ export default function AdminCourses() {
                               value={pkgDemoVideoUrl}
                               onChange={(e) => setPkgDemoVideoUrl(e.target.value)}
                             />
+                            {pkgDemoVideoSource !== "youtube" && (
+                              <div className="flex items-center gap-2">
+                                <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
+                                {pkgDemoVideoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+                                {pkgDemoVideoUploading ? `Uploading ${pkgUploadPercent}%...` : "Upload Video File"}
+                                <input type="file" accept="video/*" className="hidden" onChange={(e) => handleUploadPkgDemoVideo(e.target.files?.[0])} />
+                                </label>
+                                {pkgDemoVideoUploading && (
+                                  <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>
+                                    Cancel
+                                  </Button>
+                                )}
+                              </div>
+                            )}
                             {pkgDemoVideoSource === "youtube" && pkgDemoVideoUrl && (
                               <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{pkgDemoVideoUrl}</p>
                             )}
@@ -869,6 +1041,11 @@ export default function AdminCourses() {
                           <div className="space-y-1.5">
                             <Label>Video Thumbnail URL (Optional)</Label>
                             <Input className={fieldCls} placeholder="https://…" value={pkgDemoVideoThumbnailUrl} onChange={(e) => setPkgDemoVideoThumbnailUrl(e.target.value)} />
+                            <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
+                              {pkgDemoThumbUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
+                              {pkgDemoThumbUploading ? "Uploading..." : "Upload Thumbnail"}
+                              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadPkgDemoThumbnail(e.target.files?.[0])} />
+                            </label>
                             {pkgDemoVideoThumbnailUrl && <img src={pkgDemoVideoThumbnailUrl} alt="thumb" className="mt-1 h-16 rounded-xl object-cover" />}
                           </div>
                         </div>
@@ -1018,8 +1195,17 @@ export default function AdminCourses() {
                     </div>
                     <div className="space-y-1.5">
                       <Label>Thumbnail URL</Label>
-                      <Input className={fieldCls} placeholder="https://…" value={form.thumbnail || ""} onChange={(e) => sf({ thumbnail: e.target.value })} />
-                      {form.thumbnail && <img src={form.thumbnail} alt="thumb" className="mt-2 h-20 rounded-xl object-cover" />}
+                      <div className="flex items-start gap-2">
+                        {form.thumbnail && <img src={form.thumbnail} alt="thumb" className="h-14 w-20 shrink-0 rounded-xl object-cover" />}
+                        <div className="flex-1 space-y-1.5">
+                          <Input className={fieldCls} placeholder="https://… or upload below" value={form.thumbnail || ""} onChange={(e) => sf({ thumbnail: e.target.value })} />
+                          <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
+                            {courseThumbnailUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
+                            {courseThumbnailUploading ? "Uploading..." : "Upload Image"}
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadCourseThumbnail(e.target.files?.[0])} />
+                          </label>
+                        </div>
+                      </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
                       <div className="space-y-1.5">
@@ -1128,11 +1314,30 @@ export default function AdminCourses() {
                         <div className="space-y-1.5">
                           <Label>{form.demoVideoSource === "youtube" ? "YouTube Video ID" : "Video URL"}</Label>
                           <Input className={fieldCls} placeholder={form.demoVideoSource === "youtube" ? "e.g., dQw4w9WgXcQ" : "https://…"} value={form.demoVideoUrl || ""} onChange={(e) => sf({ demoVideoUrl: e.target.value })} />
+                          {form.demoVideoSource !== "youtube" && (
+                            <div className="flex items-center gap-2">
+                              <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
+                              {courseDemoVideoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+                              {courseDemoVideoUploading ? `Uploading ${courseUploadPercent}%...` : "Upload Video File"}
+                              <input type="file" accept="video/*" className="hidden" onChange={(e) => handleUploadCourseDemoVideo(e.target.files?.[0])} />
+                              </label>
+                              {courseDemoVideoUploading && (
+                                <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>
+                                  Cancel
+                                </Button>
+                              )}
+                            </div>
+                          )}
                           {form.demoVideoSource === "youtube" && form.demoVideoUrl && <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{form.demoVideoUrl}</p>}
                         </div>
                         <div className="space-y-1.5">
                           <Label>Video Thumbnail URL (Optional)</Label>
                           <Input className={fieldCls} placeholder="https://…" value={form.demoVideoThumbnailUrl || ""} onChange={(e) => sf({ demoVideoThumbnailUrl: e.target.value })} />
+                          <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
+                            {courseDemoThumbUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
+                            {courseDemoThumbUploading ? "Uploading..." : "Upload Thumbnail"}
+                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadCourseDemoThumbnail(e.target.files?.[0])} />
+                          </label>
                           {form.demoVideoThumbnailUrl && <img src={form.demoVideoThumbnailUrl} alt="thumb" className="mt-1 h-16 rounded-xl object-cover" />}
                         </div>
                       </div>
@@ -1428,6 +1633,46 @@ export default function AdminCourses() {
               );
             })}
           </div>
+        </div>
+      )}
+
+      {videoUploadState && (
+        <div className="fixed bottom-4 right-4 z-50 max-w-xs">
+          {uploadPanelMinimized ? (
+            <button
+              type="button"
+              className="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-700 shadow-lg"
+              onClick={() => setUploadPanelMinimized(false)}
+            >
+              {videoUploadState.status === "uploading"
+                ? `Uploading ${videoUploadState.progress}%`
+                : `${videoUploadState.status.toUpperCase()} - Open`}
+            </button>
+          ) : (
+            <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-xl">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <p className="truncate text-xs font-semibold text-slate-800">{videoUploadState.fileName}</p>
+                <div className="flex items-center gap-1">
+                  <button type="button" className="rounded-md px-1.5 py-1 text-[10px] text-slate-500 hover:bg-slate-100" onClick={() => setUploadPanelMinimized(true)}>Minimize</button>
+                  <button type="button" className="rounded-md px-1.5 py-1 text-[10px] text-slate-500 hover:bg-slate-100" onClick={() => setVideoUploadState(null)}>Close</button>
+                </div>
+              </div>
+              <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+                <div
+                  className={`h-full rounded-full transition-all ${videoUploadState.status === "error" ? "bg-red-500" : videoUploadState.status === "cancelled" ? "bg-amber-500" : "bg-primary"}`}
+                  style={{ width: `${Math.max(2, videoUploadState.progress)}%` }}
+                />
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="text-[11px] text-slate-600">{videoUploadState.message || videoUploadState.status}</p>
+                {videoUploadState.status === "uploading" && (
+                  <Button type="button" variant="outline" size="sm" className="h-7 rounded-lg border-red-200 px-2 text-[10px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>
+                    Cancel
+                  </Button>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>

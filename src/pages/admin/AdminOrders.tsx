@@ -7,9 +7,9 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCcw, UserRound, Trash2, Package, Download, Calendar, ChevronDown, ChevronUp } from "lucide-react";
+import { Search, RefreshCcw, UserRound, Trash2, Package, Download, Calendar, ChevronDown, ChevronUp, Mail, RotateCcw, FileText } from "lucide-react";
 
-const DISPATCH_STATUSES = ["pending", "processing", "dispatched", "delivered", "cancelled"] as const;
+const DISPATCH_STATUSES = ["pending", "processing", "dispatched", "delivered", "cancelled", "refunded"] as const;
 
 const statusColors: Record<string, string> = {
   pending: "bg-orange-100 text-orange-700 border-orange-200",
@@ -17,6 +17,7 @@ const statusColors: Record<string, string> = {
   dispatched: "bg-purple-100 text-purple-700 border-purple-200",
   delivered: "bg-green-100 text-green-700 border-green-200",
   cancelled: "bg-red-100 text-red-700 border-red-200",
+  refunded: "bg-rose-100 text-rose-700 border-rose-200",
 };
 
 const buildAddressText = (line: AdminOrderLine) => {
@@ -35,7 +36,7 @@ export default function AdminOrders() {
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
-  const [itemFilter, setItemFilter] = useState("all");
+  const [itemFilter, setItemFilter] = useState<"all" | "ebook" | "course" | "package">("all");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedUserName, setSelectedUserName] = useState("");
   const [historyLines, setHistoryLines] = useState<AdminOrderLine[]>([]);
@@ -46,10 +47,13 @@ export default function AdminOrders() {
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
+  const [success, setSuccess] = useState("");
+  const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
 
   const loadOrders = async () => {
     setIsLoading(true);
     setError("");
+    setSuccess("");
     try {
       const data = await adminApi.listOrders({
         search: searchTerm || undefined,
@@ -79,7 +83,10 @@ export default function AdminOrders() {
     );
   }, [orders, searchTerm]);
 
-  const totalRevenue = useMemo(() => filteredOrders.reduce((sum, o) => sum + Number(o.amount || 0), 0), [filteredOrders]);
+  const totalRevenue = useMemo(
+    () => filteredOrders.reduce((sum, o) => sum + (o.dispatchStatus === "refunded" ? 0 : Number(o.amount || 0)), 0),
+    [filteredOrders],
+  );
 
   const stats = useMemo(() => ({
     total: orders.length,
@@ -88,14 +95,13 @@ export default function AdminOrders() {
     delivered: orders.filter(o => o.dispatchStatus === "delivered").length,
   }), [orders]);
 
-  const openHistory = async (studentId: string, studentName: string) => {
-    setSelectedUserName(studentName);
+  const openHistory = (line: AdminOrderLine) => {
+    setSelectedUserName(line.studentName || "User");
     setHistoryOpen(true);
-    setHistoryLines([]);
-    try {
-      const data = await adminApi.getStudentOrderHistory(studentId);
-      setHistoryLines(Array.isArray(data.lines) ? data.lines : []);
-    } catch { setHistoryLines([]); }
+    setHistoryLines([line]);
+    setEditingLine(null);
+    setError("");
+    setSuccess("");
   };
 
   const startEdit = (line: AdminOrderLine) => {
@@ -108,17 +114,125 @@ export default function AdminOrders() {
   const saveEdit = async () => {
     if (!editingLine) return;
     try {
+      setError("");
+      setSuccess("");
       await adminApi.updateOrderDispatch(editingLine, {
         dispatchStatus: editStatus,
         trackingId: editTracking,
         dispatchNote: editNote,
-        status: "completed",
+        status: editStatus === "refunded" ? "refunded" : "completed",
       });
       setOrders(prev => prev.map(l => l.id === editingLine ? { ...l, dispatchStatus: editStatus, trackingId: editTracking, dispatchNote: editNote } : l));
       setHistoryLines(prev => prev.map(l => l.id === editingLine ? { ...l, dispatchStatus: editStatus, trackingId: editTracking, dispatchNote: editNote } : l));
       setEditingLine(null);
+      setSuccess("Order status updated.");
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to update");
+    }
+  };
+
+  const buildInvoiceHtml = (line: AdminOrderLine) => {
+    const details = [
+      line.itemType ? `Type: ${line.itemType}` : "",
+      line.modeLabel ? `Mode: ${line.modeLabel}` : "",
+      line.bookLabel ? `Book: ${line.bookLabel}` : "",
+    ].filter(Boolean).join(" | ");
+
+    return `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Invoice-${line.orderId}</title>
+</head>
+<body style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
+  <div style="max-width:760px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
+    <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">
+      <div style="font-weight:800;color:#1f3c88;letter-spacing:.08em;">EDNOVATE</div>
+      <div style="text-align:right;">
+        <div style="font-size:12px;color:#64748b;">INVOICE</div>
+        <div style="font-weight:700;">${line.orderId}</div>
+      </div>
+    </div>
+    <div style="padding:16px 20px;font-size:13px;color:#374151;">
+      <p><strong>Student:</strong> ${line.studentName || "Student"}</p>
+      <p><strong>Email:</strong> ${line.studentEmail || ""}</p>
+      <p><strong>Date:</strong> ${line.orderDate || ""}</p>
+      <p><strong>Payment:</strong> ${line.paymentMethod || "Online"}</p>
+    </div>
+    <div style="padding:0 20px 20px 20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+        <thead>
+          <tr style="background:#f1f5f9;text-align:left;">
+            <th style="padding:10px;">Item</th>
+            <th style="padding:10px;">Details</th>
+            <th style="padding:10px;text-align:right;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${line.courseTitle || "Course"}</td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${details || "-"}</td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">₹${Number(line.amount || 0).toLocaleString()}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div style="text-align:right;padding-top:12px;">
+        <div style="font-size:12px;color:#64748b;">Total</div>
+        <div style="font-size:18px;font-weight:800;color:#111827;">₹${Number(line.amount || 0).toLocaleString()}</div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>`;
+  };
+
+  const downloadInvoice = (line: AdminOrderLine) => {
+    const html = buildInvoiceHtml(line);
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${line.orderId || `invoice-${line.id}`}.html`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
+  const sendInvoiceToUser = async (line: AdminOrderLine) => {
+    try {
+      setError("");
+      setSuccess("");
+      setActionLoadingId(line.id);
+      await adminApi.sendOrderInvoice(line.id);
+      setSuccess(`Invoice sent to ${line.studentEmail || "user"}.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to send invoice");
+    } finally {
+      setActionLoadingId(null);
+    }
+  };
+
+  const refundOrder = async (line: AdminOrderLine) => {
+    if (line.dispatchStatus === "refunded") return;
+    const confirmed = window.confirm(`Refund order ${line.orderId}? This will remove course access.`);
+    if (!confirmed) return;
+    const refundNote = window.prompt("Refund note (optional):", line.dispatchNote || "") || "";
+
+    try {
+      setError("");
+      setSuccess("");
+      setActionLoadingId(line.id);
+      const result = await adminApi.refundOrder(line.id, refundNote);
+      const updated = result.item;
+      setOrders((prev) => prev.map((row) => (row.id === line.id ? { ...row, ...updated } : row)));
+      setHistoryLines((prev) => prev.map((row) => (row.id === line.id ? { ...row, ...updated } : row)));
+      setEditingLine(null);
+      setSuccess(`Order ${line.orderId} refunded.`);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to refund order");
+    } finally {
+      setActionLoadingId(null);
     }
   };
 
@@ -235,10 +349,11 @@ export default function AdminOrders() {
                 <SelectItem value="dispatched">Dispatched</SelectItem>
                 <SelectItem value="delivered">Delivered</SelectItem>
                 <SelectItem value="cancelled">Cancelled</SelectItem>
+                <SelectItem value="refunded">Refunded</SelectItem>
               </SelectContent>
             </Select>
 
-            <Select value={itemFilter} onValueChange={setItemFilter}>
+            <Select value={itemFilter} onValueChange={(value) => setItemFilter(value as "all" | "ebook" | "course" | "package")}>
               <SelectTrigger className="w-[130px]">
                 <SelectValue placeholder="Type" />
               </SelectTrigger>
@@ -293,6 +408,7 @@ export default function AdminOrders() {
           )}
 
           {error && <p className="text-red-500 text-sm mt-2">{error}</p>}
+          {success && <p className="text-green-600 text-sm mt-2">{success}</p>}
         </CardHeader>
 
         <div className="overflow-x-auto">
@@ -347,7 +463,7 @@ export default function AdminOrders() {
                     <td className="px-4 py-3 text-sm text-gray-500">{order.orderDate || "—"}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openHistory(order.studentId, order.studentName || "User")}>
+                        <Button variant="ghost" size="sm" onClick={() => openHistory(order)}>
                           <UserRound className="w-4 h-4" />
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => deleteOrder(order)}>
@@ -366,7 +482,7 @@ export default function AdminOrders() {
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{selectedUserName} - Order History</DialogTitle>
+            <DialogTitle>{selectedUserName} - Selected Order</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 max-h-[60vh] overflow-y-auto">
             {historyLines.length === 0 ? (
@@ -417,7 +533,30 @@ export default function AdminOrders() {
                     </div>
                   )}
 
-                  <div className="flex gap-2">
+                  <div className="flex flex-wrap gap-2">
+                    <Button size="sm" variant="outline" onClick={() => downloadInvoice(line)}>
+                      <FileText className="w-4 h-4 mr-1" />
+                      Download Invoice
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => void sendInvoiceToUser(line)}
+                      disabled={actionLoadingId === line.id}
+                    >
+                      <Mail className="w-4 h-4 mr-1" />
+                      {actionLoadingId === line.id ? "Sending..." : "Send Invoice"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-rose-700"
+                      onClick={() => void refundOrder(line)}
+                      disabled={line.dispatchStatus === "refunded" || actionLoadingId === line.id}
+                    >
+                      <RotateCcw className="w-4 h-4 mr-1" />
+                      {line.dispatchStatus === "refunded" ? "Refunded" : "Refund"}
+                    </Button>
                     {editingLine === line.id ? (
                       <>
                         <Button size="sm" onClick={saveEdit}>Save</Button>

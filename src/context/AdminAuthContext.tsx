@@ -11,6 +11,7 @@ export type AdminModuleKey =
   | "homepage"
   | "users"
   | "orders"
+  | "leads"
   | "announcements"
   | "technical-support"
   | "marketing"
@@ -64,6 +65,7 @@ const fullPermissions = (): AdminPermissions => ({
   homepage: { read: true, create: true, edit: true, delete: true },
   users: { read: true, create: true, edit: true, delete: true },
   orders: { read: true, create: true, edit: true, delete: true },
+  leads: { read: true, create: true, edit: true, delete: true },
   announcements: { read: true, create: true, edit: true, delete: true },
   "technical-support": { read: true, create: true, edit: true, delete: true },
   marketing: { read: true, create: true, edit: true, delete: true },
