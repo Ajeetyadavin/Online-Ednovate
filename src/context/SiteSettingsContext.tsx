@@ -70,6 +70,26 @@ export interface FloatingContactChannelSettings extends FloatingContactActionSet
   value: string;
 }
 
+export interface PaymentGatewaySettings {
+  cod: {
+    enabled: boolean;
+  };
+  payu: {
+    enabled: boolean;
+    merchantKey: string;
+    merchantSalt: string;
+    merchantId: string;
+    apiBaseUrl: string;
+  };
+  hdfc: {
+    enabled: boolean;
+    merchantId: string;
+    accessCode: string;
+    workingKey: string;
+    apiBaseUrl: string;
+  };
+}
+
 export interface HomepageFaqItem {
   question: string;
   answer: string;
@@ -110,6 +130,7 @@ export interface HomepageSection {
 }
 
 export interface SiteSettings {
+  maintenanceMode: boolean;
   colors: {
     primary: string;
     accent: string;
@@ -170,6 +191,7 @@ export interface SiteSettings {
     call: FloatingContactChannelSettings;
     whatsapp: FloatingContactChannelSettings;
   };
+  paymentGateways: PaymentGatewaySettings;
   animations: {
     enabled: boolean;
     type: AnimationType;
@@ -211,6 +233,7 @@ export interface SiteSettings {
 }
 
 const createDefaultSettings = (): SiteSettings => ({
+  maintenanceMode: false,
   colors: {
     primary: "#1E3A5F",
     accent: "#E04040",
@@ -412,6 +435,25 @@ const createDefaultSettings = (): SiteSettings => ({
       color: "#22C55E",
       value: "+91 98765 43210",
       visible: true,
+    },
+  },
+  paymentGateways: {
+    cod: {
+      enabled: true,
+    },
+    payu: {
+      enabled: false,
+      merchantKey: "",
+      merchantSalt: "",
+      merchantId: "",
+      apiBaseUrl: "",
+    },
+    hdfc: {
+      enabled: false,
+      merchantId: "",
+      accessCode: "",
+      workingKey: "",
+      apiBaseUrl: "",
     },
   },
   animations: {
@@ -636,6 +678,7 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
   return {
     ...base,
     ...stored,
+    maintenanceMode: stored.maintenanceMode === true,
     colors: {
       ...base.colors,
       ...(stored.colors || {}),
@@ -689,6 +732,25 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
       enquiry: normalizeFloatingContactAction(stored.floatingContact?.enquiry, base.floatingContact.enquiry),
       call: normalizeFloatingContactChannel(stored.floatingContact?.call, base.floatingContact.call),
       whatsapp: normalizeFloatingContactChannel(stored.floatingContact?.whatsapp, base.floatingContact.whatsapp),
+    },
+    paymentGateways: {
+      cod: {
+        enabled: stored.paymentGateways?.cod?.enabled !== false,
+      },
+      payu: {
+        enabled: stored.paymentGateways?.payu?.enabled === true,
+        merchantKey: String(stored.paymentGateways?.payu?.merchantKey || base.paymentGateways.payu.merchantKey),
+        merchantSalt: String(stored.paymentGateways?.payu?.merchantSalt || base.paymentGateways.payu.merchantSalt),
+        merchantId: String(stored.paymentGateways?.payu?.merchantId || base.paymentGateways.payu.merchantId),
+        apiBaseUrl: String(stored.paymentGateways?.payu?.apiBaseUrl || base.paymentGateways.payu.apiBaseUrl),
+      },
+      hdfc: {
+        enabled: stored.paymentGateways?.hdfc?.enabled === true,
+        merchantId: String(stored.paymentGateways?.hdfc?.merchantId || base.paymentGateways.hdfc.merchantId),
+        accessCode: String(stored.paymentGateways?.hdfc?.accessCode || base.paymentGateways.hdfc.accessCode),
+        workingKey: String(stored.paymentGateways?.hdfc?.workingKey || base.paymentGateways.hdfc.workingKey),
+        apiBaseUrl: String(stored.paymentGateways?.hdfc?.apiBaseUrl || base.paymentGateways.hdfc.apiBaseUrl),
+      },
     },
     animations: {
       ...base.animations,
@@ -864,6 +926,9 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
           mergeStoredSettings({
             ...prev,
             ...(backendSettings as Partial<SiteSettings>),
+            paymentGateways: ((backendSettings as Partial<SiteSettings>)?.paymentGateways
+              || (backendSettings as { paymentGatewaySettings?: PaymentGatewaySettings })?.paymentGatewaySettings
+              || prev.paymentGateways) as PaymentGatewaySettings,
             bunnyStreamApi: (backendBunny && typeof backendBunny === "object")
               ? {
                   ...prev.bunnyStreamApi,

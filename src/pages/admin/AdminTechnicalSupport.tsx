@@ -22,6 +22,7 @@ import {
   BookOpen,
   UserRound,
   Flame,
+  Trash2,
   Loader2,
   ChevronDown,
   X,
@@ -79,6 +80,7 @@ const fmtTimeShort = (v?: string | null) => {
 export default function AdminTechnicalSupport() {
   const { hasPermission } = useAdminAuth();
   const canEdit = hasPermission("technical-support", "edit");
+  const canDelete = hasPermission("technical-support", "delete");
 
   const [tickets, setTickets] = useState<TechnicalSupportTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<TechnicalSupportTicket | null>(null);
@@ -152,6 +154,28 @@ export default function AdminTechnicalSupport() {
     try {
       await adminApi.updateTechnicalSupportTicketStatus(selectedTicket.id, nextStatus);
       await openTicket(selectedTicket.id);
+      await loadTickets();
+    } catch (e) {
+      console.error(e);
+    } finally {
+      setIsUpdating(false);
+    }
+  };
+
+  const deleteTicket = async () => {
+    if (!selectedTicket || !canDelete) return;
+
+    const confirmed = window.confirm(
+      `Delete ticket ${selectedTicket.ticketCode}? This will remove it from both admin and student side.`,
+    );
+    if (!confirmed) return;
+
+    setIsUpdating(true);
+    try {
+      const ticketId = selectedTicket.id;
+      await adminApi.deleteTechnicalSupportTicket(ticketId);
+      setSelectedTicket(null);
+      setMessages([]);
       await loadTickets();
     } catch (e) {
       console.error(e);
@@ -363,6 +387,20 @@ export default function AdminTechnicalSupport() {
                         </button>
                       );
                     })}
+
+                    {canDelete && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="ml-auto h-7 gap-1 rounded-xl border-rose-200 px-2.5 text-[11px] font-semibold text-rose-700 hover:bg-rose-50"
+                        disabled={isUpdating}
+                        onClick={() => void deleteTicket()}
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                        Delete Ticket
+                      </Button>
+                    )}
                   </div>
                 )}
               </div>

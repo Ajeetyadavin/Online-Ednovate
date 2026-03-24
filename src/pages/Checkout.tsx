@@ -9,6 +9,7 @@ import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformData, type ManagedCoupon } from "@/context/PlatformDataContext";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
 import LoginModal from "@/components/LoginModal";
 import { toast } from "@/hooks/use-toast";
 
@@ -16,8 +17,9 @@ const Checkout = () => {
   const { items, cartCount, orders, completePurchase } = useCart();
   const { isLoggedIn, user } = useAuth();
   const { coupons, markCouponUsed } = usePlatformData();
+  const { settings: siteSettings } = useSiteSettings();
   const navigate = useNavigate();
-  const [paymentMethod, setPaymentMethod] = useState("upi");
+  const [paymentMethod, setPaymentMethod] = useState("cod");
   const [coupon, setCoupon] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<ManagedCoupon | null>(null);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -60,6 +62,43 @@ const Checkout = () => {
     setEmail((prev) => prev || user.email || "");
     setPhone((prev) => prev || user.mobile || "");
   }, [user]);
+
+  const paymentGateways = siteSettings.paymentGateways;
+  const enabledMethods = useMemo(() => {
+    const methods: Array<{ id: "cod" | "payu" | "hdfc"; label: string; hint: string; icon: typeof Building2 }> = [];
+    if (paymentGateways.cod.enabled) {
+      methods.push({
+        id: "cod",
+        label: "Cash on Delivery",
+        hint: "Pay when order is delivered",
+        icon: Building2,
+      });
+    }
+    if (paymentGateways.payu.enabled) {
+      methods.push({
+        id: "payu",
+        label: "PayU",
+        hint: "Cards, UPI, net banking via PayU",
+        icon: Smartphone,
+      });
+    }
+    if (paymentGateways.hdfc.enabled) {
+      methods.push({
+        id: "hdfc",
+        label: "HDFC Gateway",
+        hint: "Secure online payment via HDFC",
+        icon: CreditCard,
+      });
+    }
+    return methods;
+  }, [paymentGateways.cod.enabled, paymentGateways.hdfc.enabled, paymentGateways.payu.enabled]);
+
+  useEffect(() => {
+    if (enabledMethods.length === 0) return;
+    if (!enabledMethods.some((item) => item.id === paymentMethod)) {
+      setPaymentMethod(enabledMethods[0].id);
+    }
+  }, [enabledMethods, paymentMethod]);
 
   const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
   const totalOriginal = items.reduce((sum, item) => sum + item.originalPrice, 0);
@@ -242,6 +281,14 @@ const Checkout = () => {
   };
 
   const handlePlaceOrder = async () => {
+    if (enabledMethods.length === 0) {
+      toast({
+        title: "Payment unavailable",
+        description: "No payment gateway is enabled. Please contact support.",
+      });
+      return;
+    }
+
     if (!fullName.trim() || !email.trim()) {
       toast({ title: "Missing Details", description: "Please enter your full name and email." });
       return;
@@ -500,55 +547,31 @@ const Checkout = () => {
             <div className="bg-background rounded-xl border border-border p-4 space-y-3">
               <h2 className="text-sm font-bold text-foreground">Payment Method</h2>
               <RadioGroup value={paymentMethod} onValueChange={setPaymentMethod} className="space-y-2">
-                <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${paymentMethod === "upi" ? "border-accent bg-accent/5" : "border-border hover:bg-secondary/50"}`}>
-                  <RadioGroupItem value="upi" />
-                  <Smartphone className="w-4 h-4 text-accent" />
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">UPI</p>
-                    <p className="text-[10px] text-muted-foreground">GPay, PhonePe, Paytm</p>
-                  </div>
-                </label>
-                <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${paymentMethod === "card" ? "border-accent bg-accent/5" : "border-border hover:bg-secondary/50"}`}>
-                  <RadioGroupItem value="card" />
-                  <CreditCard className="w-4 h-4 text-accent" />
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">Credit / Debit Card</p>
-                    <p className="text-[10px] text-muted-foreground">Visa, Mastercard, RuPay</p>
-                  </div>
-                </label>
-                <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${paymentMethod === "netbanking" ? "border-accent bg-accent/5" : "border-border hover:bg-secondary/50"}`}>
-                  <RadioGroupItem value="netbanking" />
-                  <Building2 className="w-4 h-4 text-accent" />
-                  <div>
-                    <p className="text-xs font-semibold text-foreground">Net Banking</p>
-                    <p className="text-[10px] text-muted-foreground">All major banks supported</p>
-                  </div>
-                </label>
+                {enabledMethods.map((method) => {
+                  const Icon = method.icon;
+                  return (
+                    <label
+                      key={method.id}
+                      className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${paymentMethod === method.id ? "border-accent bg-accent/5" : "border-border hover:bg-secondary/50"}`}
+                    >
+                      <RadioGroupItem value={method.id} />
+                      <Icon className="w-4 h-4 text-accent" />
+                      <div>
+                        <p className="text-xs font-semibold text-foreground">{method.label}</p>
+                        <p className="text-[10px] text-muted-foreground">{method.hint}</p>
+                      </div>
+                    </label>
+                  );
+                })}
               </RadioGroup>
 
-              {paymentMethod === "card" && (
-                <div className="space-y-3 pt-2 animate-fade-in">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs">Card Number</Label>
-                    <Input placeholder="1234 5678 9012 3456" className="h-9 text-sm bg-secondary/50 border-border" />
-                  </div>
-                  <div className="grid grid-cols-2 gap-3">
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">Expiry</Label>
-                      <Input placeholder="MM/YY" className="h-9 text-sm bg-secondary/50 border-border" />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label className="text-xs">CVV</Label>
-                      <Input type="password" placeholder="•••" className="h-9 text-sm bg-secondary/50 border-border" />
-                    </div>
-                  </div>
-                </div>
+              {enabledMethods.length === 0 && (
+                <p className="text-xs text-red-600">No payment gateway is enabled by admin.</p>
               )}
 
-              {paymentMethod === "upi" && (
+              {paymentMethod === "cod" && (
                 <div className="space-y-1.5 pt-2 animate-fade-in">
-                  <Label className="text-xs">UPI ID</Label>
-                  <Input placeholder="yourname@upi" className="h-9 text-sm bg-secondary/50 border-border" />
+                  <p className="text-xs text-muted-foreground">Cash on Delivery selected. Payment will be collected at dispatch/delivery.</p>
                 </div>
               )}
             </div>
@@ -637,8 +660,9 @@ const Checkout = () => {
               <Button
                 className="w-full h-10 bg-accent hover:bg-accent/90 text-accent-foreground font-semibold rounded-lg shadow-sm text-sm mt-2"
                 onClick={handlePlaceOrder}
+                disabled={enabledMethods.length === 0}
               >
-                Pay ₹{finalTotal.toLocaleString()}
+                {paymentMethod === "cod" ? `Place Order ₹${finalTotal.toLocaleString()}` : `Pay ₹${finalTotal.toLocaleString()}`}
               </Button>
 
               <p className="text-[10px] text-center text-muted-foreground flex items-center justify-center gap-1">

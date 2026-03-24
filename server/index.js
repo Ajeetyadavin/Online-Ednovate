@@ -1,6 +1,7 @@
 import "dotenv/config";
 import cors from "cors";
 import express from "express";
+import nodemailer from "nodemailer";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -476,6 +477,21 @@ const sanitizePlatformSettings = (payload) => {
   const bunny = data.bunnyStreamApi && typeof data.bunnyStreamApi === "object" ? data.bunnyStreamApi : {};
   const siteSettings = data.siteSettings && typeof data.siteSettings === "object" ? data.siteSettings : {};
   const homepage = data.homepage && typeof data.homepage === "object" ? data.homepage : {};
+  const smtp = data.smtp && typeof data.smtp === "object" ? data.smtp : {};
+  const emailAutomation = data.emailAutomation && typeof data.emailAutomation === "object" ? data.emailAutomation : {};
+  const templates = emailAutomation.templates && typeof emailAutomation.templates === "object" ? emailAutomation.templates : {};
+
+  const toTemplate = (value, fallbackSubject, fallbackBody) => {
+    const row = value && typeof value === "object" ? value : {};
+    return {
+      enabled: row.enabled !== false,
+      subject: String(row.subject || fallbackSubject).trim() || fallbackSubject,
+      body: String(row.body || fallbackBody).trim() || fallbackBody,
+    };
+  };
+
+  const safePort = Math.max(1, Math.min(65535, Number(smtp.port || 587)));
+  const smtpSecure = smtp.secure === true || safePort === 465;
 
   return {
     bunnyStreamApi: {
@@ -488,6 +504,52 @@ const sanitizePlatformSettings = (payload) => {
         .replace(/\/.*$/, ""),
       pullZone: String(bunny.pullZone || "").trim(),
     },
+    smtp: {
+      enabled: smtp.enabled === true,
+      host: String(smtp.host || "").trim(),
+      port: safePort,
+      secure: smtpSecure,
+      username: String(smtp.username || "").trim(),
+      password: String(smtp.password || "").trim(),
+      fromName: String(smtp.fromName || "Ednovate").trim() || "Ednovate",
+      fromEmail: String(smtp.fromEmail || "").trim().toLowerCase(),
+      replyTo: String(smtp.replyTo || "").trim().toLowerCase(),
+    },
+    emailAutomation: {
+      enabled: emailAutomation.enabled !== false,
+      templates: {
+        user_purchase: toTemplate(
+          templates.user_purchase,
+          "Purchase confirmation - {{platformName}}",
+          "Hello {{studentName}},\n\nYour purchase {{orderId}} is confirmed.\nItems: {{itemsSummary}}\nAmount: {{amount}}\n\nThanks,\n{{platformName}}",
+        ),
+        user_login: toTemplate(
+          templates.user_login,
+          "Login alert - {{platformName}}",
+          "Hello {{studentName}},\n\nA new login was detected on {{loginAt}} from IP {{ipAddress}}.\nIf this wasn't you, change password immediately.\n\n{{platformName}}",
+        ),
+        course_complete: toTemplate(
+          templates.course_complete,
+          "Course milestone reached - {{platformName}}",
+          "Hello {{studentName}},\n\nYou completed: {{lessonTitle}} in course {{courseTitle}}.\nKeep going!\n\n{{platformName}}",
+        ),
+        user_notification: toTemplate(
+          templates.user_notification,
+          "Notification from {{platformName}}",
+          "Hello {{studentName}},\n\n{{notificationMessage}}\n\n{{platformName}}",
+        ),
+        password_reset: toTemplate(
+          templates.password_reset,
+          "Password changed - {{platformName}}",
+          "Hello {{studentName}},\n\nYour account password was changed on {{changedAt}}.\nIf this wasn't you, contact support immediately.\n\n{{platformName}}",
+        ),
+        new_account: toTemplate(
+          templates.new_account,
+          "Welcome to {{platformName}}",
+          "Hello {{studentName}},\n\nYour new account is ready.\nStart learning now.\n\n{{platformName}}",
+        ),
+      },
+    },
     siteSettings,
     homepage: {
       exploreCategoryIds: Array.isArray(homepage.exploreCategoryIds)
@@ -495,6 +557,65 @@ const sanitizePlatformSettings = (payload) => {
         : [],
     },
   };
+};
+
+const fillTemplate = (value, variables) => {
+  const source = String(value || "");
+  return source.replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
+    const next = variables?.[key];
+    return next === undefined || next === null ? "" : String(next);
+  });
+};
+
+const buildEmailFromField = (name, email) => {
+  const safeEmail = String(email || "").trim();
+  const safeName = String(name || "").trim();
+  if (!safeEmail) return "";
+  if (!safeName) return safeEmail;
+  return `${safeName} <${safeEmail}>`;
+};
+
+const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSubject = "Notification" }) => {
+  const settings = sanitizePlatformSettings(await getPlatformSettings());
+  const smtp = settings.smtp;
+  if (!smtp.enabled || !smtp.host || !smtp.username || !smtp.password || !toEmail) {
+    return { sent: false, reason: "SMTP not configured" };
+  }
+
+  if (settings.emailAutomation.enabled === false) {
+    return { sent: false, reason: "Email automation disabled" };
+  }
+
+  const template = settings.emailAutomation?.templates?.[eventKey];
+  if (!template || template.enabled === false) {
+    return { sent: false, reason: `Template disabled: ${eventKey}` };
+  }
+
+  const platformName = String(settings.siteSettings?.platformName || "Ednovate");
+  const mergedVars = {
+    platformName,
+    ...variables,
+  };
+
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: smtp.port,
+    secure: smtp.secure === true,
+    auth: {
+      user: smtp.username,
+      pass: smtp.password,
+    },
+  });
+
+  await transporter.sendMail({
+    from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
+    to: String(toEmail).trim().toLowerCase(),
+    replyTo: smtp.replyTo || undefined,
+    subject: fillTemplate(template.subject || fallbackSubject, mergedVars),
+    text: fillTemplate(template.body || "", mergedVars),
+  });
+
+  return { sent: true };
 };
 
 const toBase64Url = (buffer) =>
@@ -525,6 +646,7 @@ const ADMIN_MODULES = [
   "marketing",
   "settings",
   "subadmins",
+  "logs",
 ];
 
 const defaultModulePermission = {
@@ -770,6 +892,7 @@ const getModuleFromPath = (pathName) => {
   if (pathName === "/api/courses/upsert") return "courses";
   if (pathName.startsWith("/api/homepage")) return "homepage";
   if (pathName.startsWith("/api/uploads") || pathName.startsWith("/api/bunny")) return "course-content";
+  if (pathName.startsWith("/api/admin/activity-logs")) return "logs";
   if (pathName.startsWith("/api/admin/subadmins") || pathName.startsWith("/api/admin/audit-logs")) return "subadmins";
   return "dashboard";
 };
@@ -1066,6 +1189,202 @@ app.get("/api/admin/audit-logs", requireAdminPermission("subadmins", "read"), as
   }
 });
 
+app.get("/api/admin/activity-logs", requireAdminPermission("logs", "read"), async (request, response) => {
+  try {
+    const limit = Math.max(20, Math.min(2000, Number(request.query.limit || 300)));
+    const actorType = String(request.query.actorType || "all").trim().toLowerCase();
+    const actionType = String(request.query.actionType || "all").trim().toLowerCase();
+    const actorId = String(request.query.actorId || "").trim();
+    const actorName = String(request.query.actorName || "").trim().toLowerCase();
+    const actorEmail = String(request.query.actorEmail || "").trim().toLowerCase();
+    const search = String(request.query.search || "").trim().toLowerCase();
+    const fromRaw = String(request.query.from || "").trim();
+    const toRaw = String(request.query.to || "").trim();
+
+    const whereParts = [];
+    const params = [];
+    let index = 1;
+
+    if (fromRaw) {
+      const parsed = new Date(fromRaw);
+      if (!Number.isNaN(parsed.getTime())) {
+        whereParts.push(`created_at >= $${index}`);
+        params.push(parsed.toISOString());
+        index += 1;
+      }
+    }
+
+    if (toRaw) {
+      const parsed = new Date(toRaw);
+      if (!Number.isNaN(parsed.getTime())) {
+        whereParts.push(`created_at <= $${index}`);
+        params.push(parsed.toISOString());
+        index += 1;
+      }
+    }
+
+    if (actorType === "admin") {
+      whereParts.push("actor_role = 'super_admin'");
+    } else if (actorType === "subadmin") {
+      whereParts.push("actor_role = 'sub_admin'");
+    } else if (actorType === "student") {
+      whereParts.push("actor_role = 'student'");
+    }
+
+    if (actionType !== "all") {
+      whereParts.push(`LOWER(action) = $${index}`);
+      params.push(actionType);
+      index += 1;
+    }
+
+    if (actorId) {
+      whereParts.push(`LOWER(COALESCE(actor_id, '')) LIKE $${index}`);
+      params.push(`%${actorId.toLowerCase()}%`);
+      index += 1;
+    }
+
+    if (actorName) {
+      whereParts.push(`LOWER(COALESCE(actor_name, '')) LIKE $${index}`);
+      params.push(`%${actorName}%`);
+      index += 1;
+    }
+
+    if (actorEmail) {
+      whereParts.push(`LOWER(COALESCE(actor_email, '')) LIKE $${index}`);
+      params.push(`%${actorEmail}%`);
+      index += 1;
+    }
+
+    if (search) {
+      whereParts.push(`(
+        LOWER(COALESCE(actor_name, '')) LIKE $${index}
+        OR LOWER(COALESCE(actor_email, '')) LIKE $${index}
+        OR LOWER(COALESCE(actor_id, '')) LIKE $${index}
+        OR LOWER(COALESCE(target_id, '')) LIKE $${index}
+        OR LOWER(COALESCE(course_title, '')) LIKE $${index}
+        OR LOWER(COALESCE(module_key, '')) LIKE $${index}
+        OR LOWER(COALESCE(action, '')) LIKE $${index}
+      )`);
+      params.push(`%${search}%`);
+      index += 1;
+    }
+
+    const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+
+    params.push(limit);
+    const listResult = await pool.query(
+      `
+      WITH events AS (
+        SELECT
+          'admin'::text AS actor_type,
+          COALESCE(a.id, l.admin_id, '') AS actor_id,
+          COALESCE(a.name, l.admin_email, 'System') AS actor_name,
+          COALESCE(l.admin_email, a.email, '') AS actor_email,
+          COALESCE(a.role, 'super_admin') AS actor_role,
+          LOWER(COALESCE(l.action, '')) AS action,
+          l.module_key,
+          l.target_type,
+          l.target_id,
+          l.ip_address,
+          l.user_agent,
+          l.details,
+          l.created_at,
+          NULL::text AS course_id,
+          NULL::text AS course_title,
+          NULL::numeric AS amount
+        FROM admin_audit_logs l
+        LEFT JOIN admin_accounts a ON a.id = l.admin_id
+
+        UNION ALL
+
+        SELECT
+          'student'::text AS actor_type,
+          s.id AS actor_id,
+          s.name AS actor_name,
+          s.email AS actor_email,
+          'student'::text AS actor_role,
+          'login'::text AS action,
+          'auth'::text AS module_key,
+          'student_session'::text AS target_type,
+          sl.id::text AS target_id,
+          sl.ip_address,
+          sl.user_agent,
+          jsonb_build_object('source', COALESCE(sl.source, 'student_login')) AS details,
+          sl.created_at,
+          NULL::text AS course_id,
+          NULL::text AS course_title,
+          NULL::numeric AS amount
+        FROM student_login_logs sl
+        JOIN students s ON s.id = sl.student_id
+
+        UNION ALL
+
+        SELECT
+          'student'::text AS actor_type,
+          s.id AS actor_id,
+          s.name AS actor_name,
+          s.email AS actor_email,
+          'student'::text AS actor_role,
+          'purchase'::text AS action,
+          'orders'::text AS module_key,
+          'order'::text AS target_type,
+          COALESCE(o.order_id, o.id::text) AS target_id,
+          NULL::text AS ip_address,
+          NULL::text AS user_agent,
+          jsonb_build_object(
+            'itemType', COALESCE(o.item_type, 'course'),
+            'paymentMethod', COALESCE(o.payment_method, ''),
+            'dispatchStatus', COALESCE(o.dispatch_status, 'pending')
+          ) AS details,
+          o.created_at,
+          o.course_id,
+          o.course_title,
+          o.amount
+        FROM student_orders o
+        JOIN students s ON s.id = o.student_id
+
+        UNION ALL
+
+        SELECT
+          'student'::text AS actor_type,
+          s.id AS actor_id,
+          s.name AS actor_name,
+          s.email AS actor_email,
+          'student'::text AS actor_role,
+          'video_watch'::text AS action,
+          'course-content'::text AS module_key,
+          'lesson'::text AS target_type,
+          v.id::text AS target_id,
+          NULL::text AS ip_address,
+          NULL::text AS user_agent,
+          jsonb_build_object(
+            'chapterTitle', COALESCE(v.chapter_title, ''),
+            'lessonTitle', COALESCE(v.lesson_title, ''),
+            'progressPercent', COALESCE(v.progress_percent, 0),
+            'viewedSeconds', COALESCE(v.viewed_seconds, 0)
+          ) AS details,
+          v.last_viewed_at AS created_at,
+          v.course_id,
+          COALESCE(v.lesson_title, '') AS course_title,
+          NULL::numeric AS amount
+        FROM student_video_activity v
+        JOIN students s ON s.id = v.student_id
+      )
+      SELECT *
+      FROM events
+      ${whereClause}
+      ORDER BY created_at DESC
+      LIMIT $${index}
+      `,
+      params,
+    );
+
+    response.json({ items: listResult.rows });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load activity logs" });
+  }
+});
+
 app.post("/api/auth/student/signup", async (request, response) => {
   try {
     const name = String(request.body?.name || "").trim();
@@ -1102,6 +1421,15 @@ app.post("/api/auth/student/signup", async (request, response) => {
       `,
       [id, name, email, mobile || null, city || null, state || null, country || null, educationLevel || null, passwordHash],
     );
+
+    void sendAutomatedMail({
+      eventKey: "new_account",
+      toEmail: email,
+      variables: {
+        studentName: name || "Student",
+      },
+      fallbackSubject: "Welcome to Ednovate",
+    }).catch(() => {});
 
     response.json({ ok: true, message: "Signup successful. Please login." });
   } catch (error) {
@@ -1157,6 +1485,17 @@ app.post("/api/auth/student/login", async (request, response) => {
       "INSERT INTO student_login_logs (student_id, ip_address, user_agent, source) VALUES ($1,$2,$3,$4)",
       [student.id, getIpAddress(request), String(request.headers["user-agent"] || ""), "student_password_login"],
     );
+
+    void sendAutomatedMail({
+      eventKey: "user_login",
+      toEmail: student.email,
+      variables: {
+        studentName: student.name || "Student",
+        loginAt: new Date().toLocaleString("en-IN"),
+        ipAddress: getIpAddress(request),
+      },
+      fallbackSubject: "Login alert",
+    }).catch(() => {});
 
     response.json({
       token,
@@ -1216,6 +1555,17 @@ app.post("/api/auth/student/change-password", requireStudentSession, async (requ
     }
 
     await pool.query("UPDATE students SET password = $2, updated_at = NOW() WHERE id = $1", [studentId, hashPassword(newPassword)]);
+
+    void sendAutomatedMail({
+      eventKey: "password_reset",
+      toEmail: request.studentSession?.student?.email,
+      variables: {
+        studentName: request.studentSession?.student?.name || "Student",
+        changedAt: new Date().toLocaleString("en-IN"),
+      },
+      fallbackSubject: "Password changed",
+    }).catch(() => {});
+
     response.json({ ok: true, message: "Password updated successfully" });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to change password" });
@@ -1597,6 +1947,8 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
     const shippingState = String(request.body?.shippingState || "").trim();
     const shippingCountry = String(request.body?.shippingCountry || "").trim();
     const shippingPincode = String(request.body?.shippingPincode || "").trim();
+    const purchasedTitles = [];
+    let purchaseAmountTotal = 0;
 
     if (items.length === 0) {
       response.status(400).json({ message: "items are required" });
@@ -1639,6 +1991,8 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
       }
 
       const title = courseTitle || courseId;
+      purchasedTitles.push(title);
+      purchaseAmountTotal += amount;
 
       if (grantAccess) {
         const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
@@ -1772,6 +2126,18 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
       `,
       [studentId],
     );
+
+    void sendAutomatedMail({
+      eventKey: "user_purchase",
+      toEmail: request.studentSession?.student?.email || customerEmail,
+      variables: {
+        studentName: request.studentSession?.student?.name || customerName || "Student",
+        orderId,
+        itemsSummary: purchasedTitles.join(", "),
+        amount: purchaseAmountTotal.toFixed(2),
+      },
+      fallbackSubject: "Purchase confirmation",
+    }).catch(() => {});
 
     response.json({ ok: true });
   } catch (error) {
@@ -1998,6 +2364,17 @@ app.post("/api/auth/student/lesson-complete", requireStudentSession, async (requ
       (!access.expiresAt || new Date(access.expiresAt).getTime() > Date.now()) &&
       (access.isUnlimitedViews === true || Math.max(0, Number(access.remainingWatchSeconds || 0)) > 0);
 
+    void sendAutomatedMail({
+      eventKey: "course_complete",
+      toEmail: request.studentSession?.student?.email,
+      variables: {
+        studentName: request.studentSession?.student?.name || "Student",
+        courseTitle: access.courseTitle || courseId,
+        lessonTitle,
+      },
+      fallbackSubject: "Course milestone reached",
+    }).catch(() => {});
+
     response.json({
       ok: true,
       consumedView: true,
@@ -2196,7 +2573,9 @@ app.get("/api/admin/orders", requireAdminPermission("orders", "read"), async (re
     const search = String(request.query.search || "").trim().toLowerCase();
     const dispatchStatus = String(request.query.dispatchStatus || "all").trim().toLowerCase();
     const itemType = String(request.query.itemType || "all").trim().toLowerCase();
-    const limit = Math.max(10, Math.min(1000, Number(request.query.limit || 300)));
+    const from = String(request.query.from || "").trim();
+    const to = String(request.query.to || "").trim();
+    const limit = Math.max(10, Math.min(10000, Number(request.query.limit || 300)));
 
     const where = [];
     const params = [];
@@ -2226,6 +2605,24 @@ app.get("/api/admin/orders", requireAdminPermission("orders", "read"), async (re
       where.push("LOWER(o.item_type) = 'package'");
     } else if (itemType === "course") {
       where.push("o.is_ebook = FALSE AND LOWER(o.item_type) <> 'package'");
+    }
+
+    if (from) {
+      const parsedFrom = new Date(from);
+      if (!Number.isNaN(parsedFrom.getTime())) {
+        where.push(`o.created_at >= $${idx}`);
+        params.push(parsedFrom.toISOString());
+        idx += 1;
+      }
+    }
+
+    if (to) {
+      const parsedTo = new Date(to);
+      if (!Number.isNaN(parsedTo.getTime())) {
+        where.push(`o.created_at <= $${idx}`);
+        params.push(parsedTo.toISOString());
+        idx += 1;
+      }
     }
 
     const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
@@ -2989,6 +3386,19 @@ app.post("/api/students/:id/password", requireAdminPermission("users", "edit"), 
     }
 
     await pool.query("UPDATE students SET password = $2, updated_at = NOW() WHERE id = $1", [studentId, hashPassword(password)]);
+
+    const studentResult = await pool.query("SELECT name, email FROM students WHERE id = $1 LIMIT 1", [studentId]);
+    const student = studentResult.rows[0];
+    void sendAutomatedMail({
+      eventKey: "password_reset",
+      toEmail: student?.email,
+      variables: {
+        studentName: student?.name || "Student",
+        changedAt: new Date().toLocaleString("en-IN"),
+      },
+      fallbackSubject: "Password changed",
+    }).catch(() => {});
+
     response.json({ ok: true });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to change password" });
@@ -3065,9 +3475,47 @@ app.post("/api/students/:id/message", requireAdminPermission("users", "edit"), a
       [studentId, channel, subject || null, message, sentBy],
     );
 
+    const studentResult = await pool.query("SELECT name, email FROM students WHERE id = $1 LIMIT 1", [studentId]);
+    const student = studentResult.rows[0];
+    void sendAutomatedMail({
+      eventKey: "user_notification",
+      toEmail: student?.email,
+      variables: {
+        studentName: student?.name || "Student",
+        notificationMessage: message,
+      },
+      fallbackSubject: subject || "Notification from Ednovate",
+    }).catch(() => {});
+
     response.json({ ok: true });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to send message" });
+  }
+});
+
+app.delete("/api/students/:id/notifications/:notificationId", requireAdminPermission("users", "edit"), async (request, response) => {
+  try {
+    const studentId = String(request.params.id || "").trim();
+    const notificationId = Number(request.params.notificationId || 0);
+
+    if (!studentId || !notificationId) {
+      response.status(400).json({ message: "Valid student id and notification id are required" });
+      return;
+    }
+
+    const result = await pool.query(
+      "DELETE FROM student_notifications WHERE id = $1 AND student_id = $2 RETURNING id",
+      [notificationId, studentId],
+    );
+
+    if (result.rowCount === 0) {
+      response.status(404).json({ message: "Notification not found" });
+      return;
+    }
+
+    response.json({ ok: true });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete notification" });
   }
 });
 
@@ -3338,6 +3786,47 @@ app.post("/api/admin/technical-support/tickets/:id/status", requireAdminPermissi
     response.json({ ok: true });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to update ticket status" });
+  }
+});
+
+app.delete("/api/admin/technical-support/tickets/:id", requireAdminPermission("technical-support", "delete"), async (request, response) => {
+  try {
+    const ticketId = Number(request.params.id || 0);
+    if (!ticketId) {
+      response.status(400).json({ message: "Valid ticket id is required" });
+      return;
+    }
+
+    const ticketResult = await pool.query(
+      "SELECT id, ticket_code, student_id FROM technical_support_tickets WHERE id = $1",
+      [ticketId],
+    );
+
+    if (ticketResult.rowCount === 0) {
+      response.status(404).json({ message: "Ticket not found" });
+      return;
+    }
+
+    await pool.query("DELETE FROM technical_support_tickets WHERE id = $1", [ticketId]);
+
+    await writeAdminAuditLog({
+      adminId: request.adminSession?.admin?.id,
+      adminEmail: request.adminSession?.admin?.email,
+      action: "delete",
+      moduleKey: "technical-support",
+      targetType: "technical_support_ticket",
+      targetId: String(ticketId),
+      ipAddress: getIpAddress(request),
+      userAgent: request.headers["user-agent"],
+      details: {
+        ticketCode: ticketResult.rows[0]?.ticket_code,
+        studentId: ticketResult.rows[0]?.student_id,
+      },
+    });
+
+    response.json({ ok: true });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete ticket" });
   }
 });
 
@@ -4219,6 +4708,18 @@ app.put("/api/admin/platform-settings", requireAdminPermission("settings", "edit
         ...existingRaw.bunnyStreamApi,
         ...incoming.bunnyStreamApi,
       },
+      smtp: {
+        ...existingRaw.smtp,
+        ...incoming.smtp,
+      },
+      emailAutomation: {
+        ...(existingRaw.emailAutomation || {}),
+        ...(incoming.emailAutomation || {}),
+        templates: {
+          ...((existingRaw.emailAutomation && existingRaw.emailAutomation.templates) || {}),
+          ...((incoming.emailAutomation && incoming.emailAutomation.templates) || {}),
+        },
+      },
       siteSettings: {
         ...(existingRaw.siteSettings || {}),
         ...(incoming.siteSettings || {}),
@@ -4232,6 +4733,35 @@ app.put("/api/admin/platform-settings", requireAdminPermission("settings", "edit
     response.json({ ok: true, settings: nextData });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save settings" });
+  }
+});
+
+app.post("/api/admin/smtp/test", requireAdminPermission("settings", "edit"), async (request, response) => {
+  try {
+    const toEmail = String(request.body?.toEmail || request.adminSession?.admin?.email || "").trim().toLowerCase();
+    if (!toEmail) {
+      response.status(400).json({ message: "toEmail is required" });
+      return;
+    }
+
+    const result = await sendAutomatedMail({
+      eventKey: "user_notification",
+      toEmail,
+      variables: {
+        studentName: request.adminSession?.admin?.name || "Admin",
+        notificationMessage: "SMTP test successful. Your Ednovate mail setup is working.",
+      },
+      fallbackSubject: "SMTP test - Ednovate",
+    });
+
+    if (!result.sent) {
+      response.status(400).json({ ok: false, message: result.reason || "SMTP test failed" });
+      return;
+    }
+
+    response.json({ ok: true, message: `Test mail sent to ${toEmail}` });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to send SMTP test mail" });
   }
 });
 
@@ -4255,6 +4785,18 @@ app.put("/api/admin/homepage/platform-settings", requireAdminPermission("homepag
       bunnyStreamApi: {
         ...existingRaw.bunnyStreamApi,
         ...incoming.bunnyStreamApi,
+      },
+      smtp: {
+        ...existingRaw.smtp,
+        ...incoming.smtp,
+      },
+      emailAutomation: {
+        ...(existingRaw.emailAutomation || {}),
+        ...(incoming.emailAutomation || {}),
+        templates: {
+          ...((existingRaw.emailAutomation && existingRaw.emailAutomation.templates) || {}),
+          ...((incoming.emailAutomation && incoming.emailAutomation.templates) || {}),
+        },
       },
       siteSettings: {
         ...(existingRaw.siteSettings || {}),

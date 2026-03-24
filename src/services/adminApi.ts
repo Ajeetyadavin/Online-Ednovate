@@ -96,6 +96,21 @@ export interface PlatformSettingsPayload {
     cdnHostname: string;
     pullZone: string;
   };
+  smtp?: {
+    enabled: boolean;
+    host: string;
+    port: number;
+    secure: boolean;
+    username: string;
+    password: string;
+    fromName: string;
+    fromEmail: string;
+    replyTo: string;
+  };
+  emailAutomation?: {
+    enabled: boolean;
+    templates: Record<string, { enabled: boolean; subject: string; body: string }>;
+  };
   siteSettings?: Record<string, unknown>;
   homepage?: {
     exploreCategoryIds?: string[];
@@ -281,6 +296,25 @@ export interface AdminOrderGroup {
   }>;
 }
 
+export interface ActivityLogItem {
+  actor_type: "admin" | "student";
+  actor_id: string;
+  actor_name: string;
+  actor_email?: string;
+  actor_role: "super_admin" | "sub_admin" | "student" | string;
+  action: string;
+  module_key: string;
+  target_type?: string;
+  target_id?: string;
+  ip_address?: string;
+  user_agent?: string;
+  details?: Record<string, unknown>;
+  created_at: string;
+  course_id?: string;
+  course_title?: string;
+  amount?: number;
+}
+
 const jsonHeaders = {
   "Content-Type": "application/json",
 };
@@ -427,8 +461,12 @@ const writeMarketingCampaignsToSettings = async (
 };
 
 export const adminApi = {
-  async listStudents(search = "") {
-    const query = search ? `?search=${encodeURIComponent(search)}` : "";
+  async listStudents(search = "", from?: string, to?: string) {
+    const params = new URLSearchParams();
+    if (search) params.set("search", search);
+    if (from) params.set("from", from);
+    if (to) params.set("to", to);
+    const query = params.toString() ? `?${params.toString()}` : "";
     return parseResponse<{ students: StudentRecord[] }>(await fetch(`/api/students${query}`, {
       headers: withAuthHeaders({}),
     }));
@@ -513,11 +551,20 @@ export const adminApi = {
     );
   },
 
-  async listOrders(options?: { search?: string; dispatchStatus?: string; itemType?: "all" | "ebook" | "course" | "package"; limit?: number }) {
+  async listOrders(options?: {
+    search?: string;
+    dispatchStatus?: string;
+    itemType?: "all" | "ebook" | "course" | "package";
+    from?: string;
+    to?: string;
+    limit?: number;
+  }) {
     const query = new URLSearchParams();
     if (options?.search) query.set("search", options.search);
     if (options?.dispatchStatus) query.set("dispatchStatus", options.dispatchStatus);
     if (options?.itemType) query.set("itemType", options.itemType);
+    if (options?.from) query.set("from", options.from);
+    if (options?.to) query.set("to", options.to);
     if (options?.limit) query.set("limit", String(options.limit));
     const suffix = query.toString() ? `?${query.toString()}` : "";
     return parseResponse<{ items: AdminOrderLine[] }>(
@@ -665,6 +712,15 @@ export const adminApi = {
         method: "POST",
         headers: withAuthHeaders(),
         body: JSON.stringify(payload),
+      }),
+    );
+  },
+
+  async deleteStudentNotification(studentId: string, notificationId: number) {
+    return parseResponse<{ ok: boolean }>(
+      await fetch(`/api/students/${encodeURIComponent(studentId)}/notifications/${encodeURIComponent(String(notificationId))}`, {
+        method: "DELETE",
+        headers: withAuthHeaders({}),
       }),
     );
   },
@@ -894,6 +950,36 @@ export const adminApi = {
     );
   },
 
+  async listActivityLogs(filters?: {
+    limit?: number;
+    actorType?: "all" | "admin" | "subadmin" | "student";
+    actionType?: "all" | "login" | "create" | "edit" | "delete" | "purchase" | "video_watch";
+    actorId?: string;
+    actorName?: string;
+    actorEmail?: string;
+    search?: string;
+    from?: string;
+    to?: string;
+  }) {
+    const query = new URLSearchParams();
+    if (filters?.limit) query.set("limit", String(filters.limit));
+    if (filters?.actorType && filters.actorType !== "all") query.set("actorType", filters.actorType);
+    if (filters?.actionType && filters.actionType !== "all") query.set("actionType", filters.actionType);
+    if (filters?.actorId) query.set("actorId", filters.actorId);
+    if (filters?.actorName) query.set("actorName", filters.actorName);
+    if (filters?.actorEmail) query.set("actorEmail", filters.actorEmail);
+    if (filters?.search) query.set("search", filters.search);
+    if (filters?.from) query.set("from", filters.from);
+    if (filters?.to) query.set("to", filters.to);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+
+    return parseResponse<{ items: ActivityLogItem[] }>(
+      await fetch(`/api/admin/activity-logs${suffix}`, {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
   async getPlatformSettings() {
     return parseResponse<{ settings: PlatformSettingsPayload }>(
       await fetch("/api/admin/platform-settings", {
@@ -908,6 +994,16 @@ export const adminApi = {
         method: "PUT",
         headers: withAuthHeaders(),
         body: JSON.stringify({ settings }),
+      }),
+    );
+  },
+
+  async sendSmtpTestMail(toEmail: string) {
+    return parseResponse<{ ok: boolean; message: string }>(
+      await fetch("/api/admin/smtp/test", {
+        method: "POST",
+        headers: withAuthHeaders(),
+        body: JSON.stringify({ toEmail }),
       }),
     );
   },
@@ -1117,6 +1213,15 @@ export const adminApi = {
         method: "POST",
         headers: withAuthHeaders(),
         body: JSON.stringify({ status }),
+      }),
+    );
+  },
+
+  async deleteTechnicalSupportTicket(ticketId: number) {
+    return parseResponse<{ ok: boolean }>(
+      await fetch(`/api/admin/technical-support/tickets/${encodeURIComponent(String(ticketId))}`, {
+        method: "DELETE",
+        headers: withAuthHeaders({}),
       }),
     );
   },

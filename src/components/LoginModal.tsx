@@ -67,7 +67,7 @@ const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.
 const formatTime = (seconds: number) => `0:${String(seconds).padStart(2, "0")}`;
 
 const fieldClassName =
-  "h-11 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-medium text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus-visible:border-[rgb(38,72,151)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(38,72,151)]/20";
+  "h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-medium text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus-visible:border-[rgb(38,72,151)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(38,72,151)]/20";
 
 const LoginModal = ({
   open,
@@ -571,23 +571,23 @@ const LoginModal = ({
   return (
     <Dialog open={open} onOpenChange={handleModalOpenChange}>
       <DialogContent className="w-[96vw] max-w-[480px] overflow-hidden rounded-3xl border-0 p-0 shadow-[0_32px_64px_-8px_rgba(0,0,0,0.28)]">
-        <div className="flex max-h-[96vh] flex-col">
+        <div className="flex max-h-[92vh] flex-col">
 
           {/* ── HEADER ── */}
-          <div className="relative shrink-0 overflow-hidden bg-gradient-to-br from-[rgb(38,72,151)] via-[rgb(38,72,151)] to-[rgb(17,37,92)] px-7 pb-6 pt-7">
+          <div className={`relative shrink-0 overflow-hidden bg-gradient-to-br from-[rgb(38,72,151)] via-[rgb(38,72,151)] to-[rgb(17,37,92)] ${isSignup && !showForgotPassword ? "px-5 pb-3 pt-4" : "px-7 pb-6 pt-7"}`}>
             {/* decorative blobs */}
             <div className="pointer-events-none absolute -right-8 -top-8 h-32 w-32 rounded-full bg-white/10" />
             <div className="pointer-events-none absolute -bottom-6 -left-6 h-24 w-24 rounded-full bg-white/10" />
 
             {/* logo */}
-            <img src="/ednovate-logo.svg" alt="Ednovate" className="relative z-10 h-9 w-auto rounded-lg bg-white px-2.5 py-1.5 shadow" />
+            <img src="/ednovate-logo.svg" alt="Ednovate" className={`relative z-10 w-auto rounded-lg bg-white shadow ${isSignup && !showForgotPassword ? "h-7 px-2 py-1" : "h-9 px-2.5 py-1.5"}`} />
 
             {/* title + subtitle */}
-            <div className="relative z-10 mt-5">
-              <DialogTitle className="text-3xl font-extrabold leading-tight tracking-tight text-white">
+            <div className={`relative z-10 ${isSignup && !showForgotPassword ? "mt-2" : "mt-5"}`}>
+              <DialogTitle className={`${isSignup && !showForgotPassword ? "text-[1.65rem]" : "text-3xl"} font-extrabold leading-tight tracking-tight text-white`}>
                 {showForgotPassword ? "Reset Password" : isSignup ? "Create Account" : "Welcome Back"}
               </DialogTitle>
-              <p className="mt-1.5 text-sm font-medium text-[rgb(211,224,255)]">
+              <p className={`font-medium text-[rgb(211,224,255)] ${isSignup && !showForgotPassword ? "mt-1 text-[13px]" : "mt-1.5 text-sm"}`}>
                 {showForgotPassword
                   ? "Verify OTP and set a new password."
                   : isSignup
@@ -604,24 +604,24 @@ const LoginModal = ({
 
             {/* signup step bar */}
             {isSignup && !showForgotPassword && (
-              <div className="relative z-10 mt-6 flex items-center gap-0">
+              <div className="relative z-10 mt-2.5 flex items-center gap-0">
                 {([{ id: 1 as SignupStep, label: "Profile" }, { id: 2 as SignupStep, label: "Location" }, { id: 3 as SignupStep, label: "Verify" }]).map((step, index) => {
                   const isComplete = signupStep > step.id;
                   const isActive   = signupStep === step.id;
                   return (
                     <div key={step.id} className={`flex items-center ${index < 2 ? "flex-1" : ""}`}>
                       <div className="flex flex-col items-center gap-1">
-                        <div className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-full text-xs font-bold transition-all ${
+                        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[11px] font-bold transition-all ${
                           isComplete ? "bg-[rgb(231,70,35)] text-white shadow"
                             : isActive  ? "bg-white text-[rgb(38,72,151)] shadow"
                             : "bg-white/15 text-white/60"
                         }`}>
                           {isComplete ? <Check className="h-4 w-4" /> : step.id}
                         </div>
-                        <span className={`text-[10px] font-semibold ${ isActive ? "text-white" : "text-white/50" }`}>{step.label}</span>
+                        <span className={`text-[9px] font-semibold ${ isActive ? "text-white" : "text-white/50" }`}>{step.label}</span>
                       </div>
                       {index < 2 && (
-                        <div className={`mx-3 mb-4 h-px flex-1 transition-all ${ signupStep > step.id ? "bg-white" : "bg-white/25" }`} />
+                        <div className={`mx-2.5 mb-4 h-px flex-1 transition-all ${ signupStep > step.id ? "bg-white" : "bg-white/25" }`} />
                       )}
                     </div>
                   );
@@ -631,7 +631,7 @@ const LoginModal = ({
           </div>
 
           {/* ── SCROLLABLE FORM BODY ── */}
-          <div className="flex-1 overflow-y-auto bg-white px-7 py-6">
+          <div className={`flex-1 bg-white ${isSignup && !showForgotPassword ? "overflow-hidden px-5 py-3" : "overflow-y-auto px-7 py-5"}`}>
 
             {/* LOGIN */}
             {!isSignup && !showForgotPassword && (
@@ -915,26 +915,26 @@ const LoginModal = ({
 
             {/* SIGNUP STEP 1 */}
             {isSignup && !showForgotPassword && signupStep === 1 && (
-              <form className="space-y-4" onSubmit={handleStepOneSubmit}>
+              <form className="space-y-3" onSubmit={handleStepOneSubmit}>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">First Name*</Label>
+                    <Label className="text-xs font-semibold text-slate-700">First Name*</Label>
                     <Input className={fieldClassName} placeholder="First name" value={signupForm.firstName} onChange={(event) => updateSignupField("firstName", event.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">Last Name*</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Last Name*</Label>
                     <Input className={fieldClassName} placeholder="Last name" value={signupForm.lastName} onChange={(event) => updateSignupField("lastName", event.target.value)} />
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Gender*</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Gender*</Label>
                   <select className={`${fieldClassName} appearance-none`} value={signupForm.gender} onChange={(event) => updateSignupField("gender", event.target.value)}>
                     <option value="">Select gender</option>
                     {GENDER_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                   </select>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Mobile No*</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Mobile No*</Label>
                   <div className="grid grid-cols-[90px_1fr] gap-2">
                     <select className={`${fieldClassName} appearance-none`} value={signupForm.countryCode} onChange={(event) => updateSignupField("countryCode", event.target.value)}>
                       <option value="+91">+91</option>
@@ -945,7 +945,7 @@ const LoginModal = ({
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Email Address*</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Email Address*</Label>
                   <div className="relative">
                     <Mail className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                     <Input type="email" className={`${fieldClassName} pl-9`} placeholder="your@email.com" value={signupForm.email} onChange={(event) => updateSignupField("email", event.target.value)} />
@@ -953,7 +953,7 @@ const LoginModal = ({
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">Password*</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Password*</Label>
                     <div className="relative">
                       <Input type={showSignupPassword ? "text" : "password"} className={`${fieldClassName} pr-10`} placeholder="Min 6 chars" value={signupForm.password} onChange={(event) => updateSignupField("password", event.target.value)} />
                       <button type="button" onClick={() => setShowSignupPassword((p) => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -962,7 +962,7 @@ const LoginModal = ({
                     </div>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">Confirm*</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Confirm*</Label>
                     <div className="relative">
                       <Input type={showConfirmPassword ? "text" : "password"} className={`${fieldClassName} pr-10`} placeholder="Re-enter" value={signupForm.confirmPassword} onChange={(event) => updateSignupField("confirmPassword", event.target.value)} />
                       <button type="button" onClick={() => setShowConfirmPassword((p) => !p)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400">
@@ -971,7 +971,7 @@ const LoginModal = ({
                     </div>
                   </div>
                 </div>
-                <Button type="submit" className="h-11 w-full rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
+                <Button type="submit" className="h-10 w-full rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
                   Continue
                 </Button>
               </form>
@@ -979,17 +979,17 @@ const LoginModal = ({
 
             {/* SIGNUP STEP 2 */}
             {isSignup && !showForgotPassword && signupStep === 2 && (
-              <form className="space-y-4" onSubmit={handleStepTwoSubmit}>
+              <form className="space-y-3" onSubmit={handleStepTwoSubmit}>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">Country*</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Country*</Label>
                     <select className={`${fieldClassName} appearance-none`} value={signupForm.country} onChange={(event) => { setSignupForm((previous) => ({ ...previous, country: event.target.value, state: "" })); }}>
                       <option value="">Select</option>
                       {COUNTRY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">State*</Label>
+                    <Label className="text-xs font-semibold text-slate-700">State*</Label>
                     <select className={`${fieldClassName} appearance-none`} value={signupForm.state} onChange={(event) => updateSignupField("state", event.target.value)} disabled={!signupForm.country}>
                       <option value="">Select</option>
                       {availableStates.map((option) => <option key={option} value={option}>{option}</option>)}
@@ -998,17 +998,17 @@ const LoginModal = ({
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">City*</Label>
+                    <Label className="text-xs font-semibold text-slate-700">City*</Label>
                     <Input className={fieldClassName} placeholder="Your city" value={signupForm.city} onChange={(event) => updateSignupField("city", event.target.value)} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label className="text-sm font-semibold text-slate-700">Pin Code*</Label>
+                    <Label className="text-xs font-semibold text-slate-700">Pin Code*</Label>
                     <Input className={fieldClassName} placeholder="6-digit pin" value={signupForm.pin} onChange={(event) => updateSignupField("pin", event.target.value.replace(/\D/g, "").slice(0, 6))} />
                   </div>
                 </div>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-3">
+                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
                   <input type="checkbox" checked={signupForm.captchaChecked} onChange={(event) => updateSignupField("captchaChecked", event.target.checked)} className="h-4 w-4 accent-emerald-600" />
-                  <span className="flex-1 text-sm text-slate-700">I am not a robot</span>
+                  <span className="flex-1 text-xs text-slate-700">I am not a robot</span>
                   <span className="text-[11px] font-bold text-slate-400">reCAPTCHA</span>
                 </label>
                 <label className="flex cursor-pointer items-start gap-2">
@@ -1018,10 +1018,10 @@ const LoginModal = ({
                   </span>
                 </label>
                 <div className="grid grid-cols-2 gap-3 pt-1">
-                  <Button type="button" variant="outline" onClick={() => setSignupStep(1)} className="h-11 rounded-xl border-slate-200">
+                  <Button type="button" variant="outline" onClick={() => setSignupStep(1)} className="h-10 rounded-xl border-slate-200">
                     <ChevronLeft className="mr-1 h-4 w-4" /> Back
                   </Button>
-                  <Button type="submit" disabled={isOtpSending} className="h-11 rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
+                  <Button type="submit" disabled={isOtpSending} className="h-10 rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
                     {isOtpSending ? "Sending\u2026" : "Continue"}
                   </Button>
                 </div>
@@ -1030,16 +1030,16 @@ const LoginModal = ({
 
             {/* SIGNUP STEP 3 – OTP */}
             {isSignup && !showForgotPassword && signupStep === 3 && (
-              <form className="space-y-5" onSubmit={handleSignupSubmit}>
-                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-4">
+              <form className="space-y-4" onSubmit={handleSignupSubmit}>
+                <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                   <ShieldCheck className="h-6 w-6 shrink-0 text-emerald-600" />
                   <div>
-                    <p className="text-sm font-semibold text-emerald-800">Verification code sent</p>
+                    <p className="text-xs font-semibold text-emerald-800">Verification code sent</p>
                     <p className="text-xs text-emerald-600">{signupForm.countryCode} {signupForm.mobile}</p>
                   </div>
                 </div>
                 <div className="space-y-1.5">
-                  <Label className="text-sm font-semibold text-slate-700">Enter 6-Digit OTP</Label>
+                  <Label className="text-xs font-semibold text-slate-700">Enter 6-Digit OTP</Label>
                   <Input
                     className={`${fieldClassName} text-center text-2xl font-bold tracking-[0.5em]`}
                     placeholder="\u2022 \u2022 \u2022 \u2022 \u2022 \u2022"
@@ -1050,10 +1050,10 @@ const LoginModal = ({
                   <p className="pt-1 text-center text-2xl font-bold text-slate-600">{formatTime(otpSeconds)}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-3">
-                  <Button type="button" variant="outline" onClick={() => setSignupStep(2)} className="h-11 rounded-xl border-slate-200">
+                  <Button type="button" variant="outline" onClick={() => setSignupStep(2)} className="h-10 rounded-xl border-slate-200">
                     <ChevronLeft className="mr-1 h-4 w-4" /> Back
                   </Button>
-                  <Button type="submit" disabled={isSignupSubmitting} className="h-11 rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
+                  <Button type="submit" disabled={isSignupSubmitting} className="h-10 rounded-xl bg-[rgb(231,70,35)] hover:bg-[rgb(209,60,30)] font-bold text-white shadow-md">
                     {isSignupSubmitting ? "Creating\u2026" : "Create Account"}
                   </Button>
                 </div>
@@ -1068,8 +1068,8 @@ const LoginModal = ({
           </div>
 
           {/* ── FOOTER ── */}
-          <div className="shrink-0 border-t border-slate-100 bg-white px-7 py-4 text-center">
-            <p className="text-sm font-medium text-slate-600">
+          <div className={`shrink-0 border-t border-slate-100 bg-white text-center ${isSignup && !showForgotPassword ? "px-5 py-3" : "px-7 py-4"}`}>
+            <p className={`${isSignup && !showForgotPassword ? "text-xs" : "text-sm"} font-medium text-slate-600`}>
               {showForgotPassword ? (
                 <>Remembered your password?{" "}<button type="button" onClick={() => setShowForgotPassword(false)} className="font-bold text-teal-600 hover:text-teal-500">Sign In</button></>
               ) : isSignup ? (

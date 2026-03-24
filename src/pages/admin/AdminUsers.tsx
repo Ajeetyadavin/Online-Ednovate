@@ -16,11 +16,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
+import { Label } from "@/components/ui/label";
 import {
   Search, Mail, MapPin, LogIn, Edit2, Trash2, Loader2, Shield,
   Clock, Eye, BookOpen, KeyRound, Send, Users, Activity,
   MessageSquare, RefreshCcw, GraduationCap, ToggleLeft, ToggleRight,
-  ChevronRight, Phone,
+  ChevronRight, Phone, Calendar, Download, ChevronDown, ChevronUp,
 } from "lucide-react";
 
 /* ─── Helpers ──────────────────────────────────────────────────── */
@@ -99,6 +100,10 @@ export default function AdminUsers() {
   const [videoActivity, setVideoActivity] = useState<StudentVideoActivity[]>([]);
   const [notifications, setNotifications] = useState<StudentNotification[]>([]);
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+  const [showDateFilter, setShowDateFilter] = useState(false);
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
+  const [isExporting, setIsExporting] = useState(false);
 
   const [courseForm, setCourseForm] = useState({ courseId: "", purchaseDate: "", durationDays: 180, totalViews: 2, usedViews: 0, notes: "", isEnabled: true });
   const [extendForm, setExtendForm] = useState({ courseId: "", extraDays: 30, extraViews: 1 });
@@ -120,7 +125,11 @@ export default function AdminUsers() {
   const loadStudents = async (search = "") => {
     setIsLoading(true);
     try {
-      const data = await adminApi.listStudents(search);
+      const data = await adminApi.listStudents(
+        search, 
+        fromDate ? fromDate + 'T00:00' : undefined, 
+        toDate ? toDate + 'T23:59' : undefined
+      );
       setStudents(data.students);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Failed to load students");
@@ -236,6 +245,41 @@ export default function AdminUsers() {
     }
   };
 
+  const exportUsersToExcel = async () => {
+    setIsExporting(true);
+    try {
+      const data = await adminApi.listStudents(
+        searchTerm, 
+        fromDate ? fromDate + 'T00:00' : undefined, 
+        toDate ? toDate + 'T23:59' : undefined
+      );
+      const users = data.students || [];
+      
+      if (users.length === 0) {
+        alert("No users to export");
+        return;
+      }
+      
+      const rows = users.map((u) => ({
+        "Name": u.name || "",
+        "Email": u.email || "",
+        "Phone": u.mobile || "",
+        "Status": u.status || "",
+        "Created": u.createdAt || "",
+      }));
+      
+      const { utils, writeFile } = await import("xlsx");
+      const ws = utils.json_to_sheet(rows);
+      const wb = utils.book_new();
+      utils.book_append_sheet(wb, ws, "Users");
+      writeFile(wb, "users-export.xlsx");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Export failed");
+    } finally {
+      setIsExporting(false);
+    }
+  };
+
   const handleSaveCourseAccess = async () => {
     if (!selectedStudentId || !courseForm.courseId) return;
     const selectedCourse = courses.find((c) => c.id === courseForm.courseId);
@@ -288,6 +332,18 @@ export default function AdminUsers() {
       alert("Message queued successfully");
     } catch (error) {
       alert(error instanceof Error ? error.message : "Failed to send message");
+    }
+  };
+
+  const handleDeleteNotification = async (notificationId: number) => {
+    if (!selectedStudentId || !notificationId) return;
+    if (!confirm("Delete this notification? It will be removed from user side too.")) return;
+
+    try {
+      await adminApi.deleteStudentNotification(selectedStudentId, notificationId);
+      await loadStudentDetails(selectedStudentId);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to delete notification");
     }
   };
 
@@ -367,7 +423,28 @@ export default function AdminUsers() {
               <option value="Inactive">Inactive</option>
             </select>
             <Button variant="outline" size="sm" className="h-9 rounded-xl border-slate-200 text-xs" onClick={bulkUpdateStatus} disabled={!bulkStatus || selectedIds.length === 0}>Apply</Button>
+            <Button variant="outline" size="sm" className={`h-9 gap-1.5 rounded-xl border-slate-200 text-xs ${showDateFilter ? "bg-gray-100" : ""}`} onClick={() => setShowDateFilter(!showDateFilter)}>
+              <Calendar className="h-3.5 w-3.5" /> Date {showDateFilter ? <ChevronUp className="h-3.5 w-3.5 ml-1" /> : <ChevronDown className="h-3.5 w-3.5 ml-1" />}
+            </Button>
+            <Button variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl border-emerald-200 text-xs text-emerald-600 hover:bg-emerald-50" onClick={exportUsersToExcel} disabled={isExporting}>
+              <Download className={`h-3.5 w-3.5 ${isExporting ? "animate-pulse" : ""}`} /> {isExporting ? "Exporting..." : "Export"}
+            </Button>
           </div>
+
+          {showDateFilter && (
+            <div className="flex items-center gap-3 mt-3 p-3 bg-gray-50 rounded-lg">
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-gray-600">From:</Label>
+                <Input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)} className="w-[140px] h-8" />
+              </div>
+              <div className="flex items-center gap-2">
+                <Label className="text-xs text-gray-600">To:</Label>
+                <Input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)} className="w-[140px] h-8" />
+              </div>
+              <Button size="sm" onClick={() => loadStudents(searchTerm)}>Apply</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setFromDate(""); setToDate(""); }}>Clear</Button>
+            </div>
+          )}
         </div>
 
         {/* Table */}
@@ -794,10 +871,10 @@ export default function AdminUsers() {
                     <p className="mb-2 text-xs font-bold text-slate-800">Notification History ({notifications.length})</p>
                     <div className="overflow-hidden rounded-xl border border-slate-200">
                       <table className="w-full text-xs">
-                        <thead><tr className="border-b border-slate-100 bg-slate-50"><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Time</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Channel</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Subject</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Message</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th></tr></thead>
+                        <thead><tr className="border-b border-slate-100 bg-slate-50"><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Time</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Channel</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Subject</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Message</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th><th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Action</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
                           {notifications.length === 0 ? (
-                            <tr><td colSpan={5} className="py-8 text-center text-slate-400">No messages sent yet</td></tr>
+                            <tr><td colSpan={6} className="py-8 text-center text-slate-400">No messages sent yet</td></tr>
                           ) : notifications.map((n) => (
                             <tr key={n.id} className="hover:bg-slate-50">
                               <td className="px-4 py-2 text-slate-500">{formatDateTime(n.createdAt)}</td>
@@ -805,6 +882,16 @@ export default function AdminUsers() {
                               <td className="px-4 py-2 text-slate-600">{n.subject || "—"}</td>
                               <td className="max-w-[200px] truncate px-4 py-2 text-slate-500">{n.message}</td>
                               <td className="px-4 py-2"><span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${n.status === "sent" ? "bg-emerald-100 text-emerald-700" : "bg-amber-100 text-amber-700"}`}>{n.status}</span></td>
+                              <td className="px-4 py-2 text-right">
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 w-7 p-0 text-slate-400 hover:text-red-600"
+                                  onClick={() => void handleDeleteNotification(n.id)}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5" />
+                                </Button>
+                              </td>
                             </tr>
                           ))}
                         </tbody>

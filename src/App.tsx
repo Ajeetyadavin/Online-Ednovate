@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, useLocation } from "react-router-dom";
 import { useEffect, useState } from "react";
 
 import Layout from "./components/Layout";
@@ -21,10 +21,11 @@ import CourseLMS from "./pages/CourseLMS";
 import CourseAbout from "./pages/CourseAbout";
 import ApiTest from "./pages/ApiTest";
 import ContactUs from "./pages/ContactUs";
+import Maintenance from "./pages/Maintenance";
 import { CartProvider } from "./context/CartContext";
 import { AuthProvider } from "./context/AuthContext";
 import { AdminAuthProvider } from "./context/AdminAuthContext";
-import { SiteSettingsProvider } from "./context/SiteSettingsContext";
+import { SiteSettingsProvider, useSiteSettings } from "./context/SiteSettingsContext";
 import { PlatformDataProvider } from "./context/PlatformDataContext";
 import ScrollToTop from "./components/ScrollToTop";
 
@@ -46,10 +47,23 @@ import AdminSubAdmins from "./pages/admin/AdminSubAdmins";
 import AdminStudentAccess from "./pages/admin/AdminStudentAccess";
 import AdminMarketing from "./pages/admin/AdminMarketing";
 import AdminFaculty from "./pages/admin/AdminFaculty";
+import AdminLogs from "./pages/admin/AdminLogs";
 import CourseCollection from "./pages/CourseCollection";
 import FacultyDetail from "./pages/FacultyDetail";
 
 const queryClient = new QueryClient();
+
+const PublicRouteGuard = () => {
+  const { settings } = useSiteSettings();
+  const location = useLocation();
+  const isAdminRoute = location.pathname.startsWith("/admin");
+
+  if (!isAdminRoute && settings.maintenanceMode) {
+    return <Maintenance />;
+  }
+
+  return <Outlet />;
+};
 
 // Main app content wrapped in context providers
 const AppContent = () => (
@@ -64,24 +78,27 @@ const AppContent = () => (
               <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
                 <ScrollToTop />
                 <Routes>
-                  {/* Public routes */}
-                  <Route element={<Layout />}>
-                    <Route path="/" element={<Index />} />
-                    <Route path="/packages" element={<Packages />} />
-                    <Route path="/login" element={<Login />} />
-                    <Route path="/signup" element={<Signup />} />
-                    <Route path="/forgot-password" element={<ForgotPassword />} />
-                    <Route path="/checkout" element={<Checkout />} />
-                    <Route path="/order-confirmation" element={<OrderConfirmation />} />
-                    <Route path="/course/:id" element={<CourseDetails />} />
-                    <Route path="/learn/:id" element={<CourseLMS />} />
-                    <Route path="/dashboard" element={<Dashboard />} />
-                    <Route path="/dashboard/technical-support" element={<TechnicalSupport />} />
-                    <Route path="/dashboard/course/:id/about" element={<CourseAbout />} />
-                    <Route path="/collections/:slug" element={<CourseCollection />} />
-                    <Route path="/faculty/:id" element={<FacultyDetail />} />
-                    <Route path="/contact-us" element={<ContactUs />} />
-                    <Route path="/api-test" element={<ApiTest />} />
+                  <Route element={<PublicRouteGuard />}>
+                    {/* Public routes */}
+                    <Route element={<Layout />}>
+                      <Route path="/" element={<Index />} />
+                      <Route path="/packages" element={<Packages />} />
+                      <Route path="/login" element={<Login />} />
+                      <Route path="/signup" element={<Signup />} />
+                      <Route path="/forgot-password" element={<ForgotPassword />} />
+                      <Route path="/checkout" element={<Checkout />} />
+                      <Route path="/order-confirmation" element={<OrderConfirmation />} />
+                      <Route path="/course/:id" element={<CourseDetails />} />
+                      <Route path="/learn/:id" element={<CourseLMS />} />
+                      <Route path="/dashboard" element={<Dashboard />} />
+                      <Route path="/dashboard/technical-support" element={<TechnicalSupport />} />
+                      <Route path="/dashboard/course/:id/about" element={<CourseAbout />} />
+                      <Route path="/collections/:slug" element={<CourseCollection />} />
+                      <Route path="/faculty/:id" element={<FacultyDetail />} />
+                      <Route path="/contact-us" element={<ContactUs />} />
+                      <Route path="/api-test" element={<ApiTest />} />
+                    </Route>
+                    <Route path="*" element={<NotFound />} />
                   </Route>
 
                   {/* Admin routes */}
@@ -104,9 +121,8 @@ const AppContent = () => (
                     <Route path="header" element={<AdminHeader />} />
                     <Route path="settings" element={<AdminSettings />} />
                     <Route path="subadmins" element={<AdminSubAdmins />} />
+                    <Route path="logs" element={<AdminLogs />} />
                   </Route>
-
-                  <Route path="*" element={<NotFound />} />
                 </Routes>
               </BrowserRouter>
             </TooltipProvider>

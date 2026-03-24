@@ -7,7 +7,15 @@ import { Input } from "@/components/ui/input";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, Plus, Shield, Trash2 } from "lucide-react";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { Loader2, Plus, Shield, Trash2, Users, UserCog, Clock, MapPin, Check, X } from "lucide-react";
 
 type PermissionCell = Record<AdminAction, boolean>;
 type PermissionMap = Record<AdminModuleKey, PermissionCell>;
@@ -54,6 +62,7 @@ const MODULES: AdminModuleKey[] = [
   "marketing",
   "settings",
   "subadmins",
+  "logs",
 ];
 
 const ACTIONS: AdminAction[] = ["read", "create", "edit", "delete"];
@@ -196,9 +205,16 @@ export default function AdminSubAdmins() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Sub Admin Management</h1>
-        <p className="text-gray-600 mt-1">Create sub-admins, assign module permissions, and track every action log.</p>
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-orange-100 rounded-lg">
+            <Users className="w-6 h-6 text-orange-600" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-gray-900">Sub Admin Management</h1>
+            <p className="text-gray-500 text-sm">Create sub-admins and manage their permissions</p>
+          </div>
+        </div>
       </div>
 
       {error && (
@@ -213,54 +229,92 @@ export default function AdminSubAdmins() {
         </Alert>
       )}
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Create Sub Admin</CardTitle>
-          <CardDescription>Configure who can read, create, edit, or delete for each module.</CardDescription>
+      <Card className="border-gray-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-gray-100">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <UserCog className="w-4 h-4 text-orange-600" />
+            Create Sub Admin
+          </CardTitle>
+          <CardDescription>Configure permissions for each module</CardDescription>
         </CardHeader>
-        <CardContent className="space-y-4">
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <Input placeholder="Full name" value={form.name} onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))} />
-            <Input placeholder="Email" value={form.email} onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))} />
-            <Input type="password" placeholder="Password" value={form.password} onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))} />
+        <CardContent className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Full Name</label>
+              <Input 
+                placeholder="Enter full name" 
+                value={form.name} 
+                onChange={(e) => setForm((prev) => ({ ...prev, name: e.target.value }))}
+                className="h-10 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Email</label>
+              <Input 
+                placeholder="Enter email" 
+                value={form.email} 
+                onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                className="h-10 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-gray-700">Password</label>
+              <Input 
+                type="password" 
+                placeholder="Enter password" 
+                value={form.password} 
+                onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                className="h-10 focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
+              />
+            </div>
           </div>
 
-          <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-left p-2">Module</th>
+          <div className="border rounded-lg overflow-hidden">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50 hover:bg-gray-50">
+                  <TableHead className="font-semibold text-gray-700 w-48">Module</TableHead>
                   {ACTIONS.map((action) => (
-                    <th key={action} className="text-center p-2 uppercase text-xs">{action}</th>
+                    <TableHead key={action} className="text-center font-semibold text-gray-700">
+                      <span className="uppercase text-xs">{action}</span>
+                    </TableHead>
                   ))}
-                </tr>
-              </thead>
-              <tbody>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {MODULES.map((module) => (
-                  <tr key={module} className="border-t">
-                    <td className="p-2 font-medium">{module}</td>
+                  <TableRow key={module}>
+                    <TableCell className="font-medium text-gray-900">{module}</TableCell>
                     {ACTIONS.map((action) => (
-                      <td key={`${module}-${action}`} className="p-2 text-center">
-                        <input
-                          type="checkbox"
-                          checked={form.permissions[module][action]}
-                          onChange={() => togglePermission(module, action)}
-                          className="w-4 h-4"
-                        />
-                      </td>
+                      <TableCell key={`${module}-${action}`} className="text-center">
+                        <button
+                          type="button"
+                          onClick={() => togglePermission(module, action)}
+                          className={`w-6 h-6 rounded flex items-center justify-center transition-colors ${
+                            form.permissions[module][action]
+                              ? "bg-orange-100 text-orange-600"
+                              : "bg-gray-100 text-gray-400 hover:bg-gray-200"
+                          }`}
+                        >
+                          {form.permissions[module][action] ? <Check className="w-4 h-4" /> : <X className="w-4 h-4" />}
+                        </button>
+                      </TableCell>
                     ))}
-                  </tr>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
 
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Switch checked={form.isActive} onCheckedChange={(value) => setForm((prev) => ({ ...prev, isActive: value }))} />
+          <div className="flex items-center justify-between pt-2">
+            <div className="flex items-center gap-3">
+              <Switch 
+                checked={form.isActive} 
+                onCheckedChange={(value) => setForm((prev) => ({ ...prev, isActive: value }))} 
+              />
               <span className="text-sm text-gray-700">Account Active</span>
             </div>
-            <Button onClick={handleCreate} disabled={!canCreate || isSaving} className="gap-2">
+            <Button onClick={handleCreate} disabled={!canCreate || isSaving} className="gap-2 bg-orange-600 hover:bg-orange-700">
               {isSaving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
               Create Sub Admin
             </Button>
@@ -268,30 +322,49 @@ export default function AdminSubAdmins() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Sub Admin Accounts</CardTitle>
-          <CardDescription>Enable/disable accounts and monitor last login IP/time.</CardDescription>
+      <Card className="border-gray-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-gray-100">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Shield className="w-4 h-4 text-orange-600" />
+            Sub Admin Accounts
+          </CardTitle>
+          <CardDescription>Manage accounts and monitor login activity</CardDescription>
         </CardHeader>
         <CardContent>
           {isLoading ? (
-            <div className="py-10 text-center text-gray-500">Loading accounts...</div>
+            <div className="py-12 text-center text-gray-500">
+              <Loader2 className="w-6 h-6 animate-spin mx-auto mb-2 text-orange-600" />
+              <p>Loading accounts...</p>
+            </div>
           ) : (
             <div className="space-y-3">
               {sortedItems.map((item) => (
-                <div key={item.id} className="border rounded-lg p-4 bg-white">
+                <div key={item.id} className="border border-gray-200 rounded-lg p-4 bg-white hover:shadow-md transition-shadow">
                   <div className="flex items-start justify-between gap-4">
-                    <div>
+                    <div className="flex-1">
                       <div className="flex items-center gap-2">
                         <p className="font-semibold text-gray-900">{item.name}</p>
-                        {item.isSuperAdmin ? <Badge>Super Admin</Badge> : <Badge variant="secondary">Sub Admin</Badge>}
+                        {item.isSuperAdmin ? (
+                          <Badge className="bg-purple-100 text-purple-700">Super Admin</Badge>
+                        ) : (
+                          <Badge variant="secondary" className="bg-orange-100 text-orange-700">Sub Admin</Badge>
+                        )}
                       </div>
-                      <p className="text-sm text-gray-600">{item.email}</p>
-                      <p className="text-xs text-gray-500 mt-1">Last login: {formatDateTime(item.lastLoginAt)} | IP: {item.lastLoginIp || "-"}</p>
+                      <p className="text-sm text-gray-600 mt-1">{item.email}</p>
+                      <div className="flex items-center gap-4 mt-2 text-xs text-gray-500">
+                        <span className="flex items-center gap-1">
+                          <Clock className="w-3 h-3" />
+                          Last login: {formatDateTime(item.lastLoginAt)}
+                        </span>
+                        <span className="flex items-center gap-1">
+                          <MapPin className="w-3 h-3" />
+                          IP: {item.lastLoginIp || "-"}
+                        </span>
+                      </div>
                     </div>
 
                     <div className="flex items-center gap-3">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 bg-gray-50 px-3 py-2 rounded-lg">
                         <span className="text-xs text-gray-600">Active</span>
                         <Switch
                           checked={item.isActive}
@@ -302,7 +375,7 @@ export default function AdminSubAdmins() {
                       <Button
                         variant="outline"
                         size="icon"
-                        className="text-red-600"
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
                         disabled={!canDelete || item.isSuperAdmin}
                         onClick={() => handleDelete(item)}
                       >
@@ -311,13 +384,17 @@ export default function AdminSubAdmins() {
                     </div>
                   </div>
 
-                  <div className="mt-3 flex flex-wrap gap-2">
+                  <div className="mt-4 flex flex-wrap gap-2">
                     {MODULES.filter((module) => item.permissions?.[module]?.read).map((module) => (
-                      <Badge key={`${item.id}-${module}`} variant="outline" className="text-xs">
-                        <Shield className="w-3 h-3 mr-1" />
+                      <Badge key={`${item.id}-${module}`} variant="outline" className="text-xs bg-gray-50">
+                        <Shield className="w-3 h-3 mr-1 text-gray-500" />
                         {module}
                       </Badge>
                     ))}
+                    {MODULES.filter((module) => item.permissions?.[module]?.create).length === 0 && 
+                     MODULES.filter((module) => item.permissions?.[module]?.read).length === 0 && (
+                      <span className="text-xs text-gray-400">No permissions assigned</span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -326,37 +403,48 @@ export default function AdminSubAdmins() {
         </CardContent>
       </Card>
 
-      <Card>
-        <CardHeader>
-          <CardTitle>Audit Logs</CardTitle>
-          <CardDescription>Every login and action (create/edit/delete/view) is logged with IP and timestamp.</CardDescription>
+      <Card className="border-gray-200 shadow-sm">
+        <CardHeader className="pb-3 border-b border-gray-100">
+          <CardTitle className="text-lg flex items-center gap-2">
+            <Clock className="w-4 h-4 text-orange-600" />
+            Audit Logs
+          </CardTitle>
+          <CardDescription>Track all admin actions with timestamps and IP addresses</CardDescription>
         </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto border rounded-lg">
-            <table className="w-full text-sm">
-              <thead className="bg-gray-50">
-                <tr>
-                  <th className="text-left p-2">Time</th>
-                  <th className="text-left p-2">Admin</th>
-                  <th className="text-left p-2">Action</th>
-                  <th className="text-left p-2">Module</th>
-                  <th className="text-left p-2">Target</th>
-                  <th className="text-left p-2">IP</th>
-                </tr>
-              </thead>
-              <tbody>
+        <CardContent className="p-0">
+          <div className="overflow-x-auto">
+            <Table>
+              <TableHeader>
+                <TableRow className="bg-gray-50 hover:bg-gray-50">
+                  <TableHead className="w-40 font-semibold text-gray-700">Time</TableHead>
+                  <TableHead className="font-semibold text-gray-700">Admin</TableHead>
+                  <TableHead className="font-semibold text-gray-700">Action</TableHead>
+                  <TableHead className="font-semibold text-gray-700">Module</TableHead>
+                  <TableHead className="font-semibold text-gray-700">Target</TableHead>
+                  <TableHead className="font-semibold text-gray-700 w-28">IP</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
                 {auditLogs.map((log) => (
-                  <tr key={log.id} className="border-t">
-                    <td className="p-2 whitespace-nowrap">{formatDateTime(log.created_at)}</td>
-                    <td className="p-2">{log.admin_email || "system"}</td>
-                    <td className="p-2 uppercase font-medium">{log.action}</td>
-                    <td className="p-2">{log.module_key}</td>
-                    <td className="p-2">{log.target_type || "-"}:{log.target_id || "-"}</td>
-                    <td className="p-2">{log.ip_address || "-"}</td>
-                  </tr>
+                  <TableRow key={log.id} className="hover:bg-gray-50">
+                    <TableCell className="py-3 whitespace-nowrap text-sm text-gray-600">
+                      {formatDateTime(log.created_at)}
+                    </TableCell>
+                    <TableCell className="py-3 text-sm text-gray-900">
+                      {log.admin_email || "system"}
+                    </TableCell>
+                    <TableCell className="py-3">
+                      <Badge variant="outline" className="uppercase text-xs font-medium bg-gray-50">
+                        {log.action}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="py-3 text-sm text-gray-600">{log.module_key}</TableCell>
+                    <TableCell className="py-3 text-xs text-gray-600">{log.target_type || "-"}:{log.target_id || "-"}</TableCell>
+                    <TableCell className="py-3 text-xs text-gray-500">{log.ip_address || "-"}</TableCell>
+                  </TableRow>
                 ))}
-              </tbody>
-            </table>
+              </TableBody>
+            </Table>
           </div>
         </CardContent>
       </Card>

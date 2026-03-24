@@ -15,7 +15,8 @@ export type AdminModuleKey =
   | "technical-support"
   | "marketing"
   | "settings"
-  | "subadmins";
+  | "subadmins"
+  | "logs";
 
 export type ModulePermission = Record<AdminAction, boolean>;
 export type AdminPermissions = Record<AdminModuleKey, ModulePermission>;
@@ -68,6 +69,7 @@ const fullPermissions = (): AdminPermissions => ({
   marketing: { read: true, create: true, edit: true, delete: true },
   settings: { read: true, create: true, edit: true, delete: true },
   subadmins: { read: true, create: true, edit: true, delete: true },
+  logs: { read: true, create: true, edit: true, delete: true },
 });
 
 const normalizePermissions = (permissions?: Partial<AdminPermissions>): AdminPermissions => {

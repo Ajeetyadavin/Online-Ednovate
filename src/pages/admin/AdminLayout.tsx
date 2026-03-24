@@ -19,6 +19,7 @@ import {
   Shield,
   Gauge,
   GraduationCap,
+  ScrollText,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -47,6 +48,7 @@ const navItems = [
   { to: "/admin/marketing", icon: Megaphone, label: "Marketing", moduleKey: "marketing" as const },
   { to: "/admin/settings", icon: Settings, label: "Settings", moduleKey: "settings" as const },
   { to: "/admin/subadmins", icon: Shield, label: "Sub Admins", moduleKey: "subadmins" as const },
+  { to: "/admin/logs", icon: ScrollText, label: "Activity Logs", moduleKey: "logs" as const },
 ];
 
 const getModuleForPath = (pathname: string) => {
