@@ -25,7 +25,17 @@ export default function AdminLogin() {
 
     const result = await login(email, password);
     if (!result.success) {
-      setError(result.error || "Login failed");
+      if (result.requiresConfirmation) {
+        const shouldContinue = window.confirm(result.error || "This account is already active on another device. Continue login?");
+        if (shouldContinue) {
+          const forcedResult = await login(email, password, { forceLogin: true });
+          if (!forcedResult.success) {
+            setError(forcedResult.error || "Login failed");
+          }
+        }
+      } else {
+        setError(result.error || "Login failed");
+      }
     }
 
     setIsSubmitting(false);

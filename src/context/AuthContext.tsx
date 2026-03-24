@@ -1,6 +1,8 @@
-import { createContext, useCallback, useContext, useState, ReactNode } from "react";
+import { createContext, useCallback, useContext, useEffect, useRef, useState, ReactNode } from "react";
+import { toast } from "sonner";
 import {
   SESSION_TOKEN_KEY,
+  type ActiveSessionConfirmationData,
   fetchProfileApi,
   loginWithEmailApi,
   resetPasswordByMobileApi,
@@ -25,7 +27,11 @@ interface AuthContextType {
   verifyOtpCode: (mobileNo: string, otp: string) => Promise<AuthActionResult>;
   resetPassword: (mobileNo: string, password: string) => Promise<AuthActionResult>;
   verifyOtpAndLogin: (mobileNo: string, otp: string) => Promise<AuthActionResult>;
-  loginWithEmail: (email: string, password: string) => Promise<AuthActionResult>;
+  loginWithEmail: (
+    email: string,
+    password: string,
+    options?: { forceLogin?: boolean },
+  ) => Promise<AuthActionResult<AuthUserProfile | ActiveSessionConfirmationData>>;
   signup: (payload: SignupPayload) => Promise<AuthActionResult>;
   refreshProfile: () => Promise<AuthActionResult>;
   updateProfile: (updates: Partial<Pick<AuthUserProfile, "name" | "email" | "mobile">>) => AuthActionResult;
@@ -36,6 +42,7 @@ const STORAGE_KEYS = {
   userName: "ednovate_user_name",
   user: "ednovate_auth_user",
 };
+const FORCED_LOGOUT_NOTICE_KEY = "ednovate_forced_logout_notice";
 
 const parseStoredUser = (): AuthUserProfile | null => {
   const raw = localStorage.getItem(STORAGE_KEYS.user);
@@ -100,6 +107,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     () => initialUser?.name || localStorage.getItem(STORAGE_KEYS.userName) || "Student",
   );
   const [isProfileLoading, setIsProfileLoading] = useState(false);
+  const sessionAlertShownRef = useRef(false);
 
   const applyUser = useCallback((nextUser: AuthUserProfile) => {
     const safeName = nextUser.name || "Student";
@@ -155,7 +163,59 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     localStorage.removeItem(STORAGE_KEYS.userName);
     localStorage.removeItem(STORAGE_KEYS.user);
     localStorage.removeItem(SESSION_TOKEN_KEY);
+    sessionAlertShownRef.current = false;
   };
+
+  useEffect(() => {
+    if (!isLoggedIn || !user?.studentId) return;
+
+    let mounted = true;
+
+    const checkSession = async () => {
+      const token = localStorage.getItem(SESSION_TOKEN_KEY) || "";
+      if (!token) return;
+
+      try {
+        const response = await fetch("/api/auth/student/session-status", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) return;
+
+        const payload = await response.json().catch(() => ({} as { message?: string }));
+        if (!mounted) return;
+
+        const message = String(payload?.message || "Student login detected from another place. You have been logged out.");
+        if (!sessionAlertShownRef.current) {
+          sessionAlertShownRef.current = true;
+          localStorage.setItem(
+            FORCED_LOGOUT_NOTICE_KEY,
+            JSON.stringify({
+              message,
+              at: new Date().toISOString(),
+              audience: "student",
+            }),
+          );
+          toast.error(message);
+        }
+        logout();
+      } catch {
+        // Ignore temporary network errors; next poll retries.
+      }
+    };
+
+    void checkSession();
+    const interval = window.setInterval(() => {
+      void checkSession();
+    }, 4000);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, [isLoggedIn, user?.studentId]);
 
   const refreshProfile = useCallback(async (): Promise<AuthActionResult> => {
     if (!user?.studentId) {
@@ -253,8 +313,12 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return { ok: true, message: verifyResult.message };
   };
 
-  const loginWithEmail = async (email: string, password: string): Promise<AuthActionResult> => {
-    const loginResult = await loginWithEmailApi(email, password);
+  const loginWithEmail = async (
+    email: string,
+    password: string,
+    options?: { forceLogin?: boolean },
+  ): Promise<AuthActionResult<AuthUserProfile | ActiveSessionConfirmationData>> => {
+    const loginResult = await loginWithEmailApi(email, password, options);
     if (!loginResult.ok || !loginResult.data) {
       return loginResult;
     }

@@ -34,6 +34,19 @@ export interface AuthActionResult<T = undefined> {
   data?: T;
 }
 
+export interface ActiveSessionConfirmationData {
+  requiresConfirmation: true;
+  reason?: string;
+  activeSession?: {
+    ipAddress?: string | null;
+    loginAt?: string | null;
+  };
+}
+
+type LoginWithEmailOptions = {
+  forceLogin?: boolean;
+};
+
 interface StoredAuthUser extends AuthUserProfile {
   password: string;
 }
@@ -108,15 +121,31 @@ export const signupApi = async (payload: SignupPayload): Promise<AuthActionResul
 export const loginWithEmailApi = async (
   emailOrMobile: string,
   password: string,
-): Promise<AuthActionResult<AuthUserProfile>> => {
+  options?: LoginWithEmailOptions,
+): Promise<AuthActionResult<AuthUserProfile | ActiveSessionConfirmationData>> => {
   try {
     const response = await fetch("/api/auth/student/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ identifier: emailOrMobile, password }),
+      body: JSON.stringify({ identifier: emailOrMobile, password, forceLogin: options?.forceLogin === true }),
     });
     const parsed = await parseResponseMessage(response, "Login failed.");
     if (!parsed.ok) {
+      const requiresConfirmation = (parsed.payload as { requiresConfirmation?: boolean })?.requiresConfirmation === true;
+      if (requiresConfirmation) {
+        return {
+          ok: false,
+          message: parsed.message,
+          data: {
+            requiresConfirmation: true,
+            reason: String((parsed.payload as { reason?: string })?.reason || "active_session_exists"),
+            activeSession: {
+              ipAddress: (parsed.payload as { activeSession?: { ipAddress?: string | null } })?.activeSession?.ipAddress || null,
+              loginAt: (parsed.payload as { activeSession?: { loginAt?: string | null } })?.activeSession?.loginAt || null,
+            },
+          },
+        };
+      }
       return { ok: false, message: parsed.message };
     }
 

@@ -132,6 +132,8 @@ export default function AdminSettings() {
     enableNotifications: true,
     enableEmailVerification: true,
     maintenanceMode: false,
+    antiInspectEnabled: false,
+    disableCopyPaste: false,
     bunnyStreamEnabled: false,
     bunnyStreamLibraryId: "",
     bunnyStreamApiKey: "",
@@ -178,6 +180,9 @@ export default function AdminSettings() {
         const response = await adminApi.getPlatformSettings();
         const bunny = response?.settings?.bunnyStreamApi;
         const site = (response?.settings?.siteSettings || {}) as Record<string, unknown>;
+        const security = (site.security && typeof site.security === "object")
+          ? (site.security as Record<string, unknown>)
+          : {};
         const smtpRaw = (
           response?.settings?.smtp && typeof response.settings.smtp === "object"
             ? response.settings.smtp
@@ -224,6 +229,8 @@ export default function AdminSettings() {
           enableNotifications: site.enableNotifications !== false,
           enableEmailVerification: site.enableEmailVerification !== false,
           maintenanceMode: site.maintenanceMode === true,
+          antiInspectEnabled: security.antiInspectEnabled === true,
+          disableCopyPaste: security.disableCopyPaste === true,
           smtp: {
             enabled: smtpRaw.enabled === true,
             host: String(smtpRaw.host || ""),
@@ -285,6 +292,10 @@ export default function AdminSettings() {
 
         siteSettings.updateSettings({
           maintenanceMode: site.maintenanceMode === true,
+          security: {
+            antiInspectEnabled: security.antiInspectEnabled === true,
+            disableCopyPaste: security.disableCopyPaste === true,
+          },
           bunnyStreamApi: {
             enabled: bunny?.enabled === true,
             libraryId: String(bunny?.libraryId || ""),
@@ -362,6 +373,8 @@ export default function AdminSettings() {
       enableNotifications: true,
       enableEmailVerification: true,
       maintenanceMode: false,
+      antiInspectEnabled: false,
+      disableCopyPaste: false,
       bunnyStreamEnabled: true,
       emailAutomationEnabled: true,
       emailTemplates: {
@@ -412,6 +425,10 @@ export default function AdminSettings() {
         enableNotifications: settings.enableNotifications,
         enableEmailVerification: settings.enableEmailVerification,
         maintenanceMode: settings.maintenanceMode,
+        security: {
+          antiInspectEnabled: settings.antiInspectEnabled,
+          disableCopyPaste: settings.disableCopyPaste,
+        },
         smtp: {
           enabled: settings.smtp.enabled,
           host: settings.smtp.host,
@@ -445,6 +462,10 @@ export default function AdminSettings() {
     try {
       siteSettings.updateSettings({
         maintenanceMode: settings.maintenanceMode,
+        security: {
+          antiInspectEnabled: settings.antiInspectEnabled,
+          disableCopyPaste: settings.disableCopyPaste,
+        },
         bunnyStreamApi: payload.bunnyStreamApi,
       });
       await adminApi.savePlatformSettings(payload);
@@ -582,6 +603,22 @@ export default function AdminSettings() {
                   <p className="text-sm text-gray-600">Temporarily disable user access</p>
                 </div>
                 <Switch id="maintenanceMode" checked={settings.maintenanceMode} onCheckedChange={(value) => handleInputChange("maintenanceMode", value)} />
+              </div>
+
+              <div className="flex items-center justify-between p-4 rounded-lg bg-orange-50 border border-orange-200">
+                <div className="space-y-1">
+                  <Label htmlFor="antiInspectEnabled" className="text-gray-900 font-medium">Inspect Protection</Label>
+                  <p className="text-sm text-gray-600">Block common DevTools shortcuts on public pages and lock UI when DevTools is detected</p>
+                </div>
+                <Switch id="antiInspectEnabled" checked={settings.antiInspectEnabled} onCheckedChange={(value) => handleInputChange("antiInspectEnabled", value)} />
+              </div>
+
+              <div className="flex items-center justify-between p-4 rounded-lg bg-orange-50 border border-orange-200">
+                <div className="space-y-1">
+                  <Label htmlFor="disableCopyPaste" className="text-gray-900 font-medium">Disable Copy/Paste</Label>
+                  <p className="text-sm text-gray-600">Disable right click, copy, cut, paste, and text selection on public pages</p>
+                </div>
+                <Switch id="disableCopyPaste" checked={settings.disableCopyPaste} onCheckedChange={(value) => handleInputChange("disableCopyPaste", value)} />
               </div>
             </CardContent>
           </Card>

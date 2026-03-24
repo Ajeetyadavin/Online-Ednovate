@@ -8,6 +8,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 
+const hasActiveSessionConflict = (value: unknown): value is { requiresConfirmation: true } => {
+  return Boolean(value) && typeof value === "object" && (value as { requiresConfirmation?: boolean }).requiresConfirmation === true;
+};
+
 const Login = () => {
   const navigate = useNavigate();
   const { loginWithEmail } = useAuth();
@@ -28,6 +32,23 @@ const Login = () => {
     try {
       const result = await loginWithEmail(identifier, password);
       if (!result.ok) {
+        if (hasActiveSessionConflict(result.data)) {
+          const shouldContinue = window.confirm(result.message || "This account is already active on another device. Continue login?");
+          if (!shouldContinue) {
+            toast.message("Login cancelled.");
+            return;
+          }
+
+          const forcedResult = await loginWithEmail(identifier, password, { forceLogin: true });
+          if (!forcedResult.ok) {
+            toast.error(forcedResult.message || "Login failed. Please try again.");
+            return;
+          }
+
+          toast.success(forcedResult.message || "Login successful.");
+          navigate("/dashboard");
+          return;
+        }
         toast.error(result.message || "Login failed. Please try again.");
         return;
       }

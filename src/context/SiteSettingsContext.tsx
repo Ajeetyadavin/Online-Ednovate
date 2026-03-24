@@ -131,6 +131,10 @@ export interface HomepageSection {
 
 export interface SiteSettings {
   maintenanceMode: boolean;
+  security: {
+    antiInspectEnabled: boolean;
+    disableCopyPaste: boolean;
+  };
   colors: {
     primary: string;
     accent: string;
@@ -234,6 +238,10 @@ export interface SiteSettings {
 
 const createDefaultSettings = (): SiteSettings => ({
   maintenanceMode: false,
+  security: {
+    antiInspectEnabled: false,
+    disableCopyPaste: false,
+  },
   colors: {
     primary: "#1E3A5F",
     accent: "#E04040",
@@ -679,6 +687,10 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
     ...base,
     ...stored,
     maintenanceMode: stored.maintenanceMode === true,
+    security: {
+      antiInspectEnabled: stored.security?.antiInspectEnabled === true,
+      disableCopyPaste: stored.security?.disableCopyPaste === true,
+    },
     colors: {
       ...base.colors,
       ...(stored.colors || {}),

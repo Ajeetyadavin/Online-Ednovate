@@ -1,4 +1,5 @@
-import React, { createContext, useContext, useMemo, useState, useEffect } from "react";
+import React, { createContext, useContext, useMemo, useState, useEffect, useRef } from "react";
+import { toast } from "sonner";
 
 export type AdminAction = "read" | "create" | "edit" | "delete";
 export type AdminModuleKey =
@@ -40,13 +41,18 @@ interface AdminAuthContextType {
   admin: AdminUser | null;
   token: string | null;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<{ success: boolean; error?: string }>;
+  login: (
+    email: string,
+    password: string,
+    options?: { forceLogin?: boolean },
+  ) => Promise<{ success: boolean; error?: string; requiresConfirmation?: boolean }>;
   logout: () => void;
   isAuthenticated: boolean;
   hasPermission: (module: AdminModuleKey, action?: AdminAction) => boolean;
 }
 
 const SESSION_KEY = "admin_session_v2";
+const FORCED_LOGOUT_NOTICE_KEY = "ednovate_forced_logout_notice";
 
 const defaultModulePermission: ModulePermission = {
   read: false,
@@ -97,6 +103,7 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [admin, setAdmin] = useState<AdminUser | null>(null);
   const [token, setToken] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const sessionAlertShownRef = useRef(false);
 
   useEffect(() => {
     const stored = localStorage.getItem(SESSION_KEY);
@@ -117,18 +124,25 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setIsLoading(false);
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async (email: string, password: string, options?: { forceLogin?: boolean }) => {
     setIsLoading(true);
     try {
       const response = await fetch("/api/admin/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ email, password }),
+        body: JSON.stringify({ email, password, forceLogin: options?.forceLogin === true }),
       });
 
       const payload = await response.json().catch(() => ({}));
       if (!response.ok || !payload?.token || !payload?.user) {
         setIsLoading(false);
+        if (payload?.requiresConfirmation === true) {
+          return {
+            success: false,
+            error: payload?.message || "This account is already logged in on another device.",
+            requiresConfirmation: true,
+          };
+        }
         return { success: false, error: payload?.message || "Invalid email or password" };
       }
 
@@ -152,7 +166,56 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     setAdmin(null);
     setToken(null);
     localStorage.removeItem(SESSION_KEY);
+    sessionAlertShownRef.current = false;
   };
+
+  useEffect(() => {
+    if (!admin || !token) return;
+
+    let mounted = true;
+
+    const checkSession = async () => {
+      try {
+        const response = await fetch("/api/admin/session-status", {
+          headers: {
+            Authorization: `Bearer ${token}`,
+          },
+        });
+
+        if (response.ok) return;
+
+        const payload = await response.json().catch(() => ({} as { message?: string }));
+        if (!mounted) return;
+
+        const message = String(payload?.message || "Admin login detected from another place. You have been logged out.");
+        if (!sessionAlertShownRef.current) {
+          sessionAlertShownRef.current = true;
+          localStorage.setItem(
+            FORCED_LOGOUT_NOTICE_KEY,
+            JSON.stringify({
+              message,
+              at: new Date().toISOString(),
+              audience: "admin",
+            }),
+          );
+          toast.error(message);
+        }
+        logout();
+      } catch {
+        // Ignore temporary network errors; next poll will retry.
+      }
+    };
+
+    void checkSession();
+    const interval = window.setInterval(() => {
+      void checkSession();
+    }, 4000);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, [admin, token]);
 
   const hasPermission = (module: AdminModuleKey, action: AdminAction = "read") => {
     if (!admin) return false;

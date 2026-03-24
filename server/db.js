@@ -127,6 +127,13 @@ export async function ensureSchema() {
     );
   `);
 
+  await pool.query("ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
+  await pool.query("ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS revoked_reason TEXT");
+  await pool.query("ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ");
+  await pool.query("ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS replaced_by_token TEXT");
+  await pool.query("ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS login_ip TEXT");
+  await pool.query("ALTER TABLE auth_sessions ADD COLUMN IF NOT EXISTS login_user_agent TEXT");
+
   await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_accounts (
       id TEXT PRIMARY KEY,
@@ -153,6 +160,13 @@ export async function ensureSchema() {
       expires_at TIMESTAMPTZ NOT NULL
     );
   `);
+
+  await pool.query("ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS is_active BOOLEAN NOT NULL DEFAULT TRUE");
+  await pool.query("ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS revoked_reason TEXT");
+  await pool.query("ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS revoked_at TIMESTAMPTZ");
+  await pool.query("ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS replaced_by_token TEXT");
+  await pool.query("ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS login_ip TEXT");
+  await pool.query("ALTER TABLE admin_sessions ADD COLUMN IF NOT EXISTS login_user_agent TEXT");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS admin_audit_logs (

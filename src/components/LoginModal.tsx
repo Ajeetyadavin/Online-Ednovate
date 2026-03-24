@@ -65,6 +65,9 @@ const INITIAL_SIGNUP_FORM: SignupFormState = {
 const normalizeMobile = (value: string) => value.replace(/\D/g, "").slice(-10);
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 const formatTime = (seconds: number) => `0:${String(seconds).padStart(2, "0")}`;
+const hasActiveSessionConflict = (value: unknown): value is { requiresConfirmation: true } => {
+  return Boolean(value) && typeof value === "object" && (value as { requiresConfirmation?: boolean }).requiresConfirmation === true;
+};
 
 const fieldClassName =
   "h-10 w-full rounded-xl border border-slate-300 bg-white px-3.5 text-sm font-medium text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus-visible:border-[rgb(38,72,151)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(38,72,151)]/20";
@@ -305,6 +308,23 @@ const LoginModal = ({
     try {
       const response = await loginWithEmail(loginIdentifier, loginPassword);
       if (!response.ok) {
+        if (hasActiveSessionConflict(response.data)) {
+          const shouldContinue = window.confirm(response.message || "This account is already active on another device. Continue login?");
+          if (!shouldContinue) {
+            toast.message("Login cancelled.");
+            return;
+          }
+
+          const forcedResponse = await loginWithEmail(loginIdentifier, loginPassword, { forceLogin: true });
+          if (!forcedResponse.ok) {
+            toast.error(forcedResponse.message || "Login failed.");
+            return;
+          }
+
+          toast.success(forcedResponse.message || "Login successful.");
+          completeLogin();
+          return;
+        }
         toast.error(response.message || "Login failed.");
         return;
       }
@@ -462,6 +482,20 @@ const LoginModal = ({
 
       const loginResult = await loginWithEmail(signupForm.email, signupForm.password);
       if (!loginResult.ok) {
+        if (hasActiveSessionConflict(loginResult.data)) {
+          const shouldContinue = window.confirm(loginResult.message || "This account is already active on another device. Continue login?");
+          if (shouldContinue) {
+            const forcedLoginResult = await loginWithEmail(signupForm.email, signupForm.password, { forceLogin: true });
+            if (forcedLoginResult.ok) {
+              toast.success("Signup successful.");
+              completeLogin();
+              if (isSignup) {
+                onToggleMode();
+              }
+              return;
+            }
+          }
+        }
         toast.success(signupResult.message || "Signup complete. Please login.");
         setSignupStep(1);
         onToggleMode();

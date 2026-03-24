@@ -998,6 +998,18 @@ const verifyPassword = (inputPassword, storedPassword) => {
   return incoming === stored;
 };
 
+const buildForcedLogoutMessage = (replacedIp, replacedAt) => {
+  const ipText = replacedIp ? ` IP: ${replacedIp}.` : "";
+  const atText = replacedAt ? ` Time: ${new Date(replacedAt).toLocaleString("en-IN")}.` : "";
+  return `This account was logged in from another place.${ipText}${atText}`;
+};
+
+const buildActiveSessionPrompt = (activeIp, activeAt) => {
+  const ipText = activeIp ? ` IP: ${activeIp}.` : "";
+  const atText = activeAt ? ` Time: ${new Date(activeAt).toLocaleString("en-IN")}.` : "";
+  return `This account is already logged in from another place.${ipText}${atText} Do you want to login here?`;
+};
+
 const extractAdminToken = (request) => {
   const authHeader = String(request.headers.authorization || "");
   if (!authHeader.toLowerCase().startsWith("bearer ")) return "";
@@ -1046,9 +1058,12 @@ const requireAdminPermission = (moduleKey, action = "read") => {
 
       const result = await pool.query(
         `
-        SELECT s.token, s.expires_at, a.*
+        SELECT s.token, s.expires_at, s.is_active, s.revoked_reason, s.revoked_at, s.replaced_by_token, s.login_ip,
+               r.login_ip AS replaced_login_ip, r.created_at AS replaced_login_at,
+               a.*
         FROM admin_sessions s
         JOIN admin_accounts a ON a.id = s.admin_id
+        LEFT JOIN admin_sessions r ON r.token = s.replaced_by_token
         WHERE s.token = $1
         `,
         [token],
@@ -1060,8 +1075,25 @@ const requireAdminPermission = (moduleKey, action = "read") => {
         return;
       }
 
+      if (row.is_active === false) {
+        const message = row.revoked_reason === "logged_in_elsewhere"
+          ? buildForcedLogoutMessage(row.replaced_login_ip || row.login_ip, row.replaced_login_at || row.revoked_at)
+          : "Admin session is no longer active";
+        response.status(401).json({ message, reason: row.revoked_reason || "session_revoked", forcedLogout: true });
+        return;
+      }
+
       if (new Date(row.expires_at).getTime() < Date.now()) {
-        await pool.query("DELETE FROM admin_sessions WHERE token = $1", [token]);
+        await pool.query(
+          `
+          UPDATE admin_sessions
+          SET is_active = FALSE,
+              revoked_reason = 'session_expired',
+              revoked_at = NOW()
+          WHERE token = $1
+          `,
+          [token],
+        );
         response.status(401).json({ message: "Admin session expired" });
         return;
       }
@@ -1101,9 +1133,12 @@ const requireStudentSession = async (request, response, next) => {
 
     const sessionResult = await pool.query(
       `
-      SELECT s.token, s.expires_at, st.*
+      SELECT s.token, s.expires_at, s.is_active, s.revoked_reason, s.revoked_at, s.replaced_by_token, s.login_ip,
+             r.login_ip AS replaced_login_ip, r.created_at AS replaced_login_at,
+             st.*
       FROM auth_sessions s
       JOIN students st ON st.id = s.student_id
+      LEFT JOIN auth_sessions r ON r.token = s.replaced_by_token
       WHERE s.token = $1
       `,
       [token],
@@ -1115,8 +1150,25 @@ const requireStudentSession = async (request, response, next) => {
       return;
     }
 
+    if (row.is_active === false) {
+      const message = row.revoked_reason === "logged_in_elsewhere"
+        ? buildForcedLogoutMessage(row.replaced_login_ip || row.login_ip, row.replaced_login_at || row.revoked_at)
+        : "Student session is no longer active";
+      response.status(401).json({ message, reason: row.revoked_reason || "session_revoked", forcedLogout: true });
+      return;
+    }
+
     if (new Date(row.expires_at).getTime() < Date.now()) {
-      await pool.query("DELETE FROM auth_sessions WHERE token = $1", [token]);
+      await pool.query(
+        `
+        UPDATE auth_sessions
+        SET is_active = FALSE,
+            revoked_reason = 'session_expired',
+            revoked_at = NOW()
+        WHERE token = $1
+        `,
+        [token],
+      );
       response.status(401).json({ message: "Student session expired" });
       return;
     }
@@ -1226,6 +1278,7 @@ app.post("/api/admin/login", async (request, response) => {
   try {
     const email = String(request.body?.email || "").trim().toLowerCase();
     const password = String(request.body?.password || "");
+    const forceLogin = request.body?.forceLogin === true;
 
     if (!email || !password) {
       response.status(400).json({ message: "email and password are required" });
@@ -1251,16 +1304,51 @@ app.post("/api/admin/login", async (request, response) => {
       return;
     }
 
+    const activeSessionResult = await pool.query(
+      `
+      SELECT token, login_ip, created_at
+      FROM admin_sessions
+      WHERE admin_id = $1 AND is_active = TRUE AND expires_at > NOW()
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [account.id],
+    );
+    const activeSession = activeSessionResult.rows[0];
+    if (activeSession && !forceLogin) {
+      response.status(409).json({
+        message: buildActiveSessionPrompt(activeSession.login_ip, activeSession.created_at),
+        requiresConfirmation: true,
+        reason: "active_session_exists",
+        activeSession: {
+          ipAddress: activeSession.login_ip || null,
+          loginAt: activeSession.created_at || null,
+        },
+      });
+      return;
+    }
+
     const token = randomUUID();
     const expiresAt = new Date(Date.now() + 1000 * 60 * 60 * 24);
+    const ipAddress = getIpAddress(request);
+    const userAgent = String(request.headers["user-agent"] || "");
 
-    await pool.query("DELETE FROM admin_sessions WHERE admin_id = $1", [account.id]);
     await pool.query(
-      "INSERT INTO admin_sessions (token, admin_id, role, expires_at) VALUES ($1, $2, $3, $4)",
-      [token, account.id, account.role, expiresAt],
+      `
+      UPDATE admin_sessions
+      SET is_active = FALSE,
+          revoked_reason = 'logged_in_elsewhere',
+          revoked_at = NOW(),
+          replaced_by_token = $2
+      WHERE admin_id = $1 AND is_active = TRUE
+      `,
+      [account.id, token],
+    );
+    await pool.query(
+      "INSERT INTO admin_sessions (token, admin_id, role, expires_at, is_active, login_ip, login_user_agent) VALUES ($1, $2, $3, $4, TRUE, $5, $6)",
+      [token, account.id, account.role, expiresAt, ipAddress, userAgent],
     );
 
-    const ipAddress = getIpAddress(request);
     await pool.query(
       "UPDATE admin_accounts SET last_login_at = NOW(), last_login_ip = $2, updated_at = NOW() WHERE id = $1",
       [account.id, ipAddress],
@@ -1734,6 +1822,7 @@ app.post("/api/auth/student/login", async (request, response) => {
   try {
     const identifier = String(request.body?.identifier || request.body?.emailOrMobile || "").trim().toLowerCase();
     const password = String(request.body?.password || "");
+    const forceLogin = request.body?.forceLogin === true;
     if (!identifier || !password) {
       response.status(400).json({ message: "identifier and password are required" });
       return;
@@ -1767,16 +1856,58 @@ app.post("/api/auth/student/login", async (request, response) => {
       return;
     }
 
+    const activeSessionResult = await pool.query(
+      `
+      SELECT token, login_ip, created_at
+      FROM auth_sessions
+      WHERE student_id = $1 AND is_active = TRUE AND expires_at > NOW()
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [student.id],
+    );
+    const activeSession = activeSessionResult.rows[0];
+    if (activeSession && !forceLogin) {
+      response.status(409).json({
+        message: buildActiveSessionPrompt(activeSession.login_ip, activeSession.created_at),
+        requiresConfirmation: true,
+        reason: "active_session_exists",
+        activeSession: {
+          ipAddress: activeSession.login_ip || null,
+          loginAt: activeSession.created_at || null,
+        },
+      });
+      return;
+    }
+
     const token = randomUUID();
-    await pool.query("DELETE FROM auth_sessions WHERE student_id = $1", [student.id]);
+    const ipAddress = getIpAddress(request);
+    const userAgent = String(request.headers["user-agent"] || "");
+
     await pool.query(
-      "INSERT INTO auth_sessions (token, student_id, role, expires_at) VALUES ($1,$2,'student',$3)",
-      [token, student.id, new Date(Date.now() + 1000 * 60 * 60 * 24 * 7)],
+      `
+      UPDATE auth_sessions
+      SET is_active = FALSE,
+          revoked_reason = 'logged_in_elsewhere',
+          revoked_at = NOW(),
+          replaced_by_token = $2
+      WHERE student_id = $1 AND is_active = TRUE
+      `,
+      [student.id, token],
+    );
+    await pool.query(
+      "INSERT INTO auth_sessions (token, student_id, role, expires_at, is_active, login_ip, login_user_agent) VALUES ($1,$2,'student',$3,TRUE,$4,$5)",
+      [token, student.id, new Date(Date.now() + 1000 * 60 * 60 * 24 * 7), ipAddress, userAgent],
+    );
+
+    await pool.query(
+      "UPDATE students SET updated_at = NOW() WHERE id = $1",
+      [student.id],
     );
 
     await pool.query(
       "INSERT INTO student_login_logs (student_id, ip_address, user_agent, source) VALUES ($1,$2,$3,$4)",
-      [student.id, getIpAddress(request), String(request.headers["user-agent"] || ""), "student_password_login"],
+      [student.id, ipAddress, userAgent, "student_password_login"],
     );
 
     void sendAutomatedMail({
@@ -1785,7 +1916,7 @@ app.post("/api/auth/student/login", async (request, response) => {
       variables: {
         studentName: student.name || "Student",
         loginAt: new Date().toLocaleString("en-IN"),
-        ipAddress: getIpAddress(request),
+        ipAddress,
       },
       fallbackSubject: "Login alert",
     }).catch(() => {});
@@ -1796,6 +1927,96 @@ app.post("/api/auth/student/login", async (request, response) => {
     });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Login failed" });
+  }
+});
+
+app.get("/api/admin/session-status", async (request, response) => {
+  try {
+    const token = extractAdminToken(request);
+    if (!token) {
+      response.status(401).json({ active: false, message: "Missing admin token", reason: "missing_token" });
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT s.token, s.expires_at, s.is_active, s.revoked_reason, s.revoked_at, s.login_ip,
+             r.login_ip AS replaced_login_ip, r.created_at AS replaced_login_at
+      FROM admin_sessions s
+      LEFT JOIN admin_sessions r ON r.token = s.replaced_by_token
+      WHERE s.token = $1
+      LIMIT 1
+      `,
+      [token],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      response.status(401).json({ active: false, message: "Admin session not found", reason: "session_not_found" });
+      return;
+    }
+
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      response.status(401).json({ active: false, message: "Admin session expired", reason: "session_expired" });
+      return;
+    }
+
+    if (row.is_active === false) {
+      const message = row.revoked_reason === "logged_in_elsewhere"
+        ? buildForcedLogoutMessage(row.replaced_login_ip || row.login_ip, row.replaced_login_at || row.revoked_at)
+        : "Admin session revoked";
+      response.status(401).json({ active: false, message, reason: row.revoked_reason || "session_revoked", forcedLogout: true });
+      return;
+    }
+
+    response.json({ active: true });
+  } catch (error) {
+    response.status(500).json({ active: false, message: error instanceof Error ? error.message : "Failed to validate admin session" });
+  }
+});
+
+app.get("/api/auth/student/session-status", async (request, response) => {
+  try {
+    const token = extractAdminToken(request);
+    if (!token) {
+      response.status(401).json({ active: false, message: "Missing student token", reason: "missing_token" });
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT s.token, s.expires_at, s.is_active, s.revoked_reason, s.revoked_at, s.login_ip,
+             r.login_ip AS replaced_login_ip, r.created_at AS replaced_login_at
+      FROM auth_sessions s
+      LEFT JOIN auth_sessions r ON r.token = s.replaced_by_token
+      WHERE s.token = $1
+      LIMIT 1
+      `,
+      [token],
+    );
+
+    const row = result.rows[0];
+    if (!row) {
+      response.status(401).json({ active: false, message: "Student session not found", reason: "session_not_found" });
+      return;
+    }
+
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      response.status(401).json({ active: false, message: "Student session expired", reason: "session_expired" });
+      return;
+    }
+
+    if (row.is_active === false) {
+      const message = row.revoked_reason === "logged_in_elsewhere"
+        ? buildForcedLogoutMessage(row.replaced_login_ip || row.login_ip, row.replaced_login_at || row.revoked_at)
+        : "Student session revoked";
+      response.status(401).json({ active: false, message, reason: row.revoked_reason || "session_revoked", forcedLogout: true });
+      return;
+    }
+
+    response.json({ active: true });
+  } catch (error) {
+    response.status(500).json({ active: false, message: error instanceof Error ? error.message : "Failed to validate student session" });
   }
 });
 
