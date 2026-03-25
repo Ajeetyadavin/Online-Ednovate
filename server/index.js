@@ -788,6 +788,20 @@ const buildEmailFromField = (name, email) => {
   return `${safeName} <${safeEmail}>`;
 };
 
+const withTimeout = async (promise, timeoutMs, timeoutMessage) => {
+  let timer = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise((_, reject) => {
+        timer = setTimeout(() => reject(new Error(timeoutMessage)), Math.max(1000, Number(timeoutMs || 15000)));
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+};
+
 const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSubject = "Notification" }) => {
   const settings = sanitizePlatformSettings(await getPlatformSettings());
   const smtp = settings.smtp;
@@ -814,19 +828,22 @@ const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSu
     host: smtp.host,
     port: smtp.port,
     secure: smtp.secure === true,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: {
       user: smtp.username,
       pass: smtp.password,
     },
   });
 
-  await transporter.sendMail({
+  await withTimeout(transporter.sendMail({
     from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
     to: String(toEmail).trim().toLowerCase(),
     replyTo: smtp.replyTo || undefined,
     subject: fillTemplate(template.subject || fallbackSubject, mergedVars),
     text: fillTemplate(template.body || "", mergedVars),
-  });
+  }), 20000, "SMTP send timed out");
 
   return { sent: true };
 };
@@ -843,20 +860,23 @@ const sendSmtpMail = async ({ toEmail, subject, text, html }) => {
     host: smtp.host,
     port: smtp.port,
     secure: smtp.secure === true,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
     auth: {
       user: smtp.username,
       pass: smtp.password,
     },
   });
 
-  await transporter.sendMail({
+  await withTimeout(transporter.sendMail({
     from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
     to: String(toEmail).trim().toLowerCase(),
     replyTo: smtp.replyTo || undefined,
     subject: String(subject || "Invoice"),
     text: String(text || ""),
     html: String(html || ""),
-  });
+  }), 20000, "SMTP send timed out");
 
   return { sent: true };
 };

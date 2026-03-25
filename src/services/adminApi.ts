@@ -1360,12 +1360,28 @@ export const adminApi = {
   },
 
   async sendSmtpTestMail(toEmail: string) {
-    return parseResponse<{ ok: boolean; message: string }>(
-      await fetch("/api/admin/smtp/test", {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 30000);
+
+    let response: Response;
+    try {
+      response = await fetch("/api/admin/smtp/test", {
         method: "POST",
         headers: withAuthHeaders(),
         body: JSON.stringify({ toEmail }),
-      }),
+        signal: controller.signal,
+      });
+    } catch (error) {
+      if (error instanceof DOMException && error.name === "AbortError") {
+        throw new Error("SMTP test timed out after 30 seconds. Please verify host/port/firewall and try again.");
+      }
+      throw error;
+    } finally {
+      clearTimeout(timer);
+    }
+
+    return parseResponse<{ ok: boolean; message: string }>(
+      response,
     );
   },
 
