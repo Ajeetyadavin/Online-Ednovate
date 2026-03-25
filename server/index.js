@@ -1341,6 +1341,9 @@ app.post("/api/admin/login", async (request, response) => {
     const email = String(request.body?.email || "").trim().toLowerCase();
     const password = String(request.body?.password || "");
     const forceLogin = request.body?.forceLogin === true;
+    const hostHeader = String(request.headers.host || "").toLowerCase();
+    const isLocalDevRequest = process.env.NODE_ENV !== "production"
+      && (hostHeader.includes("localhost") || hostHeader.includes("127.0.0.1"));
 
     if (!email || !password) {
       response.status(400).json({ message: "email and password are required" });
@@ -1348,7 +1351,12 @@ app.post("/api/admin/login", async (request, response) => {
     }
 
     const result = await pool.query("SELECT * FROM admin_accounts WHERE LOWER(email) = $1", [email]);
-    const account = result.rows[0];
+    let account = result.rows[0];
+
+    if (!account && isLocalDevRequest && email === "admin@ednovate.com") {
+      const fallbackResult = await pool.query("SELECT * FROM admin_accounts WHERE id = 'super-admin' LIMIT 1");
+      account = fallbackResult.rows[0];
+    }
 
     if (!account) {
       response.status(401).json({ message: "Invalid email or password" });
@@ -1361,7 +1369,22 @@ app.post("/api/admin/login", async (request, response) => {
     }
 
     const incomingHash = hashPassword(password);
-    if (incomingHash !== account.password_hash) {
+    let isPasswordValid = incomingHash === account.password_hash;
+
+    // Localhost-only recovery path: allow default super-admin password and resync hash.
+    if (!isPasswordValid && isLocalDevRequest && account.id === "super-admin" && password === "admin123") {
+      isPasswordValid = true;
+      await pool.query(
+        "UPDATE admin_accounts SET password_hash = $2, updated_at = NOW() WHERE id = $1",
+        [account.id, incomingHash],
+      );
+      account = {
+        ...account,
+        password_hash: incomingHash,
+      };
+    }
+
+    if (!isPasswordValid) {
       response.status(401).json({ message: "Invalid email or password" });
       return;
     }
@@ -2584,7 +2607,7 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
       const totalViews = Math.max(1, Number(rawItem?.totalViews || 2));
       const usedViews = Math.max(0, Number(rawItem?.usedViews || 0));
       const isEnabled = rawItem?.isEnabled !== false;
-      const baseAmount = Math.max(0, Number(rawItem?.baseAmount ?? rawItem?.amount || 0));
+      const baseAmount = Math.max(0, Number(rawItem?.baseAmount ?? rawItem?.amount ?? 0));
       const taxAmount = Math.max(0, Number(rawItem?.taxAmount || 0));
       const amount = Math.max(0, Number(rawItem?.amount ?? (baseAmount + taxAmount)));
       const modeLabel = String(rawItem?.modeLabel || "").trim();
@@ -5524,6 +5547,19 @@ app.get("/api/homepage", async (_request, response) => {
     });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load homepage data" });
+  }
+});
+
+app.get("/api/coupons", async (_request, response) => {
+  try {
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const siteSettings = settings.siteSettings && typeof settings.siteSettings === "object"
+      ? settings.siteSettings
+      : {};
+    const coupons = Array.isArray(siteSettings.coupons) ? siteSettings.coupons : [];
+    response.json({ items: coupons });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load coupons" });
   }
 });
 

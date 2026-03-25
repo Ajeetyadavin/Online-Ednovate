@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Plus, Trash2, Save, Loader2, Search,
   ChevronDown, ChevronUp, ArrowUp, ArrowDown, Edit2,
@@ -71,6 +71,10 @@ export default function AdminHeader() {
   const [selectedCollectionNavId, setSelectedCollectionNavId] = useState("");
   const [editingCollectionId, setEditingCollectionId] = useState<string | null>(null);
   const [draft, setDraft] = useState({ logo: settings.logo, header: settings.header });
+
+  useEffect(() => {
+    setDraft({ logo: settings.logo, header: settings.header });
+  }, [settings.logo, settings.header]);
 
   const sortedCourses = useMemo(() => [...courses].sort((a, b) => String(a.title).localeCompare(String(b.title))), [courses]);
   const sortedCategories = useMemo(() => [...categories].sort((a, b) => a.sortOrder - b.sortOrder || String(a.name).localeCompare(String(b.name))), [categories]);

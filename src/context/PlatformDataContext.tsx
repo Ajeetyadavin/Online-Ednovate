@@ -143,6 +143,7 @@ interface PlatformDataContextType extends PlatformDataState {
   setBanners: (banners: ManagedBanner[]) => void;
   setTestimonials: (testimonials: ManagedTestimonial[]) => void;
   setAnnouncements: (announcements: ManagedAnnouncement[]) => void;
+  setCoupons: (coupons: ManagedCoupon[]) => void;
   upsertCoupon: (coupon: ManagedCoupon) => void;
   deleteCoupon: (couponId: string) => void;
   toggleCouponActive: (couponId: string) => void;
@@ -566,10 +567,11 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
 
     const syncFromApi = async () => {
       try {
-        const [coursesResponse, categoriesResponse, homepageResponse] = await Promise.all([
+        const [coursesResponse, categoriesResponse, homepageResponse, couponsResponse] = await Promise.all([
           fetch("/api/courses"),
           fetch("/api/categories").catch(() => null),
           fetch("/api/homepage").catch(() => null),
+          fetch("/api/coupons").catch(() => null),
         ]);
 
         if (
@@ -605,6 +607,10 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
               testimonials?: unknown[];
               announcements?: unknown[];
             });
+
+        const couponsData = couponsResponse && couponsResponse.ok
+          ? ((await couponsResponse.json()) as { items?: unknown[] })
+          : ({ items: undefined } as { items?: unknown[] });
 
         if (!isMounted) return;
 
@@ -647,6 +653,12 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
               )
             : prev.announcements;
 
+            const nextCoupons = Array.isArray(couponsData.items)
+              ? couponsData.items.map((coupon, index) =>
+                  normalizeCoupon(coupon as Partial<ManagedCoupon>, index),
+                )
+              : prev.coupons;
+
           return {
             ...prev,
             courses: nextCourses,
@@ -654,7 +666,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
             banners: nextBanners,
             testimonials: nextTestimonials,
             announcements: nextAnnouncements,
-            coupons: prev.coupons,
+              coupons: nextCoupons,
             curricula: ensureCourseScopedDemos(nextCurricula),
           };
         });
@@ -807,6 +819,15 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
       }));
     };
 
+    const setCoupons = (coupons: ManagedCoupon[]) => {
+      setState((prev) => ({
+        ...prev,
+        coupons: Array.isArray(coupons)
+          ? coupons.map((coupon, index) => normalizeCoupon(coupon, index))
+          : prev.coupons,
+      }));
+    };
+
     const upsertCoupon = (coupon: ManagedCoupon) => {
       setState((prev) => {
         const normalized = normalizeCoupon(coupon, prev.coupons.length);
@@ -933,6 +954,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
       setBanners,
       setTestimonials,
       setAnnouncements,
+      setCoupons,
       upsertCoupon,
       deleteCoupon,
       toggleCouponActive,

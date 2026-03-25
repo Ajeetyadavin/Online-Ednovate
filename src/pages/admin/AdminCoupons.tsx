@@ -133,7 +133,7 @@ const toForm = (coupon: ManagedCoupon): CouponForm => ({
 });
 
 export default function AdminCoupons() {
-  const { coupons, courses, upsertCoupon, deleteCoupon, toggleCouponActive } = usePlatformData();
+  const { coupons, courses, setCoupons, upsertCoupon, deleteCoupon, toggleCouponActive } = usePlatformData();
   const { admin } = useAdminAuth();
   const [open, setOpen] = useState(false);
   const [form, setForm] = useState<CouponForm>(defaultForm());
@@ -143,6 +143,7 @@ export default function AdminCoupons() {
   const [studentSearch, setStudentSearch] = useState("");
   const [students, setStudents] = useState<StudentRecord[]>([]);
   const [isLoadingStudents, setIsLoadingStudents] = useState(false);
+  const [isSavingCoupon, setIsSavingCoupon] = useState(false);
 
   const formatDateTime = (value?: string) => {
     if (!value) return "-";
@@ -190,6 +191,52 @@ export default function AdminCoupons() {
     loadStudents();
   }, [open]);
 
+  useEffect(() => {
+    let mounted = true;
+
+    const loadPersistedCoupons = async () => {
+      try {
+        const result = await adminApi.getPlatformSettings();
+        const settings = (result?.settings || {}) as Record<string, unknown>;
+        const siteSettings = (settings.siteSettings && typeof settings.siteSettings === "object")
+          ? (settings.siteSettings as Record<string, unknown>)
+          : {};
+        const persistedCoupons = Array.isArray(siteSettings.coupons)
+          ? (siteSettings.coupons as ManagedCoupon[])
+          : Array.isArray((settings as { coupons?: unknown[] }).coupons)
+            ? ((settings as { coupons?: ManagedCoupon[] }).coupons || [])
+            : [];
+
+        if (!mounted || !Array.isArray(persistedCoupons)) return;
+        setCoupons(persistedCoupons);
+      } catch {
+        // Keep in-memory coupons if API is unavailable.
+      }
+    };
+
+    loadPersistedCoupons();
+
+    return () => {
+      mounted = false;
+    };
+  }, [setCoupons]);
+
+  const persistCoupons = async (nextCoupons: ManagedCoupon[]) => {
+    const result = await adminApi.getPlatformSettings();
+    const currentSettings = (result?.settings || {}) as Record<string, unknown>;
+    const currentSiteSettings = (currentSettings.siteSettings && typeof currentSettings.siteSettings === "object")
+      ? (currentSettings.siteSettings as Record<string, unknown>)
+      : {};
+
+    await adminApi.savePlatformSettings({
+      ...(currentSettings as any),
+      siteSettings: {
+        ...currentSiteSettings,
+        coupons: nextCoupons,
+      },
+    } as any);
+  };
+
   const reset = () => {
     setForm(defaultForm());
     setCourseSearch("");
@@ -231,7 +278,7 @@ export default function AdminCoupons() {
     }));
   };
 
-  const save = () => {
+  const save = async () => {
     if (!form.code.trim()) {
       alert("Coupon code is required");
       return;
@@ -272,8 +319,45 @@ export default function AdminCoupons() {
       usageHistory: existingCoupon?.usageHistory || [],
     };
 
-    upsertCoupon(payload);
-    setOpen(false);
+    const nextCoupons = existingCoupon
+      ? coupons.map((coupon) => (coupon.id === payload.id ? payload : coupon))
+      : [...coupons, payload];
+
+    setIsSavingCoupon(true);
+    try {
+      upsertCoupon(payload);
+      await persistCoupons(nextCoupons);
+      setOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save coupon");
+    } finally {
+      setIsSavingCoupon(false);
+    }
+  };
+
+  const handleToggleCoupon = async (couponId: string) => {
+    const nextCoupons = coupons.map((coupon) =>
+      coupon.id === couponId ? { ...coupon, isActive: !coupon.isActive } : coupon,
+    );
+    toggleCouponActive(couponId);
+    try {
+      await persistCoupons(nextCoupons);
+    } catch (error) {
+      toggleCouponActive(couponId);
+      alert(error instanceof Error ? error.message : "Failed to update coupon status");
+    }
+  };
+
+  const handleDeleteCoupon = async (couponId: string) => {
+    const deleted = coupons.find((coupon) => coupon.id === couponId);
+    const nextCoupons = coupons.filter((coupon) => coupon.id !== couponId);
+    deleteCoupon(couponId);
+    try {
+      await persistCoupons(nextCoupons);
+    } catch (error) {
+      if (deleted) upsertCoupon(deleted);
+      alert(error instanceof Error ? error.message : "Failed to delete coupon");
+    }
   };
 
   const toggleDay = (day: number) => {
@@ -612,7 +696,9 @@ export default function AdminCoupons() {
             </div>
 
             <div className="pt-3 border-t">
-              <Button onClick={save} className="w-full bg-gradient-to-r from-orange-500 to-orange-600">Save Coupon</Button>
+              <Button onClick={() => void save()} disabled={isSavingCoupon} className="w-full bg-gradient-to-r from-orange-500 to-orange-600">
+                {isSavingCoupon ? "Saving..." : "Save Coupon"}
+              </Button>
             </div>
           </DialogContent>
         </Dialog>
@@ -721,7 +807,7 @@ export default function AdminCoupons() {
                       </TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-2">
-                          <Button variant="ghost" size="sm" onClick={() => toggleCouponActive(coupon.id)}>
+                          <Button variant="ghost" size="sm" onClick={() => void handleToggleCoupon(coupon.id)}>
                             <Power className="w-4 h-4" />
                           </Button>
                           <Button variant="ghost" size="sm" onClick={() => openEdit(coupon)}>
@@ -737,7 +823,7 @@ export default function AdminCoupons() {
                           >
                             <Eye className="w-4 h-4" />
                           </Button>
-                          <Button variant="ghost" size="sm" className="text-red-600" onClick={() => deleteCoupon(coupon.id)}>
+                          <Button variant="ghost" size="sm" className="text-red-600" onClick={() => void handleDeleteCoupon(coupon.id)}>
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </div>
