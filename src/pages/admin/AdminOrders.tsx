@@ -132,6 +132,9 @@ export default function AdminOrders() {
   };
 
   const buildInvoiceHtml = (line: AdminOrderLine) => {
+    const taxableAmount = Math.max(0, Number(line.baseAmount || 0));
+    const taxAmount = Math.max(0, Number(line.taxAmount || 0));
+    const totalAmount = Math.max(0, Number(line.amount || 0));
     const details = [
       line.itemType ? `Type: ${line.itemType}` : "",
       line.modeLabel ? `Mode: ${line.modeLabel}` : "",
@@ -165,20 +168,26 @@ export default function AdminOrders() {
           <tr style="background:#f1f5f9;text-align:left;">
             <th style="padding:10px;">Item</th>
             <th style="padding:10px;">Details</th>
-            <th style="padding:10px;text-align:right;">Amount</th>
+            <th style="padding:10px;text-align:right;">Taxable</th>
+            <th style="padding:10px;text-align:right;">Tax</th>
+            <th style="padding:10px;text-align:right;">Total</th>
           </tr>
         </thead>
         <tbody>
           <tr>
             <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${line.courseTitle || "Course"}</td>
             <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${details || "-"}</td>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">₹${Number(line.amount || 0).toLocaleString()}</td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">₹${taxableAmount.toLocaleString()}</td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">₹${taxAmount.toLocaleString()}</td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">₹${totalAmount.toLocaleString()}</td>
           </tr>
         </tbody>
       </table>
       <div style="text-align:right;padding-top:12px;">
+        <div style="font-size:12px;color:#64748b;">Subtotal: ₹${taxableAmount.toLocaleString()}</div>
+        <div style="font-size:12px;color:#64748b;">Tax: ₹${taxAmount.toLocaleString()}</div>
         <div style="font-size:12px;color:#64748b;">Total</div>
-        <div style="font-size:18px;font-weight:800;color:#111827;">₹${Number(line.amount || 0).toLocaleString()}</div>
+        <div style="font-size:18px;font-weight:800;color:#111827;">₹${totalAmount.toLocaleString()}</div>
       </div>
     </div>
   </div>
@@ -497,6 +506,7 @@ export default function AdminOrders() {
                     </div>
                     <div className="text-right">
                       <p className="font-bold">₹{Number(line.amount || 0).toLocaleString()}</p>
+                      <p className="text-xs text-gray-500">Tax: ₹{Number(line.taxAmount || 0).toLocaleString()}</p>
                       <span className={`text-xs px-2 py-0.5 rounded-full ${statusColors[line.dispatchStatus]}`}>
                         {line.dispatchStatus}
                       </span>

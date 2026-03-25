@@ -579,6 +579,10 @@ export const createStudentPurchaseApi = async (payload: {
   shippingState?: string;
   shippingCountry?: string;
   shippingPincode?: string;
+  subtotal?: number;
+  couponDiscount?: number;
+  taxAmount?: number;
+  total?: number;
   items: Array<{
     courseId: string;
     courseTitle: string;
@@ -590,6 +594,8 @@ export const createStudentPurchaseApi = async (payload: {
     isUnlimitedViews?: boolean;
     usedViews?: number;
     isEnabled?: boolean;
+    baseAmount?: number;
+    taxAmount?: number;
     amount?: number;
     modeLabel?: string;
     bookLabel?: string;

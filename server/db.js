@@ -251,6 +251,8 @@ export async function ensureSchema() {
       package_course_ids JSONB NOT NULL DEFAULT '[]'::jsonb,
       order_date DATE,
       payment_method TEXT,
+      base_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      tax_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
       amount NUMERIC(12,2) NOT NULL DEFAULT 0,
       currency TEXT NOT NULL DEFAULT 'INR',
       status TEXT NOT NULL DEFAULT 'completed',
@@ -283,6 +285,8 @@ export async function ensureSchema() {
   await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_state TEXT");
   await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_country TEXT");
   await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS shipping_pincode TEXT");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS base_amount NUMERIC(12,2) NOT NULL DEFAULT 0");
+  await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS tax_amount NUMERIC(12,2) NOT NULL DEFAULT 0");
   await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS refund_note TEXT");
   await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS refunded_at TIMESTAMPTZ");
   await pool.query("ALTER TABLE student_orders ADD COLUMN IF NOT EXISTS refunded_by TEXT");

@@ -270,6 +270,8 @@ export interface AdminOrderLine {
   packageCourseIds?: string[];
   orderDate?: string;
   paymentMethod?: string;
+  baseAmount?: number;
+  taxAmount?: number;
   amount: number;
   currency: string;
   status: string;

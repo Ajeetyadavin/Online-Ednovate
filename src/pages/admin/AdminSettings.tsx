@@ -158,6 +158,9 @@ export default function AdminSettings() {
   const [saved, setSaved] = useState(false);
   const [error, setError] = useState<string>("");
   const [isSaving, setIsSaving] = useState(false);
+  const [smtpTestToEmail, setSmtpTestToEmail] = useState("");
+  const [isSmtpTesting, setIsSmtpTesting] = useState(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
 
   useEffect(() => {
     if (siteSettings?.settings?.bunnyStreamApi) {
@@ -478,6 +481,90 @@ export default function AdminSettings() {
     }
   };
 
+  const handleSmtpTest = async () => {
+    setSmtpTestResult(null);
+    setIsSmtpTesting(true);
+
+    const payload = {
+      bunnyStreamApi: {
+        enabled: settings.bunnyStreamEnabled,
+        libraryId: settings.bunnyStreamLibraryId,
+        apiKey: settings.bunnyStreamApiKey,
+        cdnHostname: settings.bunnyStreamCdnHostname,
+        pullZone: settings.bunnyStreamPullZone,
+      },
+      siteSettings: {
+        platformName: settings.platformName,
+        platformEmail: settings.platformEmail,
+        platformPhone: settings.platformPhone,
+        supportEmail: settings.supportEmail,
+        about: settings.about,
+        termsUrl: settings.termsUrl,
+        privacyUrl: settings.privacyUrl,
+        enableNotifications: settings.enableNotifications,
+        enableEmailVerification: settings.enableEmailVerification,
+        maintenanceMode: settings.maintenanceMode,
+        security: {
+          antiInspectEnabled: settings.antiInspectEnabled,
+          disableCopyPaste: settings.disableCopyPaste,
+        },
+        smtp: {
+          enabled: settings.smtp.enabled,
+          host: settings.smtp.host,
+          port: Number(settings.smtp.port || 587),
+          secure: settings.smtp.secure,
+          username: settings.smtp.username,
+          password: settings.smtp.password,
+          fromName: settings.smtp.fromName,
+          fromEmail: settings.smtp.fromEmail,
+          replyTo: settings.smtp.replyTo,
+        },
+        paymentGateways: settings.paymentGateways,
+      },
+      smtp: {
+        enabled: settings.smtp.enabled,
+        host: settings.smtp.host,
+        port: Number(settings.smtp.port || 587),
+        secure: settings.smtp.secure,
+        username: settings.smtp.username,
+        password: settings.smtp.password,
+        fromName: settings.smtp.fromName,
+        fromEmail: settings.smtp.fromEmail,
+        replyTo: settings.smtp.replyTo,
+      },
+      emailAutomation: {
+        enabled: settings.emailAutomationEnabled,
+        templates: settings.emailTemplates,
+      },
+    };
+
+    const targetEmail = String(smtpTestToEmail || settings.platformEmail || settings.smtp.fromEmail || settings.smtp.username)
+      .trim()
+      .toLowerCase();
+
+    if (!targetEmail) {
+      setSmtpTestResult({ type: "error", message: "Please enter a valid recipient email for SMTP test." });
+      setIsSmtpTesting(false);
+      return;
+    }
+
+    try {
+      await adminApi.savePlatformSettings(payload);
+      const result = await adminApi.sendSmtpTestMail(targetEmail);
+      setSmtpTestResult({
+        type: "success",
+        message: result?.message || `SMTP test mail sent to ${targetEmail}`,
+      });
+    } catch (apiError) {
+      setSmtpTestResult({
+        type: "error",
+        message: apiError instanceof Error ? apiError.message : "Failed to send SMTP test mail",
+      });
+    } finally {
+      setIsSmtpTesting(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-4xl">
       <div>
@@ -718,6 +805,38 @@ export default function AdminSettings() {
                   </div>
                   <Switch id="smtpSecure" checked={settings.smtp.secure} onCheckedChange={(value) => handleSmtpChange("secure", value)} />
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-4 space-y-3 bg-gray-50">
+                <div className="space-y-1">
+                  <Label htmlFor="smtpTestToEmail" className="text-gray-900 font-medium">SMTP Test Recipient</Label>
+                  <p className="text-xs text-gray-600">Test mail will be sent using your current SMTP configuration.</p>
+                </div>
+                <div className="flex flex-col md:flex-row gap-3">
+                  <Input
+                    id="smtpTestToEmail"
+                    type="email"
+                    placeholder="admin@yourdomain.com"
+                    value={smtpTestToEmail}
+                    onChange={(e) => setSmtpTestToEmail(e.target.value)}
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="md:min-w-[170px]"
+                    onClick={handleSmtpTest}
+                    disabled={isSmtpTesting}
+                  >
+                    {isSmtpTesting ? "Testing..." : "Send SMTP Test"}
+                  </Button>
+                </div>
+                {smtpTestResult && (
+                  <Alert className={smtpTestResult.type === "success" ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}>
+                    <AlertDescription className={smtpTestResult.type === "success" ? "text-green-800" : "text-red-800"}>
+                      {smtpTestResult.message}
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
             </CardContent>
           </Card>

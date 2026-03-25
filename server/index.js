@@ -73,45 +73,56 @@ const normalizeVideoQualityPreference = (value) => {
   return "auto";
 };
 
-const mapStudentOrderLine = (row) => ({
-  id: Number(row.id),
-  orderId: String(row.order_id || ""),
-  studentId: String(row.student_id || ""),
-  customerName: String(row.customer_name || ""),
-  customerEmail: String(row.customer_email || ""),
-  customerPhone: String(row.customer_phone || ""),
-  shippingAddressLine1: String(row.shipping_address_line1 || ""),
-  shippingAddressLine2: String(row.shipping_address_line2 || ""),
-  shippingCity: String(row.shipping_city || ""),
-  shippingState: String(row.shipping_state || ""),
-  shippingCountry: String(row.shipping_country || ""),
-  shippingPincode: String(row.shipping_pincode || ""),
-  courseId: String(row.course_id || ""),
-  courseTitle: String(row.course_title || ""),
-  parentPackageId: String(row.parent_package_id || ""),
-  parentPackageTitle: String(row.parent_package_title || ""),
-  packageCourseIds: Array.isArray(row.package_course_ids)
-    ? row.package_course_ids.map((item) => String(item || "")).filter(Boolean)
-    : [],
-  orderDate: row.order_date,
-  paymentMethod: String(row.payment_method || ""),
-  amount: Number(row.amount || 0),
-  currency: String(row.currency || "INR"),
-  status: String(row.status || "completed"),
-  itemType: String(row.item_type || "course"),
-  modeLabel: String(row.mode_label || ""),
-  bookLabel: String(row.book_label || ""),
-  isEbook: row.is_ebook === true,
-  dispatchStatus: String(row.dispatch_status || "pending"),
-  trackingId: String(row.tracking_id || ""),
-  dispatchNote: String(row.dispatch_note || ""),
-  dispatchedAt: row.dispatched_at,
-  refundNote: String(row.refund_note || ""),
-  refundedAt: row.refunded_at,
-  refundedBy: String(row.refunded_by || ""),
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-});
+const mapStudentOrderLine = (row) => {
+  const grossAmount = Math.max(0, Number(row.amount || 0));
+  const storedTaxAmount = Math.max(0, Number(row.tax_amount || 0));
+  const storedBaseAmount = Math.max(0, Number(row.base_amount || 0));
+  const baseAmount = (storedBaseAmount > 0 || storedTaxAmount > 0)
+    ? storedBaseAmount
+    : Math.max(0, grossAmount - storedTaxAmount);
+
+  return {
+    id: Number(row.id),
+    orderId: String(row.order_id || ""),
+    studentId: String(row.student_id || ""),
+    customerName: String(row.customer_name || ""),
+    customerEmail: String(row.customer_email || ""),
+    customerPhone: String(row.customer_phone || ""),
+    shippingAddressLine1: String(row.shipping_address_line1 || ""),
+    shippingAddressLine2: String(row.shipping_address_line2 || ""),
+    shippingCity: String(row.shipping_city || ""),
+    shippingState: String(row.shipping_state || ""),
+    shippingCountry: String(row.shipping_country || ""),
+    shippingPincode: String(row.shipping_pincode || ""),
+    courseId: String(row.course_id || ""),
+    courseTitle: String(row.course_title || ""),
+    parentPackageId: String(row.parent_package_id || ""),
+    parentPackageTitle: String(row.parent_package_title || ""),
+    packageCourseIds: Array.isArray(row.package_course_ids)
+      ? row.package_course_ids.map((item) => String(item || "")).filter(Boolean)
+      : [],
+    orderDate: row.order_date,
+    paymentMethod: String(row.payment_method || ""),
+    baseAmount,
+    taxAmount: storedTaxAmount,
+    amount: grossAmount,
+    currency: String(row.currency || "INR"),
+    status: String(row.status || "completed"),
+    itemType: String(row.item_type || "course"),
+    modeLabel: String(row.mode_label || ""),
+    bookLabel: String(row.book_label || ""),
+    isEbook: row.is_ebook === true,
+    dispatchStatus: String(row.dispatch_status || "pending"),
+    trackingId: String(row.tracking_id || ""),
+    dispatchNote: String(row.dispatch_note || ""),
+    dispatchedAt: row.dispatched_at,
+    refundNote: String(row.refund_note || ""),
+    refundedAt: row.refunded_at,
+    refundedBy: String(row.refunded_by || ""),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
 
 const groupStudentOrders = (rows) => {
   const grouped = new Map();
@@ -857,6 +868,8 @@ const formatMoneyInr = (value) => {
 
 const buildInvoiceDocument = ({ orderId, studentName, studentEmail, orderDate, paymentMethod, currency, items, platformName, logoUrl }) => {
   const safeItems = Array.isArray(items) ? items : [];
+  const subtotal = safeItems.reduce((sum, item) => sum + Math.max(0, Number(item.baseAmount || 0)), 0);
+  const taxTotal = safeItems.reduce((sum, item) => sum + Math.max(0, Number(item.taxAmount || 0)), 0);
   const total = safeItems.reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0)), 0);
   const rowsHtml = safeItems.map((item, index) => {
     const details = [
@@ -870,6 +883,8 @@ const buildInvoiceDocument = ({ orderId, studentName, studentEmail, orderDate, p
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${index + 1}</td>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${String(item.courseTitle || "Course")}</td>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;color:#4b5563;">${details || "-"}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">${formatMoneyInr(item.baseAmount)}</td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">${formatMoneyInr(item.taxAmount)}</td>
         <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">${formatMoneyInr(item.amount)}</td>
       </tr>
     `;
@@ -908,12 +923,16 @@ const buildInvoiceDocument = ({ orderId, studentName, studentEmail, orderDate, p
                 <th style="padding:10px;">#</th>
                 <th style="padding:10px;">Item</th>
                 <th style="padding:10px;">Details</th>
-                <th style="padding:10px;text-align:right;">Amount</th>
+                <th style="padding:10px;text-align:right;">Taxable</th>
+                <th style="padding:10px;text-align:right;">Tax</th>
+                <th style="padding:10px;text-align:right;">Total</th>
               </tr>
             </thead>
             <tbody>${rowsHtml}</tbody>
           </table>
           <div style="margin-top:16px;text-align:right;">
+            <div style="font-size:13px;color:#475569;">Subtotal: ${formatMoneyInr(subtotal)}</div>
+            <div style="font-size:13px;color:#475569;">Tax: ${formatMoneyInr(taxTotal)}</div>
             <div style="font-size:12px;color:#6b7280;">Total Payable</div>
             <div style="font-size:18px;font-weight:800;color:#0f172a;">${formatMoneyInr(total)}</div>
           </div>
@@ -930,8 +949,10 @@ const buildInvoiceDocument = ({ orderId, studentName, studentEmail, orderDate, p
     `Date: ${String(orderDate || "")}`,
     `Payment: ${String(paymentMethod || "Online")}`,
     "",
-    ...safeItems.map((item, index) => `${index + 1}. ${String(item.courseTitle || "Course")} - ${formatMoneyInr(item.amount)}`),
+    ...safeItems.map((item, index) => `${index + 1}. ${String(item.courseTitle || "Course")} | Taxable ${formatMoneyInr(item.baseAmount)} | Tax ${formatMoneyInr(item.taxAmount)} | Total ${formatMoneyInr(item.amount)}`),
     "",
+    `Subtotal: ${formatMoneyInr(subtotal)}`,
+    `Tax: ${formatMoneyInr(taxTotal)}`,
     `Total: ${formatMoneyInr(total)}`,
   ].join("\n");
 
@@ -2538,6 +2559,10 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
     const shippingState = String(request.body?.shippingState || "").trim();
     const shippingCountry = String(request.body?.shippingCountry || "").trim();
     const shippingPincode = String(request.body?.shippingPincode || "").trim();
+    const subtotal = Math.max(0, Number(request.body?.subtotal || 0));
+    const couponDiscount = Math.max(0, Number(request.body?.couponDiscount || 0));
+    const taxAmount = Math.max(0, Number(request.body?.taxAmount || 0));
+    const requestedTotal = Math.max(0, Number(request.body?.total || 0));
     const purchasedTitles = [];
     let purchaseAmountTotal = 0;
 
@@ -2559,7 +2584,9 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
       const totalViews = Math.max(1, Number(rawItem?.totalViews || 2));
       const usedViews = Math.max(0, Number(rawItem?.usedViews || 0));
       const isEnabled = rawItem?.isEnabled !== false;
-      const amount = Math.max(0, Number(rawItem?.amount || 0));
+      const baseAmount = Math.max(0, Number(rawItem?.baseAmount ?? rawItem?.amount || 0));
+      const taxAmount = Math.max(0, Number(rawItem?.taxAmount || 0));
+      const amount = Math.max(0, Number(rawItem?.amount ?? (baseAmount + taxAmount)));
       const modeLabel = String(rawItem?.modeLabel || "").trim();
       const bookLabel = String(rawItem?.bookLabel || "").trim();
       const itemType = String(rawItem?.itemType || "course").trim().toLowerCase() || "course";
@@ -2643,8 +2670,8 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
         await pool.query(
           `
           INSERT INTO student_orders
-          (order_id, student_id, customer_name, customer_email, customer_phone, shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_country, shipping_pincode, course_id, course_title, parent_package_id, parent_package_title, package_course_ids, order_date, payment_method, amount, currency, status, item_type, mode_label, book_label, is_ebook, dispatch_status, dispatch_note, updated_at)
-          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19,'INR','completed',$20,$21,$22,$23,$24,$25,NOW())
+          (order_id, student_id, customer_name, customer_email, customer_phone, shipping_address_line1, shipping_address_line2, shipping_city, shipping_state, shipping_country, shipping_pincode, course_id, course_title, parent_package_id, parent_package_title, package_course_ids, order_date, payment_method, amount, currency, status, item_type, mode_label, book_label, is_ebook, dispatch_status, dispatch_note, base_amount, tax_amount, updated_at)
+          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16::jsonb,$17,$18,$19,'INR','completed',$20,$21,$22,$23,$24,$25,$26,$27,NOW())
           ON CONFLICT (order_id, student_id, course_id)
           DO UPDATE SET
             customer_name = EXCLUDED.customer_name,
@@ -2669,6 +2696,8 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
             is_ebook = EXCLUDED.is_ebook,
             dispatch_status = EXCLUDED.dispatch_status,
             dispatch_note = EXCLUDED.dispatch_note,
+            base_amount = EXCLUDED.base_amount,
+            tax_amount = EXCLUDED.tax_amount,
             updated_at = NOW()
           `,
           [
@@ -2701,6 +2730,8 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
               : isEbook
                 ? "Awaiting dispatch"
                 : "Access delivered online",
+            baseAmount,
+            taxAmount,
           ],
         );
       }
@@ -2718,6 +2749,9 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
       [studentId],
     );
 
+    const computedPaidTotal = Math.max(0, subtotal - couponDiscount + taxAmount);
+    const effectivePaidTotal = requestedTotal > 0 ? requestedTotal : (computedPaidTotal > 0 ? computedPaidTotal : purchaseAmountTotal);
+
     void sendAutomatedMail({
       eventKey: "user_purchase",
       toEmail: request.studentSession?.student?.email || customerEmail,
@@ -2725,7 +2759,11 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
         studentName: request.studentSession?.student?.name || customerName || "Student",
         orderId,
         itemsSummary: purchasedTitles.join(", "),
-        amount: purchaseAmountTotal.toFixed(2),
+        amount: effectivePaidTotal.toFixed(2),
+        subtotal: subtotal.toFixed(2),
+        couponDiscount: couponDiscount.toFixed(2),
+        taxAmount: taxAmount.toFixed(2),
+        totalPaid: effectivePaidTotal.toFixed(2),
       },
       fallbackSubject: "Purchase confirmation",
     }).catch(() => {});
@@ -3506,13 +3544,24 @@ app.post("/api/admin/orders/:id/send-invoice", requireAdminPermission("orders", 
       currency: String(line.currency || "INR"),
       platformName,
       logoUrl,
-      items: allLinesResult.rows.map((row) => ({
-        courseTitle: String(row.course_title || "Course"),
-        itemType: String(row.item_type || "course"),
-        modeLabel: String(row.mode_label || ""),
-        bookLabel: String(row.book_label || ""),
-        amount: Number(row.amount || 0),
-      })),
+      items: allLinesResult.rows.map((row) => {
+        const amount = Math.max(0, Number(row.amount || 0));
+        const taxAmount = Math.max(0, Number(row.tax_amount || 0));
+        const baseAmountRaw = Math.max(0, Number(row.base_amount || 0));
+        const baseAmount = (baseAmountRaw > 0 || taxAmount > 0)
+          ? baseAmountRaw
+          : Math.max(0, amount - taxAmount);
+
+        return {
+          courseTitle: String(row.course_title || "Course"),
+          itemType: String(row.item_type || "course"),
+          modeLabel: String(row.mode_label || ""),
+          bookLabel: String(row.book_label || ""),
+          baseAmount,
+          taxAmount,
+          amount,
+        };
+      }),
     });
 
     const sendResult = await sendSmtpMail({
@@ -6227,14 +6276,11 @@ app.post("/api/admin/smtp/test", requireAdminPermission("settings", "edit"), asy
       return;
     }
 
-    const result = await sendAutomatedMail({
-      eventKey: "user_notification",
+    const result = await sendSmtpMail({
       toEmail,
-      variables: {
-        studentName: request.adminSession?.admin?.name || "Admin",
-        notificationMessage: "SMTP test successful. Your Ednovate mail setup is working.",
-      },
-      fallbackSubject: "SMTP test - Ednovate",
+      subject: "SMTP test - Ednovate",
+      text: "SMTP test successful. Your Ednovate mail setup is working.",
+      html: "<p>SMTP test successful. Your Ednovate mail setup is working.</p>",
     });
 
     if (!result.sent) {

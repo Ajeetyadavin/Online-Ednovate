@@ -69,6 +69,12 @@ interface CartContextType {
     state?: string;
     country?: string;
     pincode?: string;
+    linePricing?: Array<{
+      courseId: string;
+      baseAmount: number;
+      taxAmount: number;
+      totalAmount: number;
+    }>;
   }) => Promise<{ ok: boolean; message: string }>;
   updateProgress: (courseId: string, progress: number) => void;
   updateOrderStatus: (orderId: string, status: OrderRecord["status"]) => void;
@@ -262,6 +268,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     state?: string;
     country?: string;
     pincode?: string;
+    linePricing?: Array<{
+      courseId: string;
+      baseAmount: number;
+      taxAmount: number;
+      totalAmount: number;
+    }>;
   }) => {
     const token = localStorage.getItem(SESSION_TOKEN_KEY) || "";
     if (!token) {
@@ -284,7 +296,39 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       // Best-effort lookup only.
     }
 
+    const lineAmountByCourseId = new Map<string, { baseAmount: number; taxAmount: number; amount: number }>();
+    const providedLinePricing = Array.isArray(orderData.linePricing) ? orderData.linePricing : [];
+    providedLinePricing.forEach((line) => {
+      const key = String(line.courseId || "").trim();
+      if (!key) return;
+      lineAmountByCourseId.set(key, {
+        baseAmount: Math.max(0, Number(line.baseAmount || 0)),
+        taxAmount: Math.max(0, Number(line.taxAmount || 0)),
+        amount: Math.max(0, Number(line.totalAmount || 0)),
+      });
+    });
+
+    currentCart.forEach((item) => {
+      if (lineAmountByCourseId.has(item.id)) return;
+      const itemPrice = Math.max(0, Number(item.price || 0));
+      const totalCartPrice = Math.max(1, currentCart.reduce((sum, cartItem) => sum + Math.max(0, Number(cartItem.price || 0)), 0));
+      const discountAllocation = Math.round((Math.max(0, Number(orderData.couponDiscount || 0)) * itemPrice) / totalCartPrice);
+      const baseAmount = Math.max(0, itemPrice - discountAllocation);
+      const taxRate = Math.max(0, Number(item.taxPercentage || 0));
+      const taxAmount = Math.max(0, Math.round((baseAmount * taxRate) / 100));
+      lineAmountByCourseId.set(item.id, {
+        baseAmount,
+        taxAmount,
+        amount: baseAmount + taxAmount,
+      });
+    });
+
     const payloadItems = currentCart.flatMap((item) => {
+      const lineAmounts = lineAmountByCourseId.get(item.id) || {
+        baseAmount: Math.max(0, Number(item.price || 0)),
+        taxAmount: 0,
+        amount: Math.max(0, Number(item.price || 0)),
+      };
       const base = {
         courseId: item.id,
         courseTitle: item.title,
@@ -293,7 +337,9 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         isUnlimitedViews: item.unlimitedViewsEnabled === true,
         usedViews: 0,
         isEnabled: true,
-        amount: Number(item.price || 0),
+        baseAmount: lineAmounts.baseAmount,
+        taxAmount: lineAmounts.taxAmount,
+        amount: lineAmounts.amount,
         modeLabel: getModeLabel(item) || "",
         bookLabel: getBookLabel(item) || "",
         itemType: isEbookSelection(item) ? "ebook" : "course",
@@ -316,6 +362,9 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           courseId,
           courseTitle: courseCatalogById.get(courseId)?.title || courseId,
           itemType: "course",
+          baseAmount: 0,
+          taxAmount: 0,
+          amount: 0,
           grantAccess: true,
           createOrderLine: false,
           parentPackageId: item.id,
@@ -341,6 +390,10 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       shippingState: orderData.state,
       shippingCountry: orderData.country,
       shippingPincode: orderData.pincode,
+      subtotal: Number(orderData.subtotal || 0),
+      couponDiscount: Number(orderData.couponDiscount || 0),
+      taxAmount: Number(orderData.taxAmount || 0),
+      total: Number(orderData.total || 0),
       items: payloadItems,
       purchaseDate,
     });

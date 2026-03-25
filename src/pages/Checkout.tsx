@@ -158,6 +158,49 @@ const Checkout = () => {
     }, 0);
   }, [items, appliedCoupon, couponDiscount]);
 
+  const linePricing = useMemo(() => {
+    if (items.length === 0) return [] as Array<{ courseId: string; baseAmount: number; taxAmount: number; totalAmount: number }>;
+
+    const eligibleIds = new Set<string>();
+    if (appliedCoupon) {
+      if (Array.isArray(appliedCoupon.appliesToCourseIds) && appliedCoupon.appliesToCourseIds.length > 0) {
+        appliedCoupon.appliesToCourseIds.forEach((id) => eligibleIds.add(String(id)));
+      } else {
+        items.forEach((item) => eligibleIds.add(item.id));
+      }
+    }
+
+    const eligibleItems = items.filter((item) => eligibleIds.has(item.id));
+    const eligibleSubtotal = eligibleItems.reduce((sum, item) => sum + item.price, 0);
+    const allocatedCouponByItem = new Map<string, number>();
+    let remainingCoupon = couponDiscount;
+
+    eligibleItems.forEach((item, index) => {
+      const allocated =
+        index === eligibleItems.length - 1
+          ? remainingCoupon
+          : Math.min(
+              remainingCoupon,
+              Math.round((couponDiscount * item.price) / Math.max(1, eligibleSubtotal)),
+            );
+      allocatedCouponByItem.set(item.id, Math.max(0, allocated));
+      remainingCoupon = Math.max(0, remainingCoupon - allocated);
+    });
+
+    return items.map((item) => {
+      const discountAllocation = allocatedCouponByItem.get(item.id) || 0;
+      const baseAmount = Math.max(0, item.price - discountAllocation);
+      const taxRate = Math.max(0, Number(item.taxPercentage || 0));
+      const lineTax = Math.round((baseAmount * taxRate) / 100);
+      return {
+        courseId: item.id,
+        baseAmount,
+        taxAmount: lineTax,
+        totalAmount: baseAmount + lineTax,
+      };
+    });
+  }, [items, appliedCoupon, couponDiscount]);
+
   const validateCoupon = (couponCode: string): { valid: boolean; message: string; coupon?: ManagedCoupon; discount?: number } => {
     const code = couponCode.trim().toUpperCase();
     const candidate = coupons.find((c) => c.code.toUpperCase() === code);
@@ -327,6 +370,7 @@ const Checkout = () => {
       subtotal: totalPrice,
       couponDiscount,
       taxAmount: taxTotal,
+      linePricing,
       paymentMethod,
       studentName: fullName.trim(),
       email: email.trim(),
