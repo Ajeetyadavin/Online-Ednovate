@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -14,10 +14,15 @@ import {
 } from "@/components/ui/dialog";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Edit2, Trash2, Eye, EyeOff } from "lucide-react";
+import { adminApi } from "@/services/adminApi";
 
 export default function AdminAnnouncements() {
   const { announcements, setAnnouncements } = usePlatformData();
   const [searchTerm, setSearchTerm] = useState("");
+  const [homepageContent, setHomepageContent] = useState<{ banners: unknown[]; testimonials: unknown[] }>({
+    banners: [],
+    testimonials: [],
+  });
   const [newAnnouncement, setNewAnnouncement] = useState({
     title: "",
     content: "",
@@ -25,13 +30,38 @@ export default function AdminAnnouncements() {
   });
   const [dialogOpen, setDialogOpen] = useState(false);
 
+  useEffect(() => {
+    const loadHomepageContent = async () => {
+      try {
+        const data = await adminApi.getHomepage();
+        setHomepageContent({
+          banners: Array.isArray(data.banners) ? data.banners : [],
+          testimonials: Array.isArray(data.testimonials) ? data.testimonials : [],
+        });
+        setAnnouncements(Array.isArray(data.announcements) ? (data.announcements as any) : []);
+      } catch {
+        // Keep current in-memory state if API is unavailable.
+      }
+    };
+
+    void loadHomepageContent();
+  }, [setAnnouncements]);
+
+  const persistAnnouncements = async (nextAnnouncements: unknown[]) => {
+    await adminApi.updateHomepage({
+      banners: homepageContent.banners,
+      testimonials: homepageContent.testimonials,
+      announcements: nextAnnouncements,
+    });
+  };
+
   const filteredAnnouncements = useMemo(() => {
     return announcements.filter((announcement) =>
       announcement.title.toLowerCase().includes(searchTerm.toLowerCase())
     );
   }, [announcements, searchTerm]);
 
-  const handleAddAnnouncement = () => {
+  const handleAddAnnouncement = async () => {
     if (newAnnouncement.title && newAnnouncement.content) {
       const announcement = {
         id: `ann-${Date.now()}`,
@@ -40,17 +70,28 @@ export default function AdminAnnouncements() {
         link: newAnnouncement.link || "",
         isVisible: true,
       };
-      setAnnouncements([...announcements, announcement as any]);
-      setNewAnnouncement({ title: "", content: "", link: "" });
-      setDialogOpen(false);
+      const nextAnnouncements = [...announcements, announcement as any];
+      try {
+        await persistAnnouncements(nextAnnouncements);
+        setAnnouncements(nextAnnouncements);
+        setNewAnnouncement({ title: "", content: "", link: "" });
+        setDialogOpen(false);
+      } catch (error) {
+        alert(error instanceof Error ? error.message : "Failed to save announcement");
+      }
     }
   };
 
-  const handleToggleVisibility = (announcementId: string) => {
+  const handleToggleVisibility = async (announcementId: string) => {
     const updated = announcements.map((a) =>
       a.id === announcementId ? { ...a, isVisible: !a.isVisible } : a
     );
-    setAnnouncements(updated);
+    try {
+      await persistAnnouncements(updated);
+      setAnnouncements(updated);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to update visibility");
+    }
   };
 
   return (

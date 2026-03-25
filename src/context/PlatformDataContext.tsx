@@ -566,12 +566,19 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
 
     const syncFromApi = async () => {
       try {
-        const [coursesResponse, categoriesResponse] = await Promise.all([
+        const [coursesResponse, categoriesResponse, homepageResponse] = await Promise.all([
           fetch("/api/courses"),
           fetch("/api/categories").catch(() => null),
+          fetch("/api/homepage").catch(() => null),
         ]);
 
-        if (!coursesResponse.ok && (!categoriesResponse || !categoriesResponse.ok)) return;
+        if (
+          !coursesResponse.ok &&
+          (!categoriesResponse || !categoriesResponse.ok) &&
+          (!homepageResponse || !homepageResponse.ok)
+        ) {
+          return;
+        }
 
         const data = coursesResponse.ok
           ? ((await coursesResponse.json()) as {
@@ -586,6 +593,18 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
         const categoryData = categoriesResponse && categoriesResponse.ok
           ? ((await categoriesResponse.json()) as { items?: unknown[] })
           : ({ items: undefined } as { items?: unknown[] });
+
+        const homepageData = homepageResponse && homepageResponse.ok
+          ? ((await homepageResponse.json()) as {
+              banners?: unknown[];
+              testimonials?: unknown[];
+              announcements?: unknown[];
+            })
+          : ({ banners: undefined, testimonials: undefined, announcements: undefined } as {
+              banners?: unknown[];
+              testimonials?: unknown[];
+              announcements?: unknown[];
+            });
 
         if (!isMounted) return;
 
@@ -612,10 +631,29 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
             ? categoryData.items.map((category, index) => normalizeCategory(category as Partial<ManagedCategory>, index))
             : prev.categories;
 
+          const nextBanners = Array.isArray(homepageData.banners)
+            ? homepageData.banners.map((banner, index) => normalizeBanner(banner as Partial<ManagedBanner>, index))
+            : prev.banners;
+
+          const nextTestimonials = Array.isArray(homepageData.testimonials)
+            ? homepageData.testimonials.map((testimonial, index) =>
+                normalizeTestimonial(testimonial as Partial<ManagedTestimonial>, index),
+              )
+            : prev.testimonials;
+
+          const nextAnnouncements = Array.isArray(homepageData.announcements)
+            ? homepageData.announcements.map((announcement, index) =>
+                normalizeAnnouncement(announcement as Partial<ManagedAnnouncement>, index),
+              )
+            : prev.announcements;
+
           return {
             ...prev,
             courses: nextCourses,
             categories: nextCategories,
+            banners: nextBanners,
+            testimonials: nextTestimonials,
+            announcements: nextAnnouncements,
             coupons: prev.coupons,
             curricula: ensureCourseScopedDemos(nextCurricula),
           };
