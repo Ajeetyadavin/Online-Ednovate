@@ -3,6 +3,7 @@ import cors from "cors";
 import express from "express";
 import nodemailer from "nodemailer";
 import { createHash, randomUUID } from "node:crypto";
+import { lookup } from "node:dns/promises";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -846,21 +847,56 @@ const isSmtpConnectivityError = (error) => {
   );
 };
 
-const sendMailWithConfiguredSmtp = async ({ smtp, mailOptions }) => {
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: Number(smtp.port || 587),
-    secure: smtp.secure === true,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    auth: {
-      user: smtp.username,
-      pass: smtp.password,
-    },
-  });
+const resolveSmtpHostCandidates = async (host) => {
+  const normalizedHost = String(host || "").trim();
+  if (!normalizedHost) return [];
 
-  await withTimeout(transporter.sendMail(mailOptions), 20000, "SMTP send timed out");
+  try {
+    const records = await lookup(normalizedHost, { all: true });
+    if (!Array.isArray(records) || records.length === 0) return [normalizedHost];
+
+    const addresses = records.map((item) => String(item.address || "").trim()).filter(Boolean);
+    const ipv4 = addresses.filter((value) => value.includes("."));
+    const others = addresses.filter((value) => !value.includes("."));
+    const ordered = [...ipv4, ...others];
+    const unique = [...new Set(ordered)];
+    return unique.length > 0 ? unique : [normalizedHost];
+  } catch {
+    return [normalizedHost];
+  }
+};
+
+const sendMailWithConfiguredSmtp = async ({ smtp, mailOptions }) => {
+  const hostCandidates = await resolveSmtpHostCandidates(smtp.host);
+  let lastError = null;
+
+  for (const smtpHost of hostCandidates) {
+    try {
+      const transporter = nodemailer.createTransport({
+        host: smtpHost,
+        port: Number(smtp.port || 587),
+        secure: smtp.secure === true,
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
+        auth: {
+          user: smtp.username,
+          pass: smtp.password,
+        },
+        tls: {
+          servername: String(smtp.host || smtpHost),
+        },
+      });
+
+      await withTimeout(transporter.sendMail(mailOptions), 20000, "SMTP send timed out");
+      return;
+    } catch (error) {
+      lastError = error;
+      if (!isSmtpConnectivityError(error)) throw error;
+    }
+  }
+
+  throw lastError || new Error("SMTP send failed");
 };
 
 const sendMailWithSmtpFallback = async ({ smtp, mailOptions }) => {
