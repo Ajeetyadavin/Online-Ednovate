@@ -802,6 +802,37 @@ const withTimeout = async (promise, timeoutMs, timeoutMessage) => {
   }
 };
 
+const mapSmtpError = (error) => {
+  const code = String(error?.code || "").toUpperCase();
+  const message = String(error?.message || "SMTP test failed");
+
+  if (message.includes("SMTP send timed out") || code === "ETIMEDOUT" || code === "ESOCKET") {
+    return {
+      status: 504,
+      message: "SMTP connection timed out. Check host, port, secure mode, and firewall/network rules.",
+    };
+  }
+
+  if (code === "EAUTH") {
+    return {
+      status: 400,
+      message: "SMTP authentication failed. Verify username/password and app password settings.",
+    };
+  }
+
+  if (code === "ECONNREFUSED" || code === "ENOTFOUND" || code === "EHOSTUNREACH") {
+    return {
+      status: 502,
+      message: "SMTP server is unreachable. Verify SMTP host/port and server accessibility.",
+    };
+  }
+
+  return {
+    status: 500,
+    message,
+  };
+};
+
 const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSubject = "Notification" }) => {
   const settings = sanitizePlatformSettings(await getPlatformSettings());
   const smtp = settings.smtp;
@@ -6346,7 +6377,8 @@ app.post("/api/admin/smtp/test", requireAdminPermission("settings", "edit"), asy
 
     response.json({ ok: true, message: `Test mail sent to ${toEmail}` });
   } catch (error) {
-    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to send SMTP test mail" });
+    const mapped = mapSmtpError(error);
+    response.status(mapped.status).json({ message: mapped.message });
   }
 });
 
