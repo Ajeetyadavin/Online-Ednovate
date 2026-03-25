@@ -1368,21 +1368,41 @@ export const adminApi = {
   },
 
   async getHomepagePlatformSettings() {
-    return parseResponse<{ settings: PlatformSettingsPayload }>(
-      await fetch("/api/admin/homepage/platform-settings", {
-        headers: withAuthHeaders({}),
-      }),
-    );
+    try {
+      return await parseResponse<{ settings: PlatformSettingsPayload }>(
+        await fetch("/api/admin/homepage/platform-settings", {
+          headers: withAuthHeaders({}),
+        }),
+      );
+    } catch {
+      // Fallback for servers that only expose the generic platform settings endpoint.
+      return parseResponse<{ settings: PlatformSettingsPayload }>(
+        await fetch("/api/admin/platform-settings", {
+          headers: withAuthHeaders({}),
+        }),
+      );
+    }
   },
 
   async saveHomepagePlatformSettings(settings: PlatformSettingsPayload) {
-    return parseResponse<{ ok: boolean; settings: PlatformSettingsPayload }>(
-      await fetch("/api/admin/homepage/platform-settings", {
-        method: "PUT",
-        headers: withAuthHeaders(),
-        body: JSON.stringify({ settings }),
-      }),
-    );
+    try {
+      return await parseResponse<{ ok: boolean; settings: PlatformSettingsPayload }>(
+        await fetch("/api/admin/homepage/platform-settings", {
+          method: "PUT",
+          headers: withAuthHeaders(),
+          body: JSON.stringify({ settings }),
+        }),
+      );
+    } catch {
+      // Fallback for servers that only expose the generic platform settings endpoint.
+      return parseResponse<{ ok: boolean; settings: PlatformSettingsPayload }>(
+        await fetch("/api/admin/platform-settings", {
+          method: "PUT",
+          headers: withAuthHeaders(),
+          body: JSON.stringify({ settings }),
+        }),
+      );
+    }
   },
 
   async listMarketingCampaigns(filters?: { search?: string; status?: "all" | "enabled" | "disabled" }) {
