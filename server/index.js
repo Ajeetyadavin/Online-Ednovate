@@ -1930,7 +1930,6 @@ app.get("/api/admin/activity-logs", requireAdminPermission("logs", "read"), asyn
     }
 
     const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
-    const filterParams = [...params];
 
     params.push(limit);
     const listResult = await pool.query(
@@ -3352,6 +3351,7 @@ app.get("/api/admin/student-access-summary", requireAdminPermission("users", "re
     }
 
     const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+    const filterParams = [...params];
 
     params.push(limit);
     const listResult = await pool.query(
