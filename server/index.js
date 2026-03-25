@@ -847,6 +847,50 @@ const isSmtpConnectivityError = (error) => {
   );
 };
 
+const getResendConfig = () => {
+  const apiKey = String(process.env.RESEND_API_KEY || "").trim();
+  const fromEmail = String(process.env.RESEND_FROM_EMAIL || "").trim().toLowerCase();
+  return {
+    enabled: Boolean(apiKey && fromEmail),
+    apiKey,
+    fromEmail,
+  };
+};
+
+const sendMailViaResend = async ({ toEmail, subject, text, html, replyTo, fromName }) => {
+  const resend = getResendConfig();
+  if (!resend.enabled) {
+    throw new Error("SMTP unreachable and Resend fallback is not configured");
+  }
+
+  const from = fromName
+    ? `${String(fromName).trim()} <${resend.fromEmail}>`
+    : resend.fromEmail;
+
+  const response = await fetch("https://api.resend.com/emails", {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${resend.apiKey}`,
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({
+      from,
+      to: [String(toEmail || "").trim().toLowerCase()],
+      subject: String(subject || "Notification"),
+      text: String(text || ""),
+      html: String(html || "") || undefined,
+      reply_to: replyTo ? String(replyTo).trim().toLowerCase() : undefined,
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(body || `Resend API failed with status ${response.status}`);
+  }
+
+  return { sent: true, provider: "resend" };
+};
+
 const resolveSmtpHostCandidates = async (host) => {
   const normalizedHost = String(host || "").trim();
   if (!normalizedHost) return [];
@@ -941,16 +985,32 @@ const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSu
     ...variables,
   };
 
-  await sendMailWithSmtpFallback({
-    smtp,
-    mailOptions: {
-    from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
-    to: String(toEmail).trim().toLowerCase(),
-    replyTo: smtp.replyTo || undefined,
-    subject: fillTemplate(template.subject || fallbackSubject, mergedVars),
-    text: fillTemplate(template.body || "", mergedVars),
-    },
-  });
+  const to = String(toEmail).trim().toLowerCase();
+  const subject = fillTemplate(template.subject || fallbackSubject, mergedVars);
+  const text = fillTemplate(template.body || "", mergedVars);
+
+  try {
+    await sendMailWithSmtpFallback({
+      smtp,
+      mailOptions: {
+        from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
+        to,
+        replyTo: smtp.replyTo || undefined,
+        subject,
+        text,
+      },
+    });
+  } catch (error) {
+    if (!isSmtpConnectivityError(error)) throw error;
+    await sendMailViaResend({
+      toEmail: to,
+      subject,
+      text,
+      html: "",
+      replyTo: smtp.replyTo,
+      fromName: smtp.fromName || platformName,
+    });
+  }
 
   return { sent: true };
 };
@@ -963,17 +1023,34 @@ const sendSmtpMail = async ({ toEmail, subject, text, html }) => {
   }
 
   const platformName = String(settings.siteSettings?.platformName || "Ednovate");
-  await sendMailWithSmtpFallback({
-    smtp,
-    mailOptions: {
-    from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
-    to: String(toEmail).trim().toLowerCase(),
-    replyTo: smtp.replyTo || undefined,
-    subject: String(subject || "Invoice"),
-    text: String(text || ""),
-    html: String(html || ""),
-    },
-  });
+  const to = String(toEmail).trim().toLowerCase();
+  const nextSubject = String(subject || "Invoice");
+  const nextText = String(text || "");
+  const nextHtml = String(html || "");
+
+  try {
+    await sendMailWithSmtpFallback({
+      smtp,
+      mailOptions: {
+        from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
+        to,
+        replyTo: smtp.replyTo || undefined,
+        subject: nextSubject,
+        text: nextText,
+        html: nextHtml,
+      },
+    });
+  } catch (error) {
+    if (!isSmtpConnectivityError(error)) throw error;
+    await sendMailViaResend({
+      toEmail: to,
+      subject: nextSubject,
+      text: nextText,
+      html: nextHtml,
+      replyTo: smtp.replyTo,
+      fromName: smtp.fromName || platformName,
+    });
+  }
 
   return { sent: true };
 };
