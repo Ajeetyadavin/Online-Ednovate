@@ -1930,6 +1930,7 @@ app.get("/api/admin/activity-logs", requireAdminPermission("logs", "read"), asyn
     }
 
     const whereClause = whereParts.length > 0 ? `WHERE ${whereParts.join(" AND ")}` : "";
+    const filterParams = [...params];
 
     params.push(limit);
     const listResult = await pool.query(
@@ -3417,7 +3418,10 @@ app.get("/api/admin/student-access-summary", requireAdminPermission("users", "re
         COUNT(*) FILTER (WHERE a.expires_at IS NOT NULL AND a.expires_at < NOW())::int AS expired,
         COUNT(*) FILTER (WHERE a.is_unlimited_views = FALSE AND (a.allowed_watch_seconds - a.used_watch_seconds) <= 0)::int AS out_of_views
       FROM student_course_access a
+      JOIN students s ON s.id = a.student_id
+      ${whereClause}
       `,
+      filterParams,
     );
 
     const summary = summaryResult.rows[0] || {
