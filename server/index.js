@@ -6339,6 +6339,41 @@ app.get("/api/admin/homepage/platform-settings", requireAdminPermission("homepag
   }
 });
 
+app.get("/api/admin/coupons", requireAdminPermission("coupons", "read"), async (_request, response) => {
+  try {
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const siteSettings = settings.siteSettings && typeof settings.siteSettings === "object"
+      ? settings.siteSettings
+      : {};
+    const coupons = Array.isArray(siteSettings.coupons) ? siteSettings.coupons : [];
+    response.json({ items: coupons });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load coupons" });
+  }
+});
+
+app.put("/api/admin/coupons", requireAdminPermission("coupons", "edit"), async (request, response) => {
+  try {
+    const existing = sanitizePlatformSettings(await getPlatformSettings());
+    const incomingItems = Array.isArray(request.body?.items) ? request.body.items : [];
+    const nextData = sanitizePlatformSettings({
+      ...existing,
+      siteSettings: {
+        ...(existing.siteSettings || {}),
+        coupons: incomingItems,
+      },
+    });
+
+    await setPlatformSettings(nextData);
+    const nextSiteSettings = nextData.siteSettings && typeof nextData.siteSettings === "object"
+      ? nextData.siteSettings
+      : {};
+    response.json({ ok: true, items: Array.isArray(nextSiteSettings.coupons) ? nextSiteSettings.coupons : [] });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save coupons" });
+  }
+});
+
 app.put("/api/admin/homepage/platform-settings", requireAdminPermission("homepage", "edit"), async (request, response) => {
   try {
     const existingRaw = sanitizePlatformSettings(await getPlatformSettings());

@@ -1369,6 +1369,24 @@ export const adminApi = {
     );
   },
 
+  async listCoupons() {
+    return parseResponse<{ items: unknown[] }>(
+      await fetch("/api/admin/coupons", {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async saveCoupons(items: unknown[]) {
+    return parseResponse<{ ok: boolean; items: unknown[] }>(
+      await fetch("/api/admin/coupons", {
+        method: "PUT",
+        headers: withAuthHeaders(),
+        body: JSON.stringify({ items }),
+      }),
+    );
+  },
+
   async getHomepagePlatformSettings() {
     try {
       return await parseResponse<{ settings: PlatformSettingsPayload }>(

@@ -196,16 +196,10 @@ export default function AdminCoupons() {
 
     const loadPersistedCoupons = async () => {
       try {
-        const result = await adminApi.getPlatformSettings();
-        const settings = (result?.settings || {}) as Record<string, unknown>;
-        const siteSettings = (settings.siteSettings && typeof settings.siteSettings === "object")
-          ? (settings.siteSettings as Record<string, unknown>)
-          : {};
-        const persistedCoupons = Array.isArray(siteSettings.coupons)
-          ? (siteSettings.coupons as ManagedCoupon[])
-          : Array.isArray((settings as { coupons?: unknown[] }).coupons)
-            ? ((settings as { coupons?: ManagedCoupon[] }).coupons || [])
-            : [];
+        const result = await adminApi.listCoupons();
+        const persistedCoupons = Array.isArray(result?.items)
+          ? (result.items as ManagedCoupon[])
+          : [];
 
         if (!mounted || !Array.isArray(persistedCoupons)) return;
         setCoupons(persistedCoupons);
@@ -222,19 +216,7 @@ export default function AdminCoupons() {
   }, [setCoupons]);
 
   const persistCoupons = async (nextCoupons: ManagedCoupon[]) => {
-    const result = await adminApi.getPlatformSettings();
-    const currentSettings = (result?.settings || {}) as Record<string, unknown>;
-    const currentSiteSettings = (currentSettings.siteSettings && typeof currentSettings.siteSettings === "object")
-      ? (currentSettings.siteSettings as Record<string, unknown>)
-      : {};
-
-    await adminApi.savePlatformSettings({
-      ...(currentSettings as any),
-      siteSettings: {
-        ...currentSiteSettings,
-        coupons: nextCoupons,
-      },
-    } as any);
+    await adminApi.saveCoupons(nextCoupons);
   };
 
   const reset = () => {
