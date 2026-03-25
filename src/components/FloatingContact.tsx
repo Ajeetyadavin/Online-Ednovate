@@ -5,7 +5,7 @@ import { MessageCircle, Phone, ChevronLeft, ChevronRight } from "lucide-react";
 import EnquiryModal from "./EnquiryModal";
 
 const FloatingContact = () => {
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [enquiryOpen, setEnquiryOpen] = useState(false);
   const { settings } = useSiteSettings();
 

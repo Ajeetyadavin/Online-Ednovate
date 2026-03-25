@@ -29,7 +29,7 @@ import {
   MessageCircle,
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
-import { usePlatformData } from "@/context/PlatformDataContext";
+import { type ManagedCourse, usePlatformData } from "@/context/PlatformDataContext";
 import { decodeVideoUrl, getYouTubeEmbedUrl } from "@/lib/video-utils";
 import { getBunnyStreamVideoUrl } from "@/lib/bunnystream-api";
 import { adminApi } from "@/services/adminApi";
@@ -46,6 +46,56 @@ const defaultReviews = [
   { name: "Sneha K.", rating: 4, comment: "Good content and great value. The doubt solving feature is very helpful.", date: "1 month ago" },
   { name: "Amit V.", rating: 5, comment: "Cleared my exam in first attempt thanks to these lectures. Quality is top notch!", date: "2 months ago" },
 ];
+
+const FALLBACK_COURSE: ManagedCourse = {
+  id: "",
+  title: "",
+  category: "general",
+  subcategory: "general",
+  language: "English",
+  lectures: 0,
+  hours: 0,
+  price: 0,
+  originalPrice: 0,
+  discount: 0,
+  image: "/placeholder.svg",
+  thumbnail: "",
+  professor: "",
+  isVisible: false,
+  viewPricingEnabled: false,
+  unlimitedViewsEnabled: false,
+  validityPricingEnabled: false,
+  viewOptions: [1, 2],
+  validityOptionsDays: [30, 90, 180],
+  selectedViews: 1,
+  selectedValidityDays: 30,
+  deliveryModePricingEnabled: false,
+  deliveryModes: [],
+  selectedDeliveryModeId: "online",
+  selectedDeliveryModeIds: [],
+  bookAddonEnabled: false,
+  bookAddons: [],
+  selectedBookAddonIds: [],
+  aboutCourseEnabled: false,
+  aboutCourseText: "",
+  ratingsEnabled: true,
+  reviewsEnabled: true,
+  ratingValue: 4.8,
+  ratingCount: 0,
+  reviews: [],
+  enrollmentCount: 0,
+  showEnrollmentCount: true,
+  showMetaLectures: true,
+  showMetaHours: true,
+  showMetaValidity: true,
+  showMetaResources: true,
+  showMetaViews: true,
+  showMetaPerHour: true,
+  showMetaLanguage: true,
+  isCombo: false,
+  isMaterial: false,
+  packageCourseIds: [],
+};
 
 const parseLessonDurationToSeconds = (value: unknown) => {
   const raw = String(value || "").trim().toLowerCase();
@@ -113,6 +163,7 @@ const CourseDetails = () => {
     views: false,
     validity: false,
   });
+  const [showMobileConfigurator, setShowMobileConfigurator] = useState(false);
 
   const toggleDesktopOptionSection = (section: "modes" | "books" | "views" | "validity") => {
     setOpenDesktopOptionSections((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -122,19 +173,8 @@ const CourseDetails = () => {
     setOpenMobileOptionSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const course = courses.find((c) => c.id === id);
-
-  if (!course) {
-    return (
-      <div className="flex items-center justify-center py-32">
-        <div className="text-center">
-          <h2 className="text-2xl font-bold text-foreground mb-2">Course Not Found</h2>
-          <p className="text-muted-foreground mb-4">The course you're looking for doesn't exist.</p>
-          <Button onClick={() => navigate("/")}>Go Home</Button>
-        </div>
-      </div>
-    );
-  }
+  const matchedCourse = courses.find((c) => c.id === id);
+  const course = matchedCourse ?? FALLBACK_COURSE;
 
   const inCart = isInCart(course.id);
   const purchased = isPurchased(course.id);
@@ -488,6 +528,18 @@ const CourseDetails = () => {
       return prev.filter((id) => id !== modeId);
     });
   };
+
+  if (!matchedCourse) {
+    return (
+      <div className="flex items-center justify-center py-32">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-foreground mb-2">Course Not Found</h2>
+          <p className="text-muted-foreground mb-4">The course you're looking for doesn't exist.</p>
+          <Button onClick={() => navigate("/")}>Go Home</Button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="pb-36 md:pb-0">
@@ -1024,6 +1076,16 @@ const CourseDetails = () => {
         <div className="bg-card border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
           <div className="px-4 py-2.5 space-y-2">
               {(course.deliveryModePricingEnabled || course.bookAddonEnabled || course.viewPricingEnabled || course.validityPricingEnabled) && (
+                <button
+                  type="button"
+                  onClick={() => setShowMobileConfigurator((prev) => !prev)}
+                  className="mx-auto flex h-6 w-12 items-center justify-center rounded-full border border-border bg-background text-muted-foreground"
+                  aria-label={showMobileConfigurator ? "Hide purchase options" : "Show purchase options"}
+                >
+                  <ChevronUp className={`h-4 w-4 transition-transform ${showMobileConfigurator ? "rotate-180" : "rotate-0"}`} />
+                </button>
+              )}
+              {(course.deliveryModePricingEnabled || course.bookAddonEnabled || course.viewPricingEnabled || course.validityPricingEnabled) && showMobileConfigurator && (
                 <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5">
                   <div className="grid grid-cols-1 gap-2">
                   {course.deliveryModePricingEnabled && deliveryModes.length > 0 && (
