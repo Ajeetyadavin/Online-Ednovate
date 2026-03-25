@@ -92,6 +92,25 @@ const Packages = () => {
   const [sortBy, setSortBy] = useState("default");
   const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
+  const categoriesById = useMemo(
+    () => new Map(managedCategories.map((category) => [category.id, category])),
+    [managedCategories],
+  );
+
+  const resolveCourseLevelId = (course: (typeof managedCourses)[number]) => {
+    const subcategoryId = String(course.subcategory || "").trim();
+    if (subcategoryId && subcategoryId !== "general" && categoriesById.has(subcategoryId)) {
+      return subcategoryId;
+    }
+    return course.category;
+  };
+
+  const resolveCourseParentId = (course: (typeof managedCourses)[number]) => {
+    const levelId = resolveCourseLevelId(course);
+    const levelCategory = categoriesById.get(levelId);
+    return levelCategory?.parentId || levelId;
+  };
+
   const visibleCategoryIds = useMemo(
     () => new Set(managedCategories.filter((category) => category.isVisible).map((category) => category.id)),
     [managedCategories],
@@ -102,9 +121,11 @@ const Packages = () => {
       managedCourses.filter(
         (course) =>
           course.isVisible &&
-          (visibleCategoryIds.size === 0 || visibleCategoryIds.has(course.category)),
+          (visibleCategoryIds.size === 0 ||
+            visibleCategoryIds.has(resolveCourseLevelId(course)) ||
+            visibleCategoryIds.has(resolveCourseParentId(course))),
       ),
-    [managedCourses, visibleCategoryIds],
+    [managedCourses, visibleCategoryIds, categoriesById],
   );
 
   // ── Build dynamic parent categories from managed categories (show all visible), with course fallbacks ──────────────────
@@ -136,7 +157,7 @@ const Packages = () => {
     });
 
     // Step 2: Get all course categories
-    const courseCategoryIds = new Set(courses.map((c) => c.category));
+    const courseCategoryIds = new Set(courses.map((c) => resolveCourseLevelId(c)));
 
     // Step 3: Ensure course categories not present in managed categories still appear
     for (const courseCatId of courseCategoryIds) {
@@ -270,9 +291,22 @@ const Packages = () => {
   // ── Determine which courses match selected categories ──────────
   const coursePoolAfterCategory = useMemo(() => {
     if (selectedParentGroups.length === 0 && selectedSubcategories.length === 0) return courses;
-    const selectedSet = new Set([...selectedParentGroups, ...selectedSubcategories]);
-    return courses.filter((c) => selectedSet.has(c.category));
-  }, [selectedParentGroups, selectedSubcategories, courses]);
+    const selectedParentSet = new Set(selectedParentGroups);
+    const selectedSubcategorySet = new Set(selectedSubcategories);
+
+    return courses.filter((course) => {
+      const levelId = resolveCourseLevelId(course);
+      const parentId = resolveCourseParentId(course);
+      const matchesParent = selectedParentSet.size > 0 && selectedParentSet.has(parentId);
+      const matchesLevel = selectedSubcategorySet.size > 0 && selectedSubcategorySet.has(levelId);
+
+      if (selectedParentSet.size > 0 && selectedSubcategorySet.size > 0) {
+        return matchesParent && matchesLevel;
+      }
+
+      return matchesParent || matchesLevel;
+    });
+  }, [selectedParentGroups, selectedSubcategories, courses, categoriesById]);
 
   // ── Get available levels (children) for selected parent groups ──────────
   const availableLevels = useMemo(() => {
@@ -286,14 +320,14 @@ const Packages = () => {
         group.children.forEach((child) => {
           if (!childIds.has(child.id)) {
             childIds.add(child.id);
-            const count = courses.filter((c) => c.category === child.id).length;
+            const count = courses.filter((course) => resolveCourseLevelId(course) === child.id).length;
             childrenArr.push({ id: child.id, label: child.label, count });
           }
         });
       }
     });
     return childrenArr;
-  }, [selectedParentGroups, dynamicCourseGroups, courses]);
+  }, [selectedParentGroups, dynamicCourseGroups, courses, categoriesById]);
 
   const dynamicDeliveryModes = useMemo(() => {
     const pool = coursePoolAfterCategory;
@@ -482,7 +516,11 @@ const Packages = () => {
         <div className="space-y-1">
           {dynamicCourseGroups.map((group) => {
             const parentCourseCount = courses.filter(
-              (c) => c.category === group.id || group.children.some((child) => c.category === child.id)
+              (course) => {
+                const levelId = resolveCourseLevelId(course);
+                const parentId = resolveCourseParentId(course);
+                return parentId === group.id || group.children.some((child) => levelId === child.id);
+              }
             ).length;
             return (
               <CheckItem

@@ -1,11 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
-import {
-  bannerSlides as seedBannerSlides,
-  categories as seedCategories,
-  courses as seedCourses,
-  testimonials as seedTestimonials,
-  type Course,
-} from "@/data/courses";
+import type { Course } from "@/data/courses";
 import {
   decodeVideoUrl,
   detectVideoSource,
@@ -158,41 +152,6 @@ interface PlatformDataContextType extends PlatformDataState {
   setCourseDemoLesson: (courseId: string, lessonId?: string) => void;
   resetPlatformData: () => void;
 }
-
-const defaultCategoryColor = (id: string) => {
-  if (id.startsWith("ca")) return "#1E40AF";
-  if (id.startsWith("cs")) return "#7C3AED";
-  if (id.startsWith("cma")) return "#D97706";
-  if (id.startsWith("cfa")) return "#0D9488";
-  if (id.startsWith("acca")) return "#DC2626";
-  if (id.startsWith("fyjc")) return "#059669";
-  if (id.startsWith("syjc")) return "#EA580C";
-  return "#475569";
-};
-
-const defaultAnnouncements: ManagedAnnouncement[] = [
-  {
-    id: "1",
-    title: "CA Foundation Nov 2025 batch",
-    content: "Early bird 20% off",
-    link: "/packages?category=ca",
-    isVisible: true,
-  },
-  {
-    id: "2",
-    title: "Free Demo Classes",
-    content: "Live for all courses",
-    link: "/packages",
-    isVisible: true,
-  },
-  {
-    id: "3",
-    title: "CS Executive new batch starts 1 April",
-    content: "Limited seats",
-    link: "/packages?category=cs",
-    isVisible: true,
-  },
-];
 
 const createFallbackCurriculum = (courseName: string): Chapter[] => [
   {
@@ -582,65 +541,14 @@ const ensureCourseScopedDemos = (curricula: Record<string, Chapter[]>): Record<s
 };
 
 const createDefaultState = (): PlatformDataState => {
-  const courses = seedCourses.map((course, index) => normalizeCourse(course, index));
-
-  const categories = seedCategories
-    .filter((category) => category.id !== "all")
-    .map((category, index) => {
-      const parentId = category.id.includes("-") ? category.id.split("-")[0] : null;
-      return normalizeCategory(
-        {
-          id: category.id,
-          name: category.label,
-          slug: category.id,
-          color: defaultCategoryColor(category.id),
-          isVisible: true,
-          parentId,
-          sortOrder: index + 1,
-        },
-        index,
-      );
-    });
-
-  const banners = seedBannerSlides.map((slide, index) =>
-    normalizeBanner(
-      {
-        id: String(slide.id),
-        title: `Banner ${index + 1}`,
-        imageUrl: slide.image,
-        isVisible: true,
-        sortOrder: index + 1,
-      },
-      index,
-    ),
-  );
-
-  const testimonials = seedTestimonials.map((item, index) =>
-    normalizeTestimonial(
-      {
-        id: item.id,
-        authorName: item.name,
-        authorRole: `${item.course} Student`,
-        content: item.feedback,
-        rating: item.rating,
-        isVisible: true,
-      },
-      index,
-    ),
-  );
-
-  const curricula = Object.fromEntries(
-    courses.map((course) => [course.id, createFallbackCurriculum(course.title)]),
-  );
-
   return {
-    courses,
-    categories,
-    banners,
-    testimonials,
-    announcements: defaultAnnouncements,
+    courses: [],
+    categories: [],
+    banners: [],
+    testimonials: [],
+    announcements: [],
     coupons: [],
-    curricula: ensureCourseScopedDemos(curricula),
+    curricula: {},
   };
 };
 

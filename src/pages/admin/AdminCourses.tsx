@@ -309,12 +309,21 @@ export default function AdminCourses() {
   const categoriesById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
   const parentCategories = useMemo(() => categories.filter((c) => c.parentId === null), [categories]);
   const subcategoryOptions = useMemo(() => categories.filter((c) => c.parentId === form.category), [categories, form.category]);
+  const fallbackCategoryId = parentCategories[0]?.id || "general";
+  const fallbackSubcategoryId = subcategoryOptions[0]?.id || "general";
 
   useEffect(() => {
-    if (!form.category && parentCategories.length > 0) { sf({ category: parentCategories[0].id }); return; }
-    if (!form.category) return;
-    if (!subcategoryOptions.some((s) => s.id === form.subcategory) && subcategoryOptions.length > 0) sf({ subcategory: subcategoryOptions[0].id });
-  }, [form.category, form.subcategory, parentCategories, subcategoryOptions]);
+    const hasValidParentCategory = parentCategories.some((c) => c.id === form.category);
+    if (!hasValidParentCategory) {
+      sf({ category: fallbackCategoryId, subcategory: categories.find((c) => c.parentId === fallbackCategoryId)?.id || "general" });
+      return;
+    }
+
+    const hasValidSubcategory = subcategoryOptions.some((s) => s.id === form.subcategory);
+    if (!hasValidSubcategory) {
+      sf({ subcategory: fallbackSubcategoryId });
+    }
+  }, [form.category, form.subcategory, parentCategories, subcategoryOptions, fallbackCategoryId, fallbackSubcategoryId, categories]);
 
   const filteredCourses = useMemo(() =>
     courses.filter((c) =>
@@ -1211,12 +1220,14 @@ export default function AdminCourses() {
                       <div className="space-y-1.5">
                         <Label>Category</Label>
                         <select className={selectCls} value={form.category} onChange={(e) => sf({ category: e.target.value })}>
+                          {parentCategories.length === 0 && <option value="general">General</option>}
                           {parentCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
                       <div className="space-y-1.5">
                         <Label>Subcategory / Level</Label>
                         <select className={selectCls} value={form.subcategory} onChange={(e) => sf({ subcategory: e.target.value })}>
+                          {subcategoryOptions.length === 0 && <option value="general">General</option>}
                           {subcategoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                         </select>
                       </div>
