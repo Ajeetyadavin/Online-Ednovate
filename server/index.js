@@ -833,6 +833,56 @@ const mapSmtpError = (error) => {
   };
 };
 
+const isSmtpConnectivityError = (error) => {
+  const code = String(error?.code || "").toUpperCase();
+  const message = String(error?.message || "");
+  return (
+    message.includes("SMTP send timed out")
+    || code === "ETIMEDOUT"
+    || code === "ESOCKET"
+    || code === "ECONNREFUSED"
+    || code === "EHOSTUNREACH"
+    || code === "ENETUNREACH"
+  );
+};
+
+const sendMailWithConfiguredSmtp = async ({ smtp, mailOptions }) => {
+  const transporter = nodemailer.createTransport({
+    host: smtp.host,
+    port: Number(smtp.port || 587),
+    secure: smtp.secure === true,
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+    auth: {
+      user: smtp.username,
+      pass: smtp.password,
+    },
+  });
+
+  await withTimeout(transporter.sendMail(mailOptions), 20000, "SMTP send timed out");
+};
+
+const sendMailWithSmtpFallback = async ({ smtp, mailOptions }) => {
+  try {
+    await sendMailWithConfiguredSmtp({ smtp, mailOptions });
+    return;
+  } catch (primaryError) {
+    const normalizedPort = Number(smtp.port || 0);
+    const using465Ssl = normalizedPort === 465 && smtp.secure === true;
+    const using587StartTls = normalizedPort === 587 && smtp.secure !== true;
+    const canRetry = isSmtpConnectivityError(primaryError) && (using465Ssl || using587StartTls);
+
+    if (!canRetry) throw primaryError;
+
+    const fallbackSmtp = using465Ssl
+      ? { ...smtp, port: 587, secure: false }
+      : { ...smtp, port: 465, secure: true };
+
+    await sendMailWithConfiguredSmtp({ smtp: fallbackSmtp, mailOptions });
+  }
+};
+
 const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSubject = "Notification" }) => {
   const settings = sanitizePlatformSettings(await getPlatformSettings());
   const smtp = settings.smtp;
@@ -855,26 +905,16 @@ const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSu
     ...variables,
   };
 
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure === true,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    auth: {
-      user: smtp.username,
-      pass: smtp.password,
-    },
-  });
-
-  await withTimeout(transporter.sendMail({
+  await sendMailWithSmtpFallback({
+    smtp,
+    mailOptions: {
     from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
     to: String(toEmail).trim().toLowerCase(),
     replyTo: smtp.replyTo || undefined,
     subject: fillTemplate(template.subject || fallbackSubject, mergedVars),
     text: fillTemplate(template.body || "", mergedVars),
-  }), 20000, "SMTP send timed out");
+    },
+  });
 
   return { sent: true };
 };
@@ -887,27 +927,17 @@ const sendSmtpMail = async ({ toEmail, subject, text, html }) => {
   }
 
   const platformName = String(settings.siteSettings?.platformName || "Ednovate");
-  const transporter = nodemailer.createTransport({
-    host: smtp.host,
-    port: smtp.port,
-    secure: smtp.secure === true,
-    connectionTimeout: 10000,
-    greetingTimeout: 10000,
-    socketTimeout: 15000,
-    auth: {
-      user: smtp.username,
-      pass: smtp.password,
-    },
-  });
-
-  await withTimeout(transporter.sendMail({
+  await sendMailWithSmtpFallback({
+    smtp,
+    mailOptions: {
     from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
     to: String(toEmail).trim().toLowerCase(),
     replyTo: smtp.replyTo || undefined,
     subject: String(subject || "Invoice"),
     text: String(text || ""),
     html: String(html || ""),
-  }), 20000, "SMTP send timed out");
+    },
+  });
 
   return { sent: true };
 };
