@@ -159,8 +159,6 @@ interface PlatformDataContextType extends PlatformDataState {
   resetPlatformData: () => void;
 }
 
-const STORAGE_KEY = "ednovate_platform_data";
-
 const defaultCategoryColor = (id: string) => {
   if (id.startsWith("ca")) return "#1E40AF";
   if (id.startsWith("cs")) return "#7C3AED";
@@ -647,58 +645,7 @@ const createDefaultState = (): PlatformDataState => {
 };
 
 const loadInitialState = (): PlatformDataState => {
-  const fallback = createDefaultState();
-  const raw = localStorage.getItem(STORAGE_KEY);
-  if (!raw) {
-    return fallback;
-  }
-
-  try {
-    const parsed = JSON.parse(raw) as Partial<PlatformDataState>;
-
-    const courses = Array.isArray(parsed.courses)
-      ? parsed.courses.map((course, index) => normalizeCourse(course, index))
-      : fallback.courses;
-
-    const categories = Array.isArray(parsed.categories)
-      ? parsed.categories.map((category, index) => normalizeCategory(category, index))
-      : fallback.categories;
-
-    const banners = Array.isArray(parsed.banners)
-      ? parsed.banners.map((banner, index) => normalizeBanner(banner, index))
-      : fallback.banners;
-
-    const testimonials = Array.isArray(parsed.testimonials)
-      ? parsed.testimonials.map((testimonial, index) => normalizeTestimonial(testimonial, index))
-      : fallback.testimonials;
-
-    const announcements = Array.isArray(parsed.announcements)
-      ? parsed.announcements.map((announcement, index) => normalizeAnnouncement(announcement, index))
-      : fallback.announcements;
-
-    const coupons = Array.isArray(parsed.coupons)
-      ? parsed.coupons.map((coupon, index) => normalizeCoupon(coupon, index))
-      : fallback.coupons;
-
-    const parsedCurricula = parsed.curricula || {};
-    const curricula: Record<string, Chapter[]> = {};
-    courses.forEach((course) => {
-      const normalized = normalizeCurriculum(parsedCurricula[course.id]);
-      curricula[course.id] = normalized.length > 0 ? normalized : createFallbackCurriculum(course.title);
-    });
-
-    return {
-      courses,
-      categories,
-      banners,
-      testimonials,
-      announcements,
-      coupons,
-      curricula: ensureCourseScopedDemos(curricula),
-    };
-  } catch {
-    return fallback;
-  }
+  return createDefaultState();
 };
 
 const PlatformDataContext = createContext<PlatformDataContextType | null>(null);
@@ -707,20 +654,30 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<PlatformDataState>(() => loadInitialState());
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-  }, [state]);
-
-  useEffect(() => {
     let isMounted = true;
 
     const syncFromApi = async () => {
       try {
-        const response = await fetch("/api/courses");
-        if (!response.ok) return;
-        const data = (await response.json()) as {
-          courses?: unknown[];
-          curricula?: Record<string, unknown>;
-        };
+        const [coursesResponse, categoriesResponse] = await Promise.all([
+          fetch("/api/courses"),
+          fetch("/api/categories").catch(() => null),
+        ]);
+
+        if (!coursesResponse.ok && (!categoriesResponse || !categoriesResponse.ok)) return;
+
+        const data = coursesResponse.ok
+          ? ((await coursesResponse.json()) as {
+              courses?: unknown[];
+              curricula?: Record<string, unknown>;
+            })
+          : ({} as {
+              courses?: unknown[];
+              curricula?: Record<string, unknown>;
+            });
+
+        const categoryData = categoriesResponse && categoriesResponse.ok
+          ? ((await categoriesResponse.json()) as { items?: unknown[] })
+          : ({ items: undefined } as { items?: unknown[] });
 
         if (!isMounted) return;
 
@@ -743,9 +700,14 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
             }
           });
 
+          const nextCategories = Array.isArray(categoryData.items)
+            ? categoryData.items.map((category, index) => normalizeCategory(category as Partial<ManagedCategory>, index))
+            : prev.categories;
+
           return {
             ...prev,
             courses: nextCourses,
+            categories: nextCategories,
             coupons: prev.coupons,
             curricula: ensureCourseScopedDemos(nextCurricula),
           };
@@ -1011,7 +973,6 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
 
     const resetPlatformData = () => {
       setState(createDefaultState());
-      localStorage.removeItem(STORAGE_KEY);
     };
 
     return {

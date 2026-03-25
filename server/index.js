@@ -410,6 +410,46 @@ const mapLeadFollowUpRow = (row) => ({
   createdAt: row.created_at,
 });
 
+const mapCourseCategoryRow = (row) => ({
+  id: String(row.id || ""),
+  name: String(row.name || ""),
+  slug: String(row.slug || ""),
+  color: String(row.color || "#475569"),
+  isVisible: row.is_visible !== false,
+  parentId: row.parent_id ? String(row.parent_id) : null,
+  sortOrder: Number(row.sort_order || 0),
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+});
+
+const normalizeCategorySlug = (value) =>
+  String(value || "")
+    .toLowerCase()
+    .trim()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/(^-|-$)/g, "");
+
+const normalizeCategoryPayload = (payload = {}) => {
+  const id = String(payload.id || "").trim();
+  const name = String(payload.name || "").trim();
+  const slug = normalizeCategorySlug(payload.slug || name);
+  const color = String(payload.color || "#475569").trim() || "#475569";
+  const parentRaw = String(payload.parentId || "").trim();
+  const parentId = parentRaw ? parentRaw : null;
+  const sortOrder = Number(payload.sortOrder || 0);
+  const isVisible = payload.isVisible !== false;
+
+  return {
+    id,
+    name,
+    slug,
+    color,
+    parentId,
+    sortOrder: Number.isFinite(sortOrder) ? sortOrder : 0,
+    isVisible,
+  };
+};
+
 const normalizeLeadStatus = (value) => {
   const normalized = String(value || "fresh").trim().toLowerCase();
   return LEAD_ALLOWED_STATUSES.includes(normalized) ? normalized : "fresh";
@@ -1219,6 +1259,7 @@ const resolveStudentSessionFromRequest = async (request) => {
 const getModuleFromPath = (pathName) => {
   if (pathName.startsWith("/api/students") || pathName.startsWith("/api/admin/quick-login")) return "users";
   if (pathName.startsWith("/api/auth/student/support") || pathName.startsWith("/api/admin/technical-support")) return "technical-support";
+  if (pathName.startsWith("/api/admin/categories")) return "categories";
   if (pathName.startsWith("/api/admin/lead-form-settings")) return "leads";
   if (pathName.startsWith("/api/admin/leads")) return "leads";
   if (pathName.startsWith("/api/admin/marketing")) return "marketing";
@@ -4958,6 +4999,150 @@ app.post("/api/marketing/events", async (request, response) => {
     response.json({ ok: true });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to track marketing event" });
+  }
+});
+
+app.get("/api/categories", async (_request, response) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT id, name, slug, color, is_visible, parent_id, sort_order, created_at, updated_at
+      FROM course_categories
+      ORDER BY sort_order ASC, name ASC
+      `,
+    );
+    response.json({ items: result.rows.map(mapCourseCategoryRow) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load categories" });
+  }
+});
+
+app.get("/api/admin/categories", requireAdminPermission("categories", "read"), async (_request, response) => {
+  try {
+    const result = await pool.query(
+      `
+      SELECT id, name, slug, color, is_visible, parent_id, sort_order, created_at, updated_at
+      FROM course_categories
+      ORDER BY sort_order ASC, name ASC
+      `,
+    );
+    response.json({ items: result.rows.map(mapCourseCategoryRow) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load categories" });
+  }
+});
+
+app.post("/api/admin/categories/upsert", requireAdminPermission("categories", "edit"), async (request, response) => {
+  try {
+    const payload = normalizeCategoryPayload(request.body?.category || {});
+    if (!payload.id || !payload.name) {
+      response.status(400).json({ message: "Category id and name are required" });
+      return;
+    }
+
+    if (payload.parentId && payload.parentId === payload.id) {
+      response.status(400).json({ message: "Category cannot be parent of itself" });
+      return;
+    }
+
+    if (payload.parentId) {
+      const parentResult = await pool.query("SELECT id FROM course_categories WHERE id = $1", [payload.parentId]);
+      if (parentResult.rowCount === 0) {
+        response.status(400).json({ message: "Parent category not found" });
+        return;
+      }
+    }
+
+    const result = await pool.query(
+      `
+      INSERT INTO course_categories
+      (id, name, slug, color, is_visible, parent_id, sort_order, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,NOW())
+      ON CONFLICT (id)
+      DO UPDATE SET
+        name = EXCLUDED.name,
+        slug = EXCLUDED.slug,
+        color = EXCLUDED.color,
+        is_visible = EXCLUDED.is_visible,
+        parent_id = EXCLUDED.parent_id,
+        sort_order = EXCLUDED.sort_order,
+        updated_at = NOW()
+      RETURNING id, name, slug, color, is_visible, parent_id, sort_order, created_at, updated_at
+      `,
+      [
+        payload.id,
+        payload.name,
+        payload.slug || payload.id,
+        payload.color,
+        payload.isVisible,
+        payload.parentId,
+        payload.sortOrder,
+      ],
+    );
+
+    response.json({ ok: true, item: mapCourseCategoryRow(result.rows[0]) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save category" });
+  }
+});
+
+app.post("/api/admin/categories/:id/toggle", requireAdminPermission("categories", "edit"), async (request, response) => {
+  try {
+    const id = String(request.params.id || "").trim();
+    if (!id) {
+      response.status(400).json({ message: "Category id is required" });
+      return;
+    }
+
+    const hasExplicitValue = typeof request.body?.isVisible === "boolean";
+    const result = await pool.query(
+      `
+      UPDATE course_categories
+      SET is_visible = COALESCE($2::boolean, NOT is_visible),
+          updated_at = NOW()
+      WHERE id = $1
+      RETURNING id, name, slug, color, is_visible, parent_id, sort_order, created_at, updated_at
+      `,
+      [id, hasExplicitValue ? request.body.isVisible : null],
+    );
+
+    if (result.rowCount === 0) {
+      response.status(404).json({ message: "Category not found" });
+      return;
+    }
+
+    response.json({ ok: true, item: mapCourseCategoryRow(result.rows[0]) });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to toggle category" });
+  }
+});
+
+app.delete("/api/admin/categories/:id", requireAdminPermission("categories", "delete"), async (request, response) => {
+  const client = await pool.connect();
+  try {
+    const id = String(request.params.id || "").trim();
+    if (!id) {
+      response.status(400).json({ message: "Category id is required" });
+      return;
+    }
+
+    await client.query("BEGIN");
+    await client.query("UPDATE course_categories SET parent_id = NULL, updated_at = NOW() WHERE parent_id = $1", [id]);
+    const result = await client.query("DELETE FROM course_categories WHERE id = $1", [id]);
+
+    if (result.rowCount === 0) {
+      await client.query("ROLLBACK");
+      response.status(404).json({ message: "Category not found" });
+      return;
+    }
+
+    await client.query("COMMIT");
+    response.json({ ok: true });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete category" });
+  } finally {
+    client.release();
   }
 });
 

@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { usePlatformData } from "@/context/PlatformDataContext";
+import { adminApi } from "@/services/adminApi";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -35,6 +36,7 @@ export default function AdminCategories() {
   const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const [form, setForm] = useState<CategoryForm>({
     id: "", name: "", slug: "", color: "#9333ea", parentId: null, sortOrder: categories.length + 1, isVisible: true,
   });
@@ -68,13 +70,50 @@ export default function AdminCategories() {
     setDialogOpen(true);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!form.name.trim()) return;
-    upsertCategory({ id: form.id, name: form.name.trim(), slug: form.slug.trim() || slugify(form.name), color: form.color, parentId: form.parentId, sortOrder: Number(form.sortOrder || categories.length + 1), isVisible: form.isVisible });
-    setDialogOpen(false);
+    setIsSaving(true);
+    try {
+      const payload = {
+        id: form.id,
+        name: form.name.trim(),
+        slug: form.slug.trim() || slugify(form.name),
+        color: form.color,
+        parentId: form.parentId,
+        sortOrder: Number(form.sortOrder || categories.length + 1),
+        isVisible: form.isVisible,
+      };
+      const response = await adminApi.upsertCategory(payload);
+      upsertCategory(response.item as any);
+      setDialogOpen(false);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to save category");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
-  const handleDelete = (id: string) => { if (!confirm("Delete this category?")) return; deleteCategory(id); };
+  const handleDelete = async (id: string) => {
+    if (!confirm("Delete this category?")) return;
+    try {
+      await adminApi.deleteCategory(id);
+      deleteCategory(id);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to delete category");
+    }
+  };
+
+  const handleToggleVisibility = async (id: string) => {
+    const current = categoryMap[id];
+    if (!current) return;
+    const nextVisible = !current.isVisible;
+    try {
+      await adminApi.toggleCategory(id, nextVisible);
+      toggleCategoryVisibility(id);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to update category visibility");
+    }
+  };
 
   /* Group: roots + their children */
   const rootCategories = useMemo(() => filteredCategories.filter((c) => !c.parentId), [filteredCategories]);
@@ -161,7 +200,7 @@ export default function AdminCategories() {
                     </span>
                     {/* Actions */}
                     <div className="flex items-center gap-1">
-                      <button type="button" onClick={() => toggleCategoryVisibility(cat.id)} title={cat.isVisible ? "Hide" : "Show"}
+                      <button type="button" onClick={() => handleToggleVisibility(cat.id)} title={cat.isVisible ? "Hide" : "Show"}
                         className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${cat.isVisible ? "text-slate-400 hover:bg-amber-50 hover:text-amber-600" : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}`}>
                         {cat.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                       </button>
@@ -197,7 +236,7 @@ export default function AdminCategories() {
                       </span>
                       {/* Actions */}
                       <div className="flex items-center gap-1">
-                        <button type="button" onClick={() => toggleCategoryVisibility(sub.id)} title={sub.isVisible ? "Hide" : "Show"}
+                        <button type="button" onClick={() => handleToggleVisibility(sub.id)} title={sub.isVisible ? "Hide" : "Show"}
                           className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${sub.isVisible ? "text-slate-400 hover:bg-amber-50 hover:text-amber-600" : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}`}>
                           {sub.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                         </button>
@@ -281,7 +320,7 @@ export default function AdminCategories() {
                 {SWATCHES.map((c) => (
                   <button key={c} type="button" onClick={() => sf({ color: c })}
                     className="h-7 w-7 rounded-lg shadow-sm ring-2 transition-all"
-                    style={{ backgroundColor: c, ringColor: form.color === c ? c : "transparent", outline: form.color === c ? `2px solid ${c}` : "2px solid transparent", outlineOffset: "2px" }} />
+                    style={{ backgroundColor: c, outline: form.color === c ? `2px solid ${c}` : "2px solid transparent", outlineOffset: "2px" }} />
                 ))}
                 <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 px-3 py-1 text-[11px] font-semibold text-slate-500 hover:border-primary/40">
                   Custom
@@ -316,8 +355,8 @@ export default function AdminCategories() {
           {/* Footer */}
           <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/60 px-6 py-4">
             <Button variant="outline" size="sm" className="rounded-xl border-slate-200 text-xs" onClick={() => setDialogOpen(false)}>Cancel</Button>
-            <Button size="sm" className="gap-1.5 rounded-xl px-5 text-xs font-semibold" onClick={handleSave}>
-              {editingId ? "Update Category" : "Create Category"}
+            <Button size="sm" className="gap-1.5 rounded-xl px-5 text-xs font-semibold" onClick={() => void handleSave()} disabled={isSaving}>
+              {isSaving ? "Saving..." : editingId ? "Update Category" : "Create Category"}
             </Button>
           </div>
         </DialogContent>

@@ -216,6 +216,18 @@ export interface MarketingCampaignPayload {
   isEnabled: boolean;
 }
 
+export interface AdminCategoryItem {
+  id: string;
+  name: string;
+  slug: string;
+  color: string;
+  isVisible: boolean;
+  parentId: string | null;
+  sortOrder: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface FacultyCourseRef {
   id: string;
   title: string;
@@ -1072,6 +1084,47 @@ export const adminApi = {
 
   async getCourses() {
     return parseResponse<{ courses: unknown[]; curricula: Record<string, unknown[]> }>(await fetch("/api/courses"));
+  },
+
+  async getCategories() {
+    return parseResponse<{ items: AdminCategoryItem[] }>(await fetch("/api/categories"));
+  },
+
+  async getAdminCategories() {
+    return parseResponse<{ items: AdminCategoryItem[] }>(
+      await fetch("/api/admin/categories", {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async upsertCategory(category: AdminCategoryItem) {
+    return parseResponse<{ ok: boolean; item: AdminCategoryItem }>(
+      await fetch("/api/admin/categories/upsert", {
+        method: "POST",
+        headers: withAuthHeaders(),
+        body: JSON.stringify({ category }),
+      }),
+    );
+  },
+
+  async toggleCategory(categoryId: string, isVisible?: boolean) {
+    return parseResponse<{ ok: boolean; item: AdminCategoryItem }>(
+      await fetch(`/api/admin/categories/${encodeURIComponent(categoryId)}/toggle`, {
+        method: "POST",
+        headers: withAuthHeaders(),
+        body: JSON.stringify(typeof isVisible === "boolean" ? { isVisible } : {}),
+      }),
+    );
+  },
+
+  async deleteCategory(categoryId: string) {
+    return parseResponse<{ ok: boolean }>(
+      await fetch(`/api/admin/categories/${encodeURIComponent(categoryId)}`, {
+        method: "DELETE",
+        headers: withAuthHeaders({}),
+      }),
+    );
   },
 
   async listFaculty() {

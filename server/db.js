@@ -69,6 +69,23 @@ export async function ensureSchema() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS course_categories (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      slug TEXT NOT NULL,
+      color TEXT NOT NULL DEFAULT '#475569',
+      is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+      parent_id TEXT REFERENCES course_categories(id) ON DELETE SET NULL,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_course_categories_parent_id ON course_categories(parent_id)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_course_categories_sort_order ON course_categories(sort_order)");
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS course_curricula (
       course_id TEXT PRIMARY KEY,
       chapters JSONB NOT NULL,

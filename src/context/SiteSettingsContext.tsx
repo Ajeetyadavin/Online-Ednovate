@@ -889,16 +889,8 @@ interface SiteSettingsContextType {
 
 const SiteSettingsContext = createContext<SiteSettingsContextType | null>(null);
 
-const STORAGE_KEY = "ednovate_site_settings";
-
 export function SiteSettingsProvider({ children }: { children: ReactNode }) {
-  const [settings, setSettings] = useState<SiteSettings>(() => {
-    try {
-      const stored = localStorage.getItem(STORAGE_KEY);
-      if (stored) return mergeStoredSettings(JSON.parse(stored) as Partial<SiteSettings>);
-    } catch {}
-    return createDefaultSettings();
-  });
+  const [settings, setSettings] = useState<SiteSettings>(() => createDefaultSettings());
 
   useEffect(() => {
     let mounted = true;
@@ -977,8 +969,6 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
     root.style.setProperty("--popover", hexToHSL(colors.card));
     root.style.setProperty("--popover-foreground", hexToHSL(colors.foreground));
 
-    // Persist
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
   }, [settings]);
 
   // Apply fonts
@@ -1087,7 +1077,6 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
 
   const resetSettings = () => {
     setSettings(createDefaultSettings());
-    localStorage.removeItem(STORAGE_KEY);
   };
 
   return (

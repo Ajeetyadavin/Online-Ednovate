@@ -63,9 +63,30 @@ export default function AdminHomepage() {
         setAnnouncements((data.announcements || []) as any);
         const loadedSiteSettings = platform?.settings?.siteSettings as Partial<SiteSettings> | undefined;
         const loadedExplore = platform?.settings?.homepage?.exploreCategoryIds;
+        const safeExplore = Array.isArray(loadedExplore)
+          ? loadedExplore.map((id) => String(id).trim()).filter(Boolean)
+          : Array.isArray(loadedSiteSettings?.exploreCategoryIds)
+            ? loadedSiteSettings.exploreCategoryIds.map((id) => String(id).trim()).filter(Boolean)
+            : settings.exploreCategoryIds || [];
+
         if (loadedSiteSettings) {
-          const merged = { ...settings, ...loadedSiteSettings, exploreCategoryIds: Array.isArray(loadedExplore) ? loadedExplore.map((id) => String(id).trim()).filter(Boolean) : (loadedSiteSettings.exploreCategoryIds || settings.exploreCategoryIds || []) } as SiteSettings;
-          updateSettings(merged); setSiteDraft(merged);
+          const merged = {
+            ...settings,
+            ...loadedSiteSettings,
+            exploreCategoryIds: safeExplore,
+          } as SiteSettings;
+          updateSettings(merged);
+          setSiteDraft(merged);
+          return;
+        }
+
+        if (safeExplore.length > 0) {
+          const merged = {
+            ...settings,
+            exploreCategoryIds: safeExplore,
+          } as SiteSettings;
+          updateSettings(merged);
+          setSiteDraft(merged);
         }
       } catch { /* Keep local fallback */ }
     };
@@ -100,14 +121,18 @@ export default function AdminHomepage() {
   const sortedCategories = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
 
   const handleToggleExploreCategory = (categoryId: string, checked: boolean) => {
-    setSiteDraft((prev) => {
-      const current = prev.exploreCategoryIds || [];
-      const next = checked ? Array.from(new Set([...current, categoryId])) : current.filter((id) => id !== categoryId);
-      const nextDraft = { ...prev, exploreCategoryIds: next };
-      updateSettings(nextDraft);
-      settingsSaveQueueRef.current = settingsSaveQueueRef.current.then(() => persistSiteSettings(nextDraft, false)).catch(() => undefined);
-      return nextDraft;
-    });
+    const current = siteDraft.exploreCategoryIds || [];
+    const next = checked
+      ? Array.from(new Set([...current, categoryId]))
+      : current.filter((id) => id !== categoryId);
+    const nextDraft = { ...siteDraft, exploreCategoryIds: next };
+
+    setSiteDraft(nextDraft);
+    updateSettings(nextDraft);
+
+    settingsSaveQueueRef.current = settingsSaveQueueRef.current
+      .then(() => persistSiteSettings(nextDraft, false))
+      .catch(() => undefined);
   };
 
   const uploadImageFile = async (file: File, folder: string) => {
