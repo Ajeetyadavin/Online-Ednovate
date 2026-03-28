@@ -228,10 +228,98 @@ export interface AdminCategoryItem {
   updatedAt?: string;
 }
 
+export interface CourseMasterViewMode {
+  id: string;
+  name: string;
+  maxViews: number | null;
+  isLifetime: boolean;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface CourseMasterValidityOption {
+  id: string;
+  label: string;
+  days: number | null;
+  isLifetime: boolean;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface CourseMasterDeliveryMode {
+  id: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface CourseMasterLanguage {
+  id: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface CourseMasterAttemptOption {
+  id: string;
+  label: string;
+  endDate: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface CourseMasterSubject {
+  id: string;
+  name: string;
+  courseIds: string[];
+  levelIds: string[];
+  isActive: boolean;
+  sortOrder: number;
+  chapters?: CourseMasterSubjectChapter[];
+}
+
+export interface CourseMasterSubjectChapter {
+  id: string;
+  name: string;
+  isActive: boolean;
+  sortOrder: number;
+}
+
+export interface CourseMasterPricingCombination {
+  id: string;
+  label: string;
+  viewModeId?: string | null;
+  validityOptionId?: string | null;
+  attemptOptionId?: string | null;
+  deliveryModeId?: string | null;
+  languageId?: string | null;
+  price: number;
+  originalPrice: number | null;
+  isActive: boolean;
+  sortOrder: number;
+}
+
 export interface FacultyCourseRef {
   id: string;
   title: string;
   thumbnail?: string;
+}
+
+export interface BunnyLibraryCollection {
+  id: string;
+  name: string;
+  videoCount: number;
+  previewVideoIds: string[];
+}
+
+export interface BunnyLibraryVideo {
+  id: string;
+  title: string;
+  collectionId: string | null;
+  collectionName: string;
+  lengthSeconds: number;
+  status: string;
+  dateCreated: string;
 }
 
 export interface FacultyProfile {
@@ -430,6 +518,7 @@ type BunnyVideoUploadOptions = {
   onProgress?: (percent: number, loaded: number, total: number) => void;
   signal?: AbortSignal;
   forceStorage?: boolean;
+  collectionId?: string;
 };
 
 const uploadVideoViaXhr = (
@@ -1129,6 +1218,125 @@ export const adminApi = {
     );
   },
 
+  async getCourseMasters() {
+    try {
+      return await parseResponse<{
+        categories: AdminCategoryItem[];
+        viewModes: CourseMasterViewMode[];
+        validityOptions: CourseMasterValidityOption[];
+        attemptOptions: CourseMasterAttemptOption[];
+        deliveryModes: CourseMasterDeliveryMode[];
+        languages: CourseMasterLanguage[];
+        subjects: CourseMasterSubject[];
+        pricingCombinations: CourseMasterPricingCombination[];
+      }>(
+        await fetch("/api/admin/course-masters", {
+          headers: withAuthHeaders({}),
+        }),
+      );
+    } catch (error) {
+      if (!is404Error(error)) throw error;
+
+      const [categoryResult, settingsResult] = await Promise.all([
+        this.getAdminCategories(),
+        this.getPlatformSettings(),
+      ]);
+
+      const courseMasters = (settingsResult.settings?.siteSettings as { courseMasters?: unknown } | undefined)?.courseMasters;
+      const masters = courseMasters && typeof courseMasters === "object"
+        ? (courseMasters as {
+            viewModes?: CourseMasterViewMode[];
+            validityOptions?: CourseMasterValidityOption[];
+            attemptOptions?: CourseMasterAttemptOption[];
+            deliveryModes?: CourseMasterDeliveryMode[];
+            languages?: CourseMasterLanguage[];
+            subjects?: CourseMasterSubject[];
+            pricingCombinations?: CourseMasterPricingCombination[];
+          })
+        : {};
+
+      return {
+        categories: Array.isArray(categoryResult.items) ? categoryResult.items : [],
+        viewModes: Array.isArray(masters.viewModes) ? masters.viewModes : [],
+        validityOptions: Array.isArray(masters.validityOptions) ? masters.validityOptions : [],
+        attemptOptions: Array.isArray(masters.attemptOptions) ? masters.attemptOptions : [],
+        deliveryModes: Array.isArray(masters.deliveryModes) ? masters.deliveryModes : [],
+        languages: Array.isArray(masters.languages) ? masters.languages : [],
+        subjects: Array.isArray(masters.subjects) ? masters.subjects : [],
+        pricingCombinations: Array.isArray(masters.pricingCombinations) ? masters.pricingCombinations : [],
+      };
+    }
+  },
+
+  async saveCourseMasters(payload: {
+    viewModes: CourseMasterViewMode[];
+    validityOptions: CourseMasterValidityOption[];
+    attemptOptions: CourseMasterAttemptOption[];
+    deliveryModes: CourseMasterDeliveryMode[];
+    languages: CourseMasterLanguage[];
+    subjects: CourseMasterSubject[];
+    pricingCombinations: CourseMasterPricingCombination[];
+  }) {
+    try {
+      return await parseResponse<{
+        ok: boolean;
+        masters: {
+          viewModes: CourseMasterViewMode[];
+          validityOptions: CourseMasterValidityOption[];
+          attemptOptions: CourseMasterAttemptOption[];
+          deliveryModes: CourseMasterDeliveryMode[];
+          languages: CourseMasterLanguage[];
+          subjects: CourseMasterSubject[];
+          pricingCombinations: CourseMasterPricingCombination[];
+        };
+      }>(
+        await fetch("/api/admin/course-masters", {
+          method: "PUT",
+          headers: withAuthHeaders(),
+          body: JSON.stringify({ masters: payload }),
+        }),
+      );
+    } catch (error) {
+      if (!is404Error(error)) throw error;
+
+      const current = await this.getPlatformSettings();
+      const existingSiteSettings =
+        current.settings?.siteSettings && typeof current.settings.siteSettings === "object"
+          ? current.settings.siteSettings
+          : {};
+
+      const nextSettings: PlatformSettingsPayload = {
+        ...current.settings,
+        siteSettings: {
+          ...existingSiteSettings,
+          courseMasters: {
+            viewModes: payload.viewModes,
+            validityOptions: payload.validityOptions,
+            attemptOptions: payload.attemptOptions,
+            deliveryModes: payload.deliveryModes,
+            languages: payload.languages,
+            subjects: payload.subjects,
+            pricingCombinations: payload.pricingCombinations,
+          },
+        },
+      };
+
+      await this.savePlatformSettings(nextSettings);
+      return {
+        ok: true,
+        masters: {
+          viewModes: payload.viewModes,
+          validityOptions: payload.validityOptions,
+          attemptOptions: payload.attemptOptions,
+          deliveryModes: payload.deliveryModes,
+          languages: payload.languages,
+          subjects: payload.subjects,
+          pricingCombinations: payload.pricingCombinations,
+        },
+      };
+    }
+  },
+
   async listFaculty() {
     return parseResponse<{ items: FacultyProfile[] }>(
       await fetch("/api/admin/faculty", {
@@ -1201,6 +1409,30 @@ export const adminApi = {
     );
   },
 
+  async getBunnyLibrary(options?: { limit?: number; offset?: number; search?: string; collectionId?: string }) {
+    const query = new URLSearchParams();
+    if (options?.limit && options.limit > 0) query.set("limit", String(options.limit));
+    if (options?.offset && options.offset >= 0) query.set("offset", String(options.offset));
+    if (options?.search) query.set("search", options.search);
+    if (options?.collectionId) query.set("collectionId", options.collectionId);
+    const suffix = query.toString() ? `?${query.toString()}` : "";
+
+    return parseResponse<{
+      libraryId: string;
+      collections: BunnyLibraryCollection[];
+      videos: BunnyLibraryVideo[];
+      stats: {
+        collectionCount: number;
+        videoCount: number;
+        totalVideoCount: number;
+      };
+    }>(
+      await fetch(`/api/admin/bunny/library${suffix}`, {
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
   async uploadImage(fileName: string, mimeType: string, base64Data: string, folder = "images") {
     return parseResponse<{ url: string }>(
       await fetch("/api/uploads/image", {
@@ -1221,6 +1453,53 @@ export const adminApi = {
     );
   },
 
+  async createBunnyCollection(name: string) {
+    return parseResponse<{ ok: boolean; collection: { id: string; name: string } }>(
+      await fetch("/api/admin/bunny/collections", {
+        method: "POST",
+        headers: withAuthHeaders(),
+        body: JSON.stringify({ name }),
+      }),
+    );
+  },
+
+  async renameBunnyCollection(collectionId: string, name: string) {
+    return parseResponse<{ ok: boolean; collectionId: string; name: string }>(
+      await fetch(`/api/admin/bunny/collections/${encodeURIComponent(collectionId)}`, {
+        method: "PATCH",
+        headers: withAuthHeaders(),
+        body: JSON.stringify({ name }),
+      }),
+    );
+  },
+
+  async deleteBunnyVideo(videoId: string) {
+    return parseResponse<{ ok: boolean; videoId: string }>(
+      await fetch(`/api/admin/bunny/videos/${encodeURIComponent(videoId)}`, {
+        method: "DELETE",
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
+  async updateBunnyVideo(videoId: string, updates: { collectionId?: string; title?: string }) {
+    return parseResponse<{ ok: boolean; videoId: string; collectionId: string | null; title: string | null }>(
+      await fetch(`/api/admin/bunny/videos/${encodeURIComponent(videoId)}`, {
+        method: "PATCH",
+        headers: withAuthHeaders(),
+        body: JSON.stringify(updates),
+      }),
+    );
+  },
+
+  async moveBunnyVideoToCollection(videoId: string, collectionId: string) {
+    return this.updateBunnyVideo(videoId, { collectionId });
+  },
+
+  async renameBunnyVideo(videoId: string, title: string) {
+    return this.updateBunnyVideo(videoId, { title });
+  },
+
   async uploadVideoFileToBunny(file: File, folder = "videos") {
     return this.uploadVideoFileToBunnyWithProgress(file, folder);
   },
@@ -1230,6 +1509,7 @@ export const adminApi = {
       "Content-Type": file.type || "application/octet-stream",
       "X-File-Name": encodeURIComponent(file.name || `video-${Date.now()}.mp4`),
       "X-Upload-Folder": folder,
+      ...(options?.collectionId ? { "X-Collection-Id": options.collectionId } : {}),
       ...(options?.forceStorage ? { "X-Force-Storage": "1" } : {}),
     });
 

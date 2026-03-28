@@ -6,7 +6,6 @@ import {
   Users,
   ShoppingCart,
   Tags,
-  FolderTree,
   LogOut,
   Menu,
   X,
@@ -15,12 +14,15 @@ import {
   Megaphone,
   Settings,
   AppWindow,
+  Video,
   User,
   Shield,
   Gauge,
   GraduationCap,
   ScrollText,
   UserCheck,
+  SlidersHorizontal,
+  Braces,
 } from "lucide-react";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
@@ -36,7 +38,8 @@ const navItems = [
   { to: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard", moduleKey: "dashboard" as const },
   { to: "/admin/courses", icon: BookOpen, label: "Courses", moduleKey: "courses" as const },
   { to: "/admin/course-content", icon: BookOpen, label: "Course Content", moduleKey: "course-content" as const },
-  { to: "/admin/categories", icon: FolderTree, label: "Categories", moduleKey: "categories" as const },
+  { to: "/admin/bunny-video", icon: Video, label: "Bunny Video", moduleKey: "settings" as const },
+  { to: "/admin/masters", icon: SlidersHorizontal, label: "Master Module", moduleKey: "masters" as const },
   { to: "/admin/coupons", icon: Tags, label: "Coupons", moduleKey: "coupons" as const },
   { to: "/admin/faculty", icon: GraduationCap, label: "Faculty", moduleKey: "faculty" as const },
   { to: "/admin/homepage", icon: Settings, label: "Homepage Content", moduleKey: "homepage" as const },
@@ -51,6 +54,7 @@ const navItems = [
   { to: "/admin/settings", icon: Settings, label: "Settings", moduleKey: "settings" as const },
   { to: "/admin/subadmins", icon: Shield, label: "Sub Admins", moduleKey: "subadmins" as const },
   { to: "/admin/logs", icon: ScrollText, label: "Activity Logs", moduleKey: "logs" as const },
+  { to: "/admin/apis", icon: Braces, label: "API Module", moduleKey: "settings" as const },
 ];
 
 const getModuleForPath = (pathname: string) => {

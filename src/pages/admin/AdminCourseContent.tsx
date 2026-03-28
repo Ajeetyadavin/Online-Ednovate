@@ -9,10 +9,11 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn } from "@/lib/utils";
 import {
   Plus, Trash2, Edit2, Save, Video, FileText, CheckCircle2, Lock, Upload, Loader2,
-  Check, ChevronsUpDown, BookOpen, ChevronRight, AlertCircle, X, Eye, GripVertical,
+  Check, ChevronsUpDown, BookOpen, ChevronRight, AlertCircle, X, Eye, GripVertical, FolderPlus, RefreshCw,
 } from "lucide-react";
 import { decodeVideoUrl, encodeVideoUrl, extractYouTubeVideoId, type LessonVideoSource } from "@/lib/video-utils";
-import { adminApi } from "@/services/adminApi";
+import { adminApi, type BunnyLibraryVideo } from "@/services/adminApi";
+import { toast } from "sonner";
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface NewLesson {
@@ -27,6 +28,7 @@ type LessonUploadState = {
   status: "uploading" | "success" | "error" | "cancelled";
   message?: string;
 };
+type ChapterCollectionVideoDrafts = Record<string, string>;
 
 const INITIAL_LESSON: NewLesson = { title: "", description: "", duration: "", type: "video", videoSource: "direct", videoUrl: "", resourceUrl: "", isPreview: false };
 const INITIAL_CHAPTER = { title: "", description: "" };
@@ -140,6 +142,22 @@ export default function AdminCourseContent() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const [collectionDialogOpen, setCollectionDialogOpen] = useState(false);
+  const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [collectionNameDraft, setCollectionNameDraft] = useState("");
+  const [collectionVideos, setCollectionVideos] = useState<BunnyLibraryVideo[]>([]);
+  const [collectionVideoDrafts, setCollectionVideoDrafts] = useState<ChapterCollectionVideoDrafts>({});
+  const [selectedCollectionVideoIds, setSelectedCollectionVideoIds] = useState<Set<string>>(new Set());
+  const [isLoadingCollectionVideos, setIsLoadingCollectionVideos] = useState(false);
+  const [isRefreshingCollection, setIsRefreshingCollection] = useState(false);
+  const [isSavingCollectionName, setIsSavingCollectionName] = useState(false);
+  const [uploadingCollectionVideo, setUploadingCollectionVideo] = useState(false);
+  const [collectionUploadProgress, setCollectionUploadProgress] = useState(0);
+  const [renamingVideoId, setRenamingVideoId] = useState("");
+  const [deletingCollectionVideoId, setDeletingCollectionVideoId] = useState("");
+  const [importingCollectionVideos, setImportingCollectionVideos] = useState(false);
+  const collectionUploadInputRef = useRef<HTMLInputElement | null>(null);
+
   // Drag-and-drop state
   const dragChapterIdx = useRef<number | null>(null);
   const dragOverChapterIdx = useRef<number | null>(null);
@@ -183,6 +201,14 @@ export default function AdminCourseContent() {
   const selectedCourse = useMemo(() => nonPackageCourses.find((c) => c.id === selectedCourseId), [selectedCourseId, nonPackageCourses]);
   const curriculum = useMemo(() => selectedCourse ? getCurriculumForCourse(selectedCourse.id, selectedCourse.title) : [], [selectedCourseId, selectedCourse, getCurriculumForCourse]);
   const selectedChapter = useMemo(() => curriculum.find((ch) => ch.id === selectedChapterId) || curriculum[0] || null, [selectedChapterId, curriculum]);
+  const sharedCourseCollection = useMemo(() => {
+    const sourceChapter = curriculum.find((chapter) => String(chapter.bunnyCollectionId || "").trim());
+    if (!sourceChapter) return { id: "", name: "" };
+    return {
+      id: String(sourceChapter.bunnyCollectionId || "").trim(),
+      name: String(sourceChapter.bunnyCollectionName || "").trim(),
+    };
+  }, [curriculum]);
 
   useEffect(() => {
     if (!selectedCourseId) return;
@@ -199,6 +225,279 @@ export default function AdminCourseContent() {
 
   useEffect(() => { if (!chapterDialogOpen) { setEditingChapter(null); setNewChapter(INITIAL_CHAPTER); } }, [chapterDialogOpen]);
   useEffect(() => { if (!lessonDialogOpen) { setEditingLessonId(null); setNewLesson(INITIAL_LESSON); } }, [lessonDialogOpen]);
+  useEffect(() => {
+    if (!collectionDialogOpen) {
+      setCollectionVideos([]);
+      setCollectionVideoDrafts({});
+      setCollectionUploadProgress(0);
+    }
+  }, [collectionDialogOpen]);
+  useEffect(() => {
+    if (!importDialogOpen) {
+      setSelectedCollectionVideoIds(new Set());
+    }
+  }, [importDialogOpen]);
+  useEffect(() => {
+    setCollectionNameDraft(String(sharedCourseCollection.name || selectedCourse?.title || selectedChapter?.title || "").trim());
+  }, [sharedCourseCollection.name, selectedCourse?.title, selectedChapter?.title]);
+  useEffect(() => {
+    setCollectionDialogOpen(false);
+    setImportDialogOpen(false);
+  }, [selectedChapterId]);
+
+  const updateCourseCollectionMeta = async (updates: { bunnyCollectionId?: string; bunnyCollectionName?: string }) => {
+    if (!selectedCourse) throw new Error("Select a course first");
+    const updated = curriculum.map((chapter) => ({
+      ...chapter,
+      ...(Object.prototype.hasOwnProperty.call(updates, "bunnyCollectionId") ? { bunnyCollectionId: String(updates.bunnyCollectionId || "").trim() } : {}),
+      ...(Object.prototype.hasOwnProperty.call(updates, "bunnyCollectionName") ? { bunnyCollectionName: String(updates.bunnyCollectionName || "").trim() } : {}),
+    }));
+    setCurriculumForCourse(selectedCourse.id, updated);
+    const result = await adminApi.saveCurriculum(selectedCourse.id, updated);
+    if (!result.ok) throw new Error("Failed to save chapter collection details");
+    emitCurriculumUpdated(selectedCourse.id);
+  };
+
+  const hydrateCollectionVideoDrafts = (videos: BunnyLibraryVideo[]) => {
+    setCollectionVideoDrafts(Object.fromEntries(videos.map((video) => [video.id, video.title])));
+  };
+
+  const loadSelectedChapterCollectionVideos = async (options?: { silent?: boolean; nextCollectionName?: string; collectionId?: string }) => {
+    const collectionId = String(options?.collectionId || sharedCourseCollection.id || selectedChapter?.bunnyCollectionId || "").trim();
+    if (!collectionId) return;
+    const silent = options?.silent === true;
+    if (silent) setIsRefreshingCollection(true);
+    else setIsLoadingCollectionVideos(true);
+
+    try {
+      const result = await adminApi.getBunnyLibrary({ collectionId, limit: 250 });
+      const videos = Array.isArray(result.videos) ? result.videos : [];
+      setCollectionVideos(videos);
+      hydrateCollectionVideoDrafts(videos);
+      const resolvedCollectionName = options?.nextCollectionName
+        || result.collections.find((item) => item.id === collectionId)?.name
+        || String(sharedCourseCollection.name || selectedCourse?.title || "").trim();
+      setCollectionNameDraft(resolvedCollectionName);
+      return { videos, collectionName: resolvedCollectionName };
+    } finally {
+      setIsLoadingCollectionVideos(false);
+      setIsRefreshingCollection(false);
+    }
+  };
+
+  const openCollectionManager = async () => {
+    if (!sharedCourseCollection.id) return;
+    setCollectionDialogOpen(true);
+    setCollectionNameDraft(String(sharedCourseCollection.name || selectedCourse?.title || "").trim());
+    try {
+      await loadSelectedChapterCollectionVideos();
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to load collection videos");
+    }
+  };
+
+  const handleCreateCollectionForChapter = async () => {
+    if (!selectedChapter) {
+      setSaveError("Select a chapter first");
+      return;
+    }
+
+    if (sharedCourseCollection.id) {
+      try {
+        await updateCourseCollectionMeta({
+          bunnyCollectionId: sharedCourseCollection.id,
+          bunnyCollectionName: sharedCourseCollection.name || selectedCourse?.title || "",
+        });
+        toast.success("Shared course collection linked to all chapters");
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : "Failed to link shared course collection");
+      }
+      return;
+    }
+
+    try {
+      setIsSavingCollectionName(true);
+      const defaultName = String(selectedCourse?.title || "Course").trim();
+      const result = await adminApi.createBunnyCollection(defaultName);
+      await updateCourseCollectionMeta({
+        bunnyCollectionId: result.collection.id,
+        bunnyCollectionName: result.collection.name,
+      });
+      setCollectionNameDraft(result.collection.name);
+      setCollectionDialogOpen(true);
+      await loadSelectedChapterCollectionVideos({ collectionId: result.collection.id, nextCollectionName: result.collection.name });
+      toast.success("Chapter collection created in Bunny");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to create Bunny collection");
+    } finally {
+      setIsSavingCollectionName(false);
+    }
+  };
+
+  const handleRenameCollection = async () => {
+    const collectionId = String(sharedCourseCollection.id || selectedChapter?.bunnyCollectionId || "").trim();
+    const nextName = collectionNameDraft.trim();
+    if (!collectionId || !selectedCourse) return;
+    if (!nextName) {
+      setSaveError("Collection name is required");
+      return;
+    }
+
+    try {
+      setIsSavingCollectionName(true);
+      await adminApi.renameBunnyCollection(collectionId, nextName);
+      await updateCourseCollectionMeta({ bunnyCollectionName: nextName });
+      toast.success("Collection renamed");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to rename collection");
+    } finally {
+      setIsSavingCollectionName(false);
+    }
+  };
+
+  const handleCollectionVideoUpload = async (file?: File | null) => {
+    const collectionId = String(sharedCourseCollection.id || selectedChapter?.bunnyCollectionId || "").trim();
+    if (!file || !collectionId) return;
+
+    try {
+      setUploadingCollectionVideo(true);
+      setCollectionUploadProgress(0);
+      await adminApi.uploadVideoFileToBunnyWithProgress(file, "course-collections", {
+        collectionId,
+        onProgress: (progress) => setCollectionUploadProgress(progress),
+      });
+      toast.success("Video uploaded to collection");
+      await loadSelectedChapterCollectionVideos({ silent: true });
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to upload collection video");
+    } finally {
+      setUploadingCollectionVideo(false);
+      setCollectionUploadProgress(0);
+      if (collectionUploadInputRef.current) collectionUploadInputRef.current.value = "";
+    }
+  };
+
+  const handleRenameCollectionVideo = async (videoId: string) => {
+    const nextTitle = String(collectionVideoDrafts[videoId] || "").trim();
+    if (!nextTitle) {
+      setSaveError("Video title is required");
+      return;
+    }
+
+    try {
+      setRenamingVideoId(videoId);
+      await adminApi.renameBunnyVideo(videoId, nextTitle);
+      setCollectionVideos((prev) => prev.map((video) => video.id === videoId ? { ...video, title: nextTitle } : video));
+      toast.success("Video renamed");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to rename video");
+    } finally {
+      setRenamingVideoId("");
+    }
+  };
+
+  const handleDeleteCollectionVideo = async (videoId: string, title: string) => {
+    if (!window.confirm(`Delete video "${title}" from this Bunny collection?`)) return;
+    try {
+      setDeletingCollectionVideoId(videoId);
+      await adminApi.deleteBunnyVideo(videoId);
+      setCollectionVideos((prev) => prev.filter((video) => video.id !== videoId));
+      setSelectedCollectionVideoIds((prev) => {
+        const next = new Set(prev);
+        next.delete(videoId);
+        return next;
+      });
+      toast.success("Video deleted");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to delete video");
+    } finally {
+      setDeletingCollectionVideoId("");
+    }
+  };
+
+  const openImportDialog = async () => {
+    if (!sharedCourseCollection.id) return;
+    setImportDialogOpen(true);
+    setSelectedCollectionVideoIds(new Set());
+    if (!collectionVideos.length) {
+      try {
+        await loadSelectedChapterCollectionVideos();
+      } catch (error) {
+        setSaveError(error instanceof Error ? error.message : "Failed to load collection videos");
+      }
+    }
+  };
+
+  const toggleCollectionVideoSelection = (videoId: string, checked: boolean) => {
+    setSelectedCollectionVideoIds((prev) => {
+      const next = new Set(prev);
+      if (checked) next.add(videoId);
+      else next.delete(videoId);
+      return next;
+    });
+  };
+
+  const handleImportVideosAsLessons = async () => {
+    if (!selectedCourse || !selectedChapter) return;
+    const selectedVideos = collectionVideos.filter((video) => selectedCollectionVideoIds.has(video.id));
+    if (!selectedVideos.length) {
+      setSaveError("Select at least one video to create lessons");
+      return;
+    }
+
+    const existingVideoIds = new Set(
+      selectedChapter.lessons
+        .filter((lesson) => lesson.type === "video")
+        .map((lesson) => decodeVideoUrl(String(lesson.videoUrl || "")).trim())
+        .filter(Boolean),
+    );
+
+    const freshVideos = selectedVideos.filter((video) => !existingVideoIds.has(video.id));
+    if (!freshVideos.length) {
+      setSaveError("Selected videos are already added as lessons in this chapter");
+      return;
+    }
+
+    const importedLessons = freshVideos.map((video, index) => ({
+      id: `l_${Date.now()}_${index + 1}`,
+      title: String(video.title || `Video ${index + 1}`).trim(),
+      description: `Imported from Bunny collection ${String(sharedCourseCollection.name || selectedCourse?.title || "").trim()}`.trim(),
+      duration: formatSecondsToHms(Number(video.lengthSeconds || 0)),
+      type: "video" as const,
+      completed: false,
+      locked: false,
+      isPreview: false,
+      isHomepageDemo: false,
+      videoSource: "upload" as const,
+      videoUrl: encodeVideoUrl(video.id),
+      resourceUrl: "",
+      thumbnailUrl: "",
+    }));
+
+    const updated = curriculum.map((chapter) => (
+      chapter.id === selectedChapter.id
+        ? { ...chapter, lessons: [...chapter.lessons, ...importedLessons] }
+        : chapter
+    ));
+
+    try {
+      setImportingCollectionVideos(true);
+      setCurriculumForCourse(selectedCourse.id, updated);
+      const result = await adminApi.saveCurriculum(selectedCourse.id, updated);
+      if (!result.ok) throw new Error("Failed to add imported videos as lessons");
+      emitCurriculumUpdated(selectedCourse.id);
+      setImportDialogOpen(false);
+      setSelectedCollectionVideoIds(new Set());
+      const skippedCount = selectedVideos.length - freshVideos.length;
+      toast.success(skippedCount > 0
+        ? `${freshVideos.length} lesson(s) created, ${skippedCount} duplicate skipped`
+        : `${freshVideos.length} lesson(s) created from collection`);
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to import videos as lessons");
+    } finally {
+      setImportingCollectionVideos(false);
+    }
+  };
 
   /* chapter handlers */
   const handleOpenAddChapter = () => { setEditingChapter(null); setNewChapter(INITIAL_CHAPTER); setSaveError(null); setChapterDialogOpen(true); };
@@ -459,8 +758,27 @@ export default function AdminCourseContent() {
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-slate-800">{selectedChapter.title}</p>
                       {selectedChapter.description && <p className="truncate text-xs text-slate-400">{selectedChapter.description}</p>}
+                      {sharedCourseCollection.id ? (
+                        <p className="mt-1 truncate text-[11px] font-semibold text-emerald-600">
+                          Collection: {sharedCourseCollection.name || selectedCourse?.title || "Course Collection"}
+                        </p>
+                      ) : null}
                     </div>
                     <div className="ml-auto flex items-center gap-2 shrink-0">
+                      {sharedCourseCollection.id ? (
+                        <>
+                          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 rounded-xl border-emerald-200 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-50" onClick={() => void openCollectionManager()} disabled={isSaving || isLoadingCollectionVideos || isSavingCollectionName}>
+                            <Edit2 className="h-3.5 w-3.5" />Edit Collection
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 rounded-xl border-blue-200 px-3 text-xs font-semibold text-blue-700 hover:bg-blue-50" onClick={() => void openImportDialog()} disabled={isSaving || importDialogOpen || importingCollectionVideos}>
+                            <Video className="h-3.5 w-3.5" />Add Video From Collection
+                          </Button>
+                        </>
+                      ) : (
+                        <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 rounded-xl border-emerald-200 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-50" onClick={() => void handleCreateCollectionForChapter()} disabled={isSaving || isSavingCollectionName}>
+                          {isSavingCollectionName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FolderPlus className="h-3.5 w-3.5" />}Make Collection
+                        </Button>
+                      )}
                       <button type="button" onClick={() => handleOpenEditChapter(selectedChapter)} disabled={isSaving}
                         className="flex h-7 w-7 items-center justify-center rounded-lg border border-slate-200 text-slate-500 transition-colors hover:bg-primary/10 hover:text-primary disabled:opacity-40">
                         <Edit2 className="h-3.5 w-3.5" />
@@ -581,6 +899,163 @@ export default function AdminCourseContent() {
               onUploadVideo={handleVideoFileUpload} isUploadingVideo={isUploadingVideo} isSaving={isSaving}
               uploadProgress={lessonUploadState?.status === "uploading" ? lessonUploadState.progress : 0}
               onCancelUpload={handleCancelLessonUpload} />
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={collectionDialogOpen} onOpenChange={setCollectionDialogOpen}>
+        <DialogContent className="flex max-h-[88vh] max-w-4xl flex-col overflow-hidden rounded-2xl border-slate-100 p-0 shadow-2xl">
+          <DialogHeader className="border-b border-slate-100 px-6 py-4">
+            <DialogTitle className="text-base font-bold text-slate-900">Edit Bunny Collection</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="border-b border-slate-100 bg-slate-50/70 px-6 py-4">
+              <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
+                <div className="flex-1 space-y-1.5">
+                  <FL>Collection Name</FL>
+                  <Input className={fCls} value={collectionNameDraft} onChange={(event) => setCollectionNameDraft(event.target.value)} placeholder="Collection name" />
+                </div>
+                <div className="flex flex-wrap items-center gap-2">
+                  <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl border-slate-200 px-3 text-xs" onClick={() => void loadSelectedChapterCollectionVideos({ silent: true })} disabled={isRefreshingCollection || isLoadingCollectionVideos}>
+                    <RefreshCw className={`h-3.5 w-3.5 ${(isRefreshingCollection || isLoadingCollectionVideos) ? "animate-spin" : ""}`} />Refresh
+                  </Button>
+                  <Button type="button" size="sm" className="h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold" onClick={() => void handleRenameCollection()} disabled={isSavingCollectionName}>
+                    {isSavingCollectionName ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Save Collection
+                  </Button>
+                </div>
+              </div>
+              <div className="mt-3 flex flex-wrap items-center gap-3">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-emerald-200 bg-white px-4 py-2 text-xs font-semibold text-emerald-700 hover:bg-emerald-50">
+                  <Upload className="h-3.5 w-3.5" />
+                  {uploadingCollectionVideo ? `Uploading ${collectionUploadProgress}%...` : "Upload Video To Collection"}
+                  <input
+                    ref={collectionUploadInputRef}
+                    type="file"
+                    accept="video/*"
+                    className="hidden"
+                    onChange={(event) => void handleCollectionVideoUpload(event.target.files?.[0] || null)}
+                    disabled={uploadingCollectionVideo}
+                  />
+                </label>
+                {uploadingCollectionVideo ? (
+                  <div className="h-2 w-48 overflow-hidden rounded-full bg-slate-200">
+                    <div className="h-full rounded-full bg-emerald-500 transition-all" style={{ width: `${Math.min(100, Math.max(0, collectionUploadProgress))}%` }} />
+                  </div>
+                ) : null}
+                <p className="text-[11px] text-slate-500">Uploaded videos are added to this collection and will appear in the chapter import dialog.</p>
+              </div>
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {isLoadingCollectionVideos ? (
+                <div className="flex items-center justify-center py-16 text-sm text-slate-500">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading collection videos...
+                </div>
+              ) : collectionVideos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <Video className="mb-3 h-10 w-10 text-slate-200" />
+                  <p className="text-sm font-semibold text-slate-500">No videos in this collection</p>
+                  <p className="mt-1 text-xs text-slate-400">Upload videos here, then import them as lessons in the chapter.</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {collectionVideos.map((video) => (
+                    <div key={video.id} className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex flex-col gap-3 lg:flex-row lg:items-center">
+                        <div className="flex-1 space-y-1.5">
+                          <FL>Video Title</FL>
+                          <Input
+                            className={fCls}
+                            value={collectionVideoDrafts[video.id] || ""}
+                            onChange={(event) => setCollectionVideoDrafts((prev) => ({ ...prev, [video.id]: event.target.value }))}
+                            placeholder="Video title"
+                          />
+                        </div>
+                        <div className="grid min-w-[220px] grid-cols-2 gap-3 text-[11px] text-slate-500">
+                          <div>
+                            <p className="font-bold uppercase tracking-wide text-slate-400">Duration</p>
+                            <p className="mt-1 font-semibold text-slate-700">{formatSecondsToHms(Number(video.lengthSeconds || 0))}</p>
+                          </div>
+                          <div>
+                            <p className="font-bold uppercase tracking-wide text-slate-400">Status</p>
+                            <p className="mt-1 font-semibold text-slate-700">{video.status || "unknown"}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+                          <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl border-slate-200 px-3 text-xs" onClick={() => void handleRenameCollectionVideo(video.id)} disabled={renamingVideoId === video.id || deletingCollectionVideoId === video.id}>
+                            {renamingVideoId === video.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}Rename
+                          </Button>
+                          <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl border-rose-200 px-3 text-xs text-rose-600 hover:bg-rose-50" onClick={() => void handleDeleteCollectionVideo(video.id, video.title)} disabled={deletingCollectionVideoId === video.id || renamingVideoId === video.id}>
+                            {deletingCollectionVideoId === video.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}Delete
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="mt-2 flex flex-wrap items-center gap-3 text-[11px] text-slate-400">
+                        <span>ID: {video.id}</span>
+                        <span>Created: {video.dateCreated ? new Date(video.dateCreated).toLocaleString() : "-"}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={importDialogOpen} onOpenChange={setImportDialogOpen}>
+        <DialogContent className="flex max-h-[88vh] max-w-3xl flex-col overflow-hidden rounded-2xl border-slate-100 p-0 shadow-2xl">
+          <DialogHeader className="border-b border-slate-100 px-6 py-4">
+            <DialogTitle className="text-base font-bold text-slate-900">Add Videos From Collection</DialogTitle>
+          </DialogHeader>
+          <div className="flex flex-1 flex-col overflow-hidden">
+            <div className="border-b border-slate-100 bg-slate-50/70 px-6 py-3 text-xs text-slate-500">
+              Chapter: <span className="font-semibold text-slate-700">{selectedChapter?.title || "-"}</span>
+              {sharedCourseCollection.name ? (
+                <span className="ml-3">Collection: <span className="font-semibold text-emerald-700">{sharedCourseCollection.name}</span></span>
+              ) : null}
+            </div>
+            <div className="flex-1 overflow-y-auto px-6 py-4">
+              {isLoadingCollectionVideos ? (
+                <div className="flex items-center justify-center py-16 text-sm text-slate-500">
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />Loading collection videos...
+                </div>
+              ) : collectionVideos.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-16 text-center">
+                  <Video className="mb-3 h-10 w-10 text-slate-200" />
+                  <p className="text-sm font-semibold text-slate-500">No videos available to import</p>
+                  <p className="mt-1 text-xs text-slate-400">Upload videos in Edit Collection first.</p>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {collectionVideos.map((video) => {
+                    const checked = selectedCollectionVideoIds.has(video.id);
+                    return (
+                      <label key={video.id} className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition ${checked ? "border-primary bg-primary/5" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+                        <input type="checkbox" className="mt-1 h-4 w-4 accent-primary" checked={checked} onChange={(event) => toggleCollectionVideoSelection(video.id, event.target.checked)} />
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold text-slate-900">{video.title}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
+                            <span>{formatSecondsToHms(Number(video.lengthSeconds || 0))}</span>
+                            <span>{video.status || "unknown"}</span>
+                            <span className="truncate">ID: {video.id}</span>
+                          </div>
+                        </div>
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-between gap-3 border-t border-slate-100 bg-slate-50/70 px-6 py-4">
+              <p className="text-xs text-slate-500">Selected videos will be added as video lessons in this chapter using their current titles.</p>
+              <div className="flex items-center gap-2">
+                <Button type="button" variant="outline" size="sm" className="rounded-xl border-slate-200 text-xs" onClick={() => setImportDialogOpen(false)} disabled={importingCollectionVideos}>Cancel</Button>
+                <Button type="button" size="sm" className="rounded-xl px-4 text-xs font-semibold" onClick={() => void handleImportVideosAsLessons()} disabled={importingCollectionVideos || selectedCollectionVideoIds.size === 0}>
+                  {importingCollectionVideos ? <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Adding...</> : `Create ${selectedCollectionVideoIds.size} Lesson${selectedCollectionVideoIds.size === 1 ? "" : "s"}`}
+                </Button>
+              </div>
+            </div>
           </div>
         </DialogContent>
       </Dialog>

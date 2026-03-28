@@ -590,6 +590,7 @@ export const createStudentPurchaseApi = async (payload: {
     parentPackageTitle?: string;
     packageCourseIds?: string[];
     durationDays?: number;
+    expiresAt?: string;
     totalViews?: number;
     isUnlimitedViews?: boolean;
     usedViews?: number;

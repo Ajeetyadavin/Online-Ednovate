@@ -167,7 +167,6 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
         const nextPurchased: PurchasedCourse[] = accessItems
           .filter((item) => item?.courseId)
-          .filter((item) => isCourseAccessActive(item))
           .map((item) => {
             const base = courses.find((course) => course.id === item.courseId);
             if (!base) {
@@ -329,10 +328,14 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         taxAmount: 0,
         amount: Math.max(0, Number(item.price || 0)),
       };
+      const rawAttemptEndDate = String(item.selectedAttemptEndDate || "").trim();
+      const parsedAttemptEndDate = rawAttemptEndDate ? new Date(rawAttemptEndDate) : null;
+      const hasValidAttemptEndDate = Boolean(parsedAttemptEndDate && Number.isFinite(parsedAttemptEndDate.getTime()));
       const base = {
         courseId: item.id,
         courseTitle: item.title,
         durationDays: Math.max(1, Number(item.selectedValidityDays || 180)),
+        expiresAt: hasValidAttemptEndDate ? parsedAttemptEndDate!.toISOString() : undefined,
         totalViews: Math.max(1, Number(item.selectedViews || 2)),
         isUnlimitedViews: item.unlimitedViewsEnabled === true,
         usedViews: 0,

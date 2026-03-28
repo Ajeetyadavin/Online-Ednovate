@@ -3,6 +3,9 @@ export interface Course {
   title: string;
   category: string;
   subcategory: string;
+  subject?: string;
+  chapter?: string;
+  selectedChapters?: string[];
   language: string;
   lectures: number;
   hours: number;
@@ -20,6 +23,8 @@ export interface Course {
   validityOptionsDays?: number[];
   selectedViews?: number;
   selectedValidityDays?: number;
+  selectedAttemptOptionId?: string;
+  selectedAttemptEndDate?: string;
   deliveryModePricingEnabled?: boolean;
   deliveryModes?: Array<{
     id: string;
@@ -62,6 +67,48 @@ export interface Course {
   isMaterial?: boolean;
   isVisible?: boolean;
   packageCourseIds?: string[]; // IDs of bundled courses (for combo packages)
+  masterConfig?: {
+    categoryId?: number | null;
+    categoryName?: string;
+    levelId?: number | null;
+    levelName?: string;
+    combinationIds?: string[];
+    combinations?: Array<{
+      id: string;
+      label: string;
+      viewModeId?: string | null;
+      viewModeName: string;
+      viewCount?: number | null;
+      validityOptionId?: string | null;
+      validityLabel: string;
+      validityDays?: number | null;
+      attemptOptionId?: string | null;
+      attemptLabel?: string;
+      attemptEndDate?: string | null;
+      deliveryModeId?: string | null;
+      deliveryModeName?: string;
+      languageId?: string | null;
+      languageName?: string;
+      price: number;
+      originalPrice?: number | null;
+    }>;
+    combinationBasis?: {
+      useView?: boolean;
+      useValidity?: boolean;
+      useAttempt?: boolean;
+      useMode?: boolean;
+      useLanguage?: boolean;
+    };
+    combinationPrices?: Record<string, { price: number; originalPrice?: number | null }>;
+    viewModeIds?: number[];
+    viewModes?: Array<{ id: number; name: string; maxViews?: number | null; isLifetime?: boolean }>;
+    validityPeriodIds?: number[];
+    validityPeriods?: Array<{ id: number; name: string; days?: number | null; isLifetime?: boolean }>;
+    lectureModeIds?: number[];
+    lectureModes?: Array<{ id: number; name: string; price: number }>;
+    bookIds?: number[];
+    books?: Array<{ id: number; name: string; price: number }>;
+  };
 }
 
 export const categories = [

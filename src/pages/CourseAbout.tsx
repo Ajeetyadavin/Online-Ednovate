@@ -171,7 +171,13 @@ export default function CourseAbout() {
     Number(accessItem?.remainingWatchSeconds ?? ((accessItem?.allowedWatchSeconds || 0) - (accessItem?.usedWatchSeconds || 0)))
   );
   const watchRemainingHours = (watchRemainingSeconds / 3600).toFixed(1);
-  const progressPct = lessonCount > 0 ? Math.round((completedCount / lessonCount) * 100) : 0;
+  const lessonProgressPct = lessonCount > 0 ? Math.round((completedCount / lessonCount) * 100) : 0;
+  const allowedWatchSeconds = Math.max(0, Number(accessItem?.allowedWatchSeconds || 0));
+  const usedWatchSeconds = Math.max(0, Number(accessItem?.usedWatchSeconds || 0));
+  const watchProgressPct = allowedWatchSeconds > 0
+    ? Math.max(0, Math.min(100, Math.round((usedWatchSeconds / allowedWatchSeconds) * 100)))
+    : 0;
+  const progressPct = Math.max(lessonProgressPct, watchProgressPct);
   const purchaseStamp = accessItem?.createdAt || accessItem?.purchaseDate || ("purchasedOn" in course ? course.purchasedOn : undefined);
   const latestOrder = orderLines[0] || null;
   const isActive = isCourseAccessActive(accessItem);
@@ -269,7 +275,7 @@ export default function CourseAbout() {
               <Clock className="h-4 w-4 text-purple-500" />
             </div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Expires</p>
-            <p className="mt-1 text-sm font-bold text-slate-800">{expiresAt ? fmt(expiresAt) : "No expiry"}</p>
+            <p className="mt-1 text-sm font-bold text-slate-800">{isUnlimitedViews ? "Unlimited" : (expiresAt ? fmt(expiresAt) : "No expiry")}</p>
           </div>
           {/* Views */}
           <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">

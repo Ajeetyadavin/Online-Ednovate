@@ -34,7 +34,8 @@ import AdminLayout from "./pages/admin/AdminLayout";
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminCourses from "./pages/admin/AdminCourses";
 import AdminCourseContent from "./pages/admin/AdminCourseContent";
-import AdminCategories from "./pages/admin/AdminCategories";
+import AdminBunnyVideo from "./pages/admin/AdminBunnyVideo";
+import AdminMasters from "./pages/admin/AdminMasters";
 import AdminUsers from "./pages/admin/AdminUsers";
 import AdminOrders from "./pages/admin/AdminOrders";
 import AdminLeads from "./pages/admin/AdminLeads";
@@ -49,6 +50,7 @@ import AdminStudentAccess from "./pages/admin/AdminStudentAccess";
 import AdminMarketing from "./pages/admin/AdminMarketing";
 import AdminFaculty from "./pages/admin/AdminFaculty";
 import AdminLogs from "./pages/admin/AdminLogs";
+import AdminApiModule from "./pages/admin/AdminApiModule";
 import CourseCollection from "./pages/CourseCollection";
 import FacultyDetail from "./pages/FacultyDetail";
 
@@ -364,7 +366,9 @@ const AppContent = () => (
                     <Route path="dashboard" element={<AdminDashboard />} />
                     <Route path="courses" element={<AdminCourses />} />
                     <Route path="course-content" element={<AdminCourseContent />} />
-                    <Route path="categories" element={<AdminCategories />} />
+                    <Route path="bunny-video" element={<AdminBunnyVideo />} />
+                    <Route path="categories" element={<AdminMasters />} />
+                    <Route path="masters" element={<AdminMasters />} />
                     <Route path="coupons" element={<AdminCoupons />} />
                     <Route path="faculty" element={<AdminFaculty />} />
                     <Route path="users" element={<AdminUsers />} />
@@ -379,6 +383,7 @@ const AppContent = () => (
                     <Route path="settings" element={<AdminSettings />} />
                     <Route path="subadmins" element={<AdminSubAdmins />} />
                     <Route path="logs" element={<AdminLogs />} />
+                    <Route path="apis" element={<AdminApiModule />} />
                   </Route>
                 </Routes>
               </BrowserRouter>

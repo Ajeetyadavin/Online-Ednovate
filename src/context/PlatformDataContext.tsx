@@ -106,6 +106,8 @@ export interface Chapter {
   id: string;
   title: string;
   description?: string;
+  bunnyCollectionId?: string;
+  bunnyCollectionName?: string;
   lessons: Lesson[];
 }
 
@@ -228,7 +230,6 @@ const createFallbackCurriculum = (courseName: string): Chapter[] => [
 ];
 
 const normalizeCourse = (course: Partial<ManagedCourse>, index: number): ManagedCourse => ({
-  // Keep demo URL obfuscated in local storage while rendering decodes it.
   ...(function () {
     const rawDemoUrl = String(course.demoVideoUrl || "").trim();
     const normalizedDemoUrl = rawDemoUrl ? encodeVideoUrl(decodeVideoUrl(rawDemoUrl)) : "";
@@ -252,6 +253,11 @@ const normalizeCourse = (course: Partial<ManagedCourse>, index: number): Managed
   title: course.title || "Untitled Course",
   category: course.category || "general",
   subcategory: course.subcategory || "general",
+  subject: String(course.subject || "").trim(),
+  chapter: String(course.chapter || "").trim(),
+  selectedChapters: Array.isArray(course.selectedChapters)
+    ? course.selectedChapters.map((item) => String(item || "").trim()).filter(Boolean)
+    : (course.chapter ? [String(course.chapter || "").trim()].filter(Boolean) : []),
   language: course.language || "English",
   lectures: Number(course.lectures || 0),
   hours: Number(course.hours || 0),
@@ -266,27 +272,20 @@ const normalizeCourse = (course: Partial<ManagedCourse>, index: number): Managed
   unlimitedViewsEnabled: Boolean(course.unlimitedViewsEnabled),
   validityPricingEnabled: Boolean(course.validityPricingEnabled),
   viewOptions: Array.isArray(course.viewOptions)
-    ? course.viewOptions
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value) && value >= 1)
+    ? course.viewOptions.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 1)
     : [1, 2],
   validityOptionsDays: Array.isArray(course.validityOptionsDays)
-    ? course.validityOptionsDays
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value) && value >= 1)
+    ? course.validityOptionsDays.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 1)
     : [30, 90, 180],
   selectedViews: Math.max(1, Number(course.selectedViews || 1)),
   selectedValidityDays: Math.max(1, Number(course.selectedValidityDays || 30)),
+  selectedAttemptOptionId: String(course.selectedAttemptOptionId || "").trim(),
+  selectedAttemptEndDate: String(course.selectedAttemptEndDate || "").trim(),
   deliveryModePricingEnabled: Boolean(course.deliveryModePricingEnabled),
   deliveryModes: Array.isArray(course.deliveryModes)
     ? course.deliveryModes
         .map((mode) => {
-          const raw = mode as {
-            id?: string;
-            label?: string;
-            price?: number;
-            originalPrice?: number;
-          };
+          const raw = mode as { id?: string; label?: string; price?: number; originalPrice?: number };
           const id = String(raw.id || "").trim();
           const label = String(raw.label || "").trim();
           const price = Number(raw.price || 0);
@@ -357,6 +356,101 @@ const normalizeCourse = (course: Partial<ManagedCourse>, index: number): Managed
   packageCourseIds: Array.isArray(course.packageCourseIds)
     ? course.packageCourseIds.map((id) => String(id).trim()).filter(Boolean)
     : [],
+  masterConfig: course.masterConfig && typeof course.masterConfig === "object"
+    ? {
+        ...course.masterConfig,
+        combinationIds: Array.isArray(course.masterConfig.combinationIds)
+          ? course.masterConfig.combinationIds.map((id) => String(id).trim()).filter(Boolean)
+          : [],
+        combinations: Array.isArray(course.masterConfig.combinations)
+          ? course.masterConfig.combinations
+              .map((item) => {
+                const row = item as {
+                  id?: string;
+                  label?: string;
+                  viewModeId?: string | null;
+                  viewModeName?: string;
+                  viewCount?: number | null;
+                  validityOptionId?: string | null;
+                  validityLabel?: string;
+                  validityDays?: number | null;
+                  attemptOptionId?: string | null;
+                  attemptLabel?: string;
+                  attemptEndDate?: string | null;
+                  deliveryModeId?: string | null;
+                  deliveryModeName?: string;
+                  languageId?: string | null;
+                  languageName?: string;
+                  price?: number;
+                  originalPrice?: number | null;
+                };
+                const id = String(row.id || "").trim();
+                const viewModeId = row.viewModeId ? String(row.viewModeId).trim() : null;
+                const validityOptionId = row.validityOptionId ? String(row.validityOptionId).trim() : null;
+                const attemptOptionId = row.attemptOptionId ? String(row.attemptOptionId).trim() : null;
+                const deliveryModeId = row.deliveryModeId ? String(row.deliveryModeId).trim() : null;
+                const languageId = row.languageId ? String(row.languageId).trim() : null;
+                const price = Number(row.price || 0);
+                const hasAtLeastOneDimension = Boolean(viewModeId || validityOptionId || attemptOptionId || deliveryModeId || languageId);
+                if (!id || !hasAtLeastOneDimension || !Number.isFinite(price) || price <= 0) return null;
+                return {
+                  id,
+                  label: String(row.label || "").trim(),
+                  viewModeId,
+                  viewModeName: String(row.viewModeName || "").trim(),
+                  viewCount: row.viewCount === null || row.viewCount === undefined ? null : Number(row.viewCount || 0),
+                  validityOptionId,
+                  validityLabel: String(row.validityLabel || "").trim(),
+                  validityDays: row.validityDays === null || row.validityDays === undefined ? null : Number(row.validityDays || 0),
+                  attemptOptionId,
+                  attemptLabel: String(row.attemptLabel || "").trim(),
+                  attemptEndDate: row.attemptEndDate ? String(row.attemptEndDate).trim() : "",
+                  deliveryModeId,
+                  deliveryModeName: String(row.deliveryModeName || "").trim(),
+                  languageId,
+                  languageName: String(row.languageName || "").trim(),
+                  price,
+                  originalPrice: row.originalPrice === null || row.originalPrice === undefined
+                    ? null
+                    : Number(row.originalPrice || 0),
+                };
+              })
+              .filter(Boolean)
+          : [],
+        combinationBasis:
+          course.masterConfig.combinationBasis && typeof course.masterConfig.combinationBasis === "object"
+            ? {
+                useView: Boolean((course.masterConfig.combinationBasis as { useView?: boolean }).useView),
+                useValidity: Boolean((course.masterConfig.combinationBasis as { useValidity?: boolean }).useValidity),
+                useAttempt: Boolean((course.masterConfig.combinationBasis as { useAttempt?: boolean }).useAttempt),
+                useMode: Boolean((course.masterConfig.combinationBasis as { useMode?: boolean }).useMode),
+                useLanguage: Boolean((course.masterConfig.combinationBasis as { useLanguage?: boolean }).useLanguage),
+              }
+            : undefined,
+        combinationPrices: course.masterConfig.combinationPrices && typeof course.masterConfig.combinationPrices === "object"
+          ? Object.fromEntries(
+              Object.entries(course.masterConfig.combinationPrices)
+                .map(([id, value]) => {
+                  const row = value as { price?: number; originalPrice?: number | null };
+                  const comboId = String(id || "").trim();
+                  const price = Number(row.price || 0);
+                  const originalPrice = row.originalPrice === null || row.originalPrice === undefined
+                    ? null
+                    : Number(row.originalPrice || 0);
+                  if (!comboId || !Number.isFinite(price) || price <= 0) return null;
+                  return [
+                    comboId,
+                    {
+                      price,
+                      originalPrice: Number.isFinite(originalPrice) && originalPrice > 0 ? originalPrice : null,
+                    },
+                  ];
+                })
+                .filter((item): item is [string, { price: number; originalPrice: number | null }] => Boolean(item)),
+            )
+          : {},
+      }
+    : undefined,
 });
 
 const normalizeCategory = (category: Partial<ManagedCategory>, index: number): ManagedCategory => ({
@@ -503,6 +597,8 @@ const normalizeCurriculum = (curriculum: unknown): Chapter[] => {
         id: String(ch.id || `ch-${chapterIndex + 1}`),
         title: ch.title || `Chapter ${chapterIndex + 1}`,
         description: ch.description || "",
+        bunnyCollectionId: String(ch.bunnyCollectionId || "").trim(),
+        bunnyCollectionName: String(ch.bunnyCollectionName || "").trim(),
         lessons,
       } satisfies Chapter;
     });

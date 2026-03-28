@@ -19,7 +19,9 @@ import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import LoginModal from "@/components/LoginModal";
+import { isAccessExpired, isCourseAccessActive } from "@/lib/studentAccess";
 import { changeStudentPasswordApi, getStudentDashboardApi, updateStudentCourseVideoQualityApi, updateStudentProfileApi } from "@/services/authApi";
+import type { StudentCourseAccessSelf } from "@/services/authApi";
 
 type VideoQualityPref = "auto" | "high" | "medium" | "low";
 
@@ -56,6 +58,7 @@ const Dashboard = () => {
   const [notificationsOpen, setNotificationsOpen] = useState(false);
   const [selectedOrderId, setSelectedOrderId] = useState<string | null>(null);
   const [courseQualityPrefs, setCourseQualityPrefs] = useState<Record<string, VideoQualityPref>>({});
+  const [courseAccessById, setCourseAccessById] = useState<Record<string, StudentCourseAccessSelf>>({});
   const [qualitySavingCourseId, setQualitySavingCourseId] = useState<string>("");
 
   useEffect(() => {
@@ -96,6 +99,12 @@ const Dashboard = () => {
           ]),
         );
         setCourseQualityPrefs(prefMap);
+        const accessMap = Object.fromEntries(
+          (result.data.courseAccess || [])
+            .filter((item) => item?.courseId)
+            .map((item) => [item.courseId, item as StudentCourseAccessSelf]),
+        );
+        setCourseAccessById(accessMap);
       } finally {
         if (active) setIsNotificationsLoading(false);
       }
@@ -359,6 +368,11 @@ const Dashboard = () => {
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
                 {dashboardCourses.map(course => (
+                  (() => {
+                    const accessEntry = courseAccessById[course.id];
+                    const isExpired = accessEntry ? isAccessExpired(accessEntry) : false;
+                    const isAccessAllowed = accessEntry ? isCourseAccessActive(accessEntry) : true;
+                    return (
                   <Card key={course.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 group border-slate-200/60">
                     <div className="relative h-36 sm:h-40 overflow-hidden">
                       <img
@@ -376,6 +390,11 @@ const Dashboard = () => {
                         {course.isCombo && (
                           <span className="bg-[#E74623] text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md">
                             BUNDLE
+                          </span>
+                        )}
+                        {isExpired && (
+                          <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md">
+                            EXPIRED
                           </span>
                         )}
                       </div>
@@ -428,11 +447,12 @@ const Dashboard = () => {
                       <div className="grid grid-cols-2 gap-2">
                         <Button
                           size="sm"
-                          className="bg-[#1e3a8a] hover:bg-[#1e3a8a]/90 text-white text-xs h-9 rounded-xl font-semibold shadow-md group/btn"
+                          className="bg-[#1e3a8a] hover:bg-[#1e3a8a]/90 text-white text-xs h-9 rounded-xl font-semibold shadow-md group/btn disabled:opacity-60 disabled:cursor-not-allowed"
                           onClick={() => navigate(`/learn/${course.id}`)}
+                          disabled={!isAccessAllowed}
                         >
                           <PlayCircle className="w-4 h-4 mr-1.5 group-hover/btn:scale-110 transition-transform" />
-                          {course.progress === 100 ? "Review" : course.progress > 0 ? "Continue" : "Start"}
+                          {!isAccessAllowed ? "Expired" : course.progress === 100 ? "Review" : course.progress > 0 ? "Continue" : "Start"}
                         </Button>
                         <Button
                           size="sm"
@@ -445,6 +465,8 @@ const Dashboard = () => {
                       </div>
                     </CardContent>
                   </Card>
+                    );
+                  })()
                 ))}
               </div>
             )}

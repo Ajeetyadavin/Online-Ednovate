@@ -1,6 +1,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { type ManagedCourse, usePlatformData } from "@/context/PlatformDataContext";
-import { adminApi } from "@/services/adminApi";
+import { type Chapter, type ManagedCourse, usePlatformData } from "@/context/PlatformDataContext";
+import {
+  adminApi,
+  type CourseMasterDeliveryMode,
+  type CourseMasterLanguage,
+  type CourseMasterAttemptOption,
+  type CourseMasterPricingCombination,
+  type CourseMasterSubject,
+  type CourseMasterValidityOption,
+  type CourseMasterViewMode,
+} from "@/services/adminApi";
 import { decodeVideoUrl } from "@/lib/video-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -42,6 +51,14 @@ const parsePositiveNumberList = (value: string, fallback: number[]): number[] =>
   return parsed.length > 0 ? Array.from(new Set(parsed)) : fallback;
 };
 
+const parseFirstPositiveInt = (value: unknown): number => {
+  const text = String(value || "");
+  const match = text.match(/(\d+)/);
+  if (!match) return 0;
+  const numeric = Number(match[1]);
+  return Number.isFinite(numeric) && numeric >= 1 ? numeric : 0;
+};
+
 const parseCustomModes = (value: string) =>
   value.split("\n").map((l) => l.trim()).filter(Boolean).map((line, i) => {
     const [lp, pp] = line.split(":");
@@ -66,6 +83,7 @@ const decodeDemoVideoValue = (value: unknown) => decodeVideoUrl(String(value || 
 
 type CourseForm = {
   id: string; title: string; category: string; subcategory: string; price: number; originalPrice: number; taxPercentage: number;
+  subject: string; chapter: string; selectedChapters: string[];
   language: string; professor: string; lectures: number; hours: number; thumbnail?: string;
   demoVideoTitle?: string; demoVideoDescription?: string; demoVideoSource?: "youtube" | "direct" | "upload";
   demoVideoUrl?: string; demoVideoThumbnailUrl?: string; demoVideoVisible?: boolean;
@@ -81,10 +99,20 @@ type CourseForm = {
   reviewsText?: string; enrollmentCount?: number; showEnrollmentCount?: boolean;
   showMetaLectures?: boolean; showMetaHours?: boolean; showMetaValidity?: boolean;
   showMetaResources?: boolean; showMetaViews?: boolean; showMetaPerHour?: boolean; showMetaLanguage?: boolean;
+  masterCombinationRows?: CourseMasterPricingCombination[];
+  combinationUseView?: boolean;
+  combinationUseValidity?: boolean;
+  combinationUseAttempt?: boolean;
+  combinationUseMode?: boolean;
 };
 
 const toCourseForm = (c: ManagedCourse): CourseForm => ({
   id: c.id, title: c.title, category: c.category, subcategory: c.subcategory || "general",
+  subject: String(c.subject || ""),
+  chapter: String(c.chapter || ""),
+  selectedChapters: Array.isArray(c.selectedChapters)
+    ? c.selectedChapters.map((item) => String(item || "").trim()).filter(Boolean)
+    : (c.chapter ? [String(c.chapter)] : []),
   price: c.price, originalPrice: c.originalPrice, taxPercentage: Math.max(0, Number(c.taxPercentage || 0)), language: c.language, professor: c.professor,
   lectures: c.lectures, hours: c.hours, thumbnail: c.thumbnail,
   demoVideoTitle: c.demoVideoTitle, demoVideoDescription: c.demoVideoDescription,
@@ -120,10 +148,35 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
   showMetaValidity: c.showMetaValidity !== false, showMetaResources: c.showMetaResources !== false,
   showMetaViews: c.showMetaViews !== false, showMetaPerHour: c.showMetaPerHour !== false,
   showMetaLanguage: c.showMetaLanguage !== false,
+  masterCombinationRows: Array.isArray(c.masterConfig?.combinations)
+    ? c.masterConfig.combinations
+        .map((item, index) => ({
+          id: String(item.id || `combo-${index + 1}`),
+          label: String(item.label || ""),
+          viewModeId: item.viewModeId ? String(item.viewModeId) : null,
+          validityOptionId: item.validityOptionId ? String(item.validityOptionId) : null,
+          attemptOptionId: item.attemptOptionId ? String(item.attemptOptionId) : null,
+          deliveryModeId: item.deliveryModeId ? String(item.deliveryModeId) : null,
+          languageId: item.languageId ? String(item.languageId) : null,
+          price: Number(item.price || 0),
+          originalPrice: item.originalPrice === null || item.originalPrice === undefined ? null : Number(item.originalPrice || 0),
+          isActive: true,
+          sortOrder: Number(index + 1),
+        }))
+    : [],
+  combinationUseView: c.masterConfig?.combinationBasis?.useView
+    ?? Boolean(c.masterConfig?.combinations?.some((item) => item.viewModeId)),
+  combinationUseValidity: c.masterConfig?.combinationBasis?.useValidity
+    ?? Boolean(c.masterConfig?.combinations?.some((item) => item.validityOptionId)),
+  combinationUseAttempt: c.masterConfig?.combinationBasis?.useAttempt
+    ?? Boolean(c.masterConfig?.combinations?.some((item) => item.attemptOptionId)),
+  combinationUseMode: c.masterConfig?.combinationBasis?.useMode
+    ?? Boolean(c.masterConfig?.combinations?.some((item) => item.deliveryModeId)),
 });
 
 const BLANK_FORM: CourseForm = {
   id: "", title: "", category: "", subcategory: "general", price: 0, originalPrice: 0, taxPercentage: 0,
+  subject: "", chapter: "", selectedChapters: [],
   language: "English", professor: "Ednovate Faculty", lectures: 0, hours: 0, thumbnail: "",
   demoVideoTitle: "", demoVideoDescription: "", demoVideoSource: "youtube", demoVideoUrl: "",
   demoVideoThumbnailUrl: "", demoVideoVisible: false, isSubcategoryCustom: false,
@@ -136,6 +189,11 @@ const BLANK_FORM: CourseForm = {
   ratingsEnabled: true, reviewsEnabled: true, ratingValue: 4.8, ratingCount: 0, reviewsText: "",
   enrollmentCount: 0, showEnrollmentCount: true, showMetaLectures: true, showMetaHours: true,
   showMetaValidity: true, showMetaResources: true, showMetaViews: true, showMetaPerHour: true, showMetaLanguage: true,
+  masterCombinationRows: [],
+  combinationUseView: true,
+  combinationUseValidity: true,
+  combinationUseAttempt: false,
+  combinationUseMode: false,
 };
 
 type DialogTab = "basic" | "demo" | "pricing" | "delivery" | "content";
@@ -149,9 +207,9 @@ type VideoUploadState = {
 
 /* ─── small reusable bits ─────────────────────────────────────── */
 const Label = ({ children }: { children: React.ReactNode }) => (
-  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{children}</label>
+  <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{children}</label>
 );
-const fieldCls = "h-9 rounded-xl border-slate-200 bg-white text-sm focus-visible:ring-primary/40";
+const fieldCls = "h-10 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 shadow-sm hover:border-slate-300";
 const checkboxRow = (label: string, checked: boolean, onChange: (v: boolean) => void) => (
   <label className="flex cursor-pointer items-center gap-2.5">
     <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-primary" />
@@ -161,7 +219,7 @@ const checkboxRow = (label: string, checked: boolean, onChange: (v: boolean) => 
 
 /* ─── Main Component ─────────────────────────────────────────── */
 export default function AdminCourses() {
-  const { courses, categories, toggleCourseVisibility, upsertCourse, deleteCourse } = usePlatformData();
+  const { courses, categories, setCurriculumForCourse, toggleCourseVisibility, upsertCourse, deleteCourse } = usePlatformData();
   const [searchTerm, setSearchTerm] = useState("");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -178,7 +236,19 @@ export default function AdminCourses() {
   const [uploadPanelMinimized, setUploadPanelMinimized] = useState(false);
   const courseUploadAbortRef = useRef<AbortController | null>(null);
   const pkgUploadAbortRef = useRef<AbortController | null>(null);
+  const [courseCurricula, setCourseCurricula] = useState<Record<string, Chapter[]>>({});
   const [curriculumMetaByCourse, setCurriculumMetaByCourse] = useState<Record<string, { lectures: number; totalSeconds: number; hours: number }>>({});
+  const [masterViewModes, setMasterViewModes] = useState<CourseMasterViewMode[]>([]);
+  const [masterValidityOptions, setMasterValidityOptions] = useState<CourseMasterValidityOption[]>([]);
+  const [masterDeliveryModes, setMasterDeliveryModes] = useState<CourseMasterDeliveryMode[]>([]);
+  const [masterLanguages, setMasterLanguages] = useState<CourseMasterLanguage[]>([]);
+  const [masterAttemptOptions, setMasterAttemptOptions] = useState<CourseMasterAttemptOption[]>([]);
+  const [masterSubjects, setMasterSubjects] = useState<CourseMasterSubject[]>([]);
+  const [courseComboSelectorOpen, setCourseComboSelectorOpen] = useState(false);
+  const [courseSelectedViewModeIds, setCourseSelectedViewModeIds] = useState<string[]>([]);
+  const [courseSelectedValidityIds, setCourseSelectedValidityIds] = useState<string[]>([]);
+  const [courseSelectedAttemptIds, setCourseSelectedAttemptIds] = useState<string[]>([]);
+  const [courseSelectedDeliveryModeIds, setCourseSelectedDeliveryModeIds] = useState<string[]>([]);
 
   // ── Package Builder state ──────────────────────────────────
   const [pkgOpen, setPkgOpen] = useState(false);
@@ -192,6 +262,10 @@ export default function AdminCourses() {
   const [pkgPrice, setPkgPrice] = useState(0);
   const [pkgOriginalPrice, setPkgOriginalPrice] = useState(0);
   const [pkgTaxPct, setPkgTaxPct] = useState(0);
+  const [pkgMasterCombinationRows, setPkgMasterCombinationRows] = useState<CourseMasterPricingCombination[]>([]);
+  const [pkgCombinationUseView, setPkgCombinationUseView] = useState(true);
+  const [pkgCombinationUseValidity, setPkgCombinationUseValidity] = useState(true);
+  const [pkgCombinationUseMode, setPkgCombinationUseMode] = useState(false);
   const [pkgLanguage, setPkgLanguage] = useState("Hindi + English");
   const [pkgProfessor, setPkgProfessor] = useState("Multiple Faculty");
   const [pkgCourseIds, setPkgCourseIds] = useState<string[]>([]);
@@ -250,6 +324,167 @@ export default function AdminCourses() {
 
   const sf = (updates: Partial<CourseForm>) => setForm((p) => ({ ...p, ...updates }));
 
+  const masterViewModeMap = useMemo(
+    () => Object.fromEntries(masterViewModes.map((item) => [item.id, item])),
+    [masterViewModes],
+  );
+  const masterValidityMap = useMemo(
+    () => Object.fromEntries(masterValidityOptions.map((item) => [item.id, item])),
+    [masterValidityOptions],
+  );
+  const masterDeliveryModeMap = useMemo(
+    () => Object.fromEntries(masterDeliveryModes.map((item) => [item.id, item])),
+    [masterDeliveryModes],
+  );
+  const masterLanguageMap = useMemo(
+    () => Object.fromEntries(masterLanguages.map((item) => [item.id, item])),
+    [masterLanguages],
+  );
+  const masterAttemptMap = useMemo(
+    () => Object.fromEntries(masterAttemptOptions.map((item) => [item.id, item])),
+    [masterAttemptOptions],
+  );
+
+  const activeMasterViewModes = useMemo(
+    () => masterViewModes.filter((item) => item.isActive),
+    [masterViewModes],
+  );
+  const activeMasterValidityOptions = useMemo(
+    () => masterValidityOptions.filter((item) => item.isActive),
+    [masterValidityOptions],
+  );
+  const activeMasterDeliveryModes = useMemo(
+    () => masterDeliveryModes.filter((item) => item.isActive),
+    [masterDeliveryModes],
+  );
+  const activeMasterLanguages = useMemo(
+    () => masterLanguages.filter((item) => item.isActive),
+    [masterLanguages],
+  );
+  const activeMasterAttemptOptions = useMemo(
+    () => masterAttemptOptions.filter((item) => item.isActive),
+    [masterAttemptOptions],
+  );
+
+  const buildCombinationRows = useCallback((
+    options: {
+      useView: boolean;
+      useValidity: boolean;
+      useAttempt: boolean;
+      useMode: boolean;
+      selectedViewModeIds?: string[];
+      selectedValidityOptionIds?: string[];
+      selectedAttemptOptionIds?: string[];
+      selectedDeliveryModeIds?: string[];
+    },
+    existingRows: CourseMasterPricingCombination[],
+    idPrefix: "course" | "pkg",
+    basePrice?: number,
+    baseOriginalPrice?: number,
+  ): CourseMasterPricingCombination[] => {
+    const sourceViews = options.useView
+      ? activeMasterViewModes.filter((item) => {
+        if (!Array.isArray(options.selectedViewModeIds) || options.selectedViewModeIds.length === 0) return true;
+        return options.selectedViewModeIds.includes(item.id);
+      })
+      : [];
+    const sourceValidity = options.useValidity
+      ? activeMasterValidityOptions.filter((item) => {
+        if (!Array.isArray(options.selectedValidityOptionIds) || options.selectedValidityOptionIds.length === 0) return true;
+        return options.selectedValidityOptionIds.includes(item.id);
+      })
+      : [];
+    const sourceModes = options.useMode
+      ? activeMasterDeliveryModes.filter((item) => {
+        if (!Array.isArray(options.selectedDeliveryModeIds) || options.selectedDeliveryModeIds.length === 0) return true;
+        return options.selectedDeliveryModeIds.includes(item.id);
+      })
+      : [];
+    const sourceAttempts = options.useAttempt
+      ? activeMasterAttemptOptions.filter((item) => {
+        if (!Array.isArray(options.selectedAttemptOptionIds) || options.selectedAttemptOptionIds.length === 0) return true;
+        return options.selectedAttemptOptionIds.includes(item.id);
+      })
+      : [];
+
+    if ((options.useView && sourceViews.length === 0)
+      || (options.useValidity && sourceValidity.length === 0)
+      || (options.useAttempt && sourceAttempts.length === 0)
+      || (options.useMode && sourceModes.length === 0)
+       ) {
+      return existingRows;
+    }
+
+    const views = options.useView ? sourceViews.map((item) => item.id) : [null];
+    const validities = options.useValidity ? sourceValidity.map((item) => item.id) : [null];
+    const attempts = options.useAttempt ? sourceAttempts.map((item) => item.id) : [null];
+    const modes = options.useMode ? sourceModes.map((item) => item.id) : [null];
+
+    const existingMap = new Map(
+      existingRows.map((item) => [
+        `${item.viewModeId || "any"}|${item.validityOptionId || "any"}|${item.deliveryModeId || "any"}|${item.languageId || "any"}`,
+        item,
+      ]),
+    );
+
+    const rows: CourseMasterPricingCombination[] = [];
+    let sortOrder = 1;
+
+    for (const viewModeId of views) {
+      for (const validityOptionId of validities) {
+        for (const attemptOptionId of attempts) {
+        for (const deliveryModeId of modes) {
+          const key = `${viewModeId || "any"}|${validityOptionId || "any"}|${attemptOptionId || "any"}|${deliveryModeId || "any"}|any`;
+            const previous = existingMap.get(key);
+          
+            // Calculate price multipliers based on selected view/validity
+            const viewMode = viewModeId ? masterViewModeMap[viewModeId] : null;
+            const validityOption = validityOptionId ? masterValidityMap[validityOptionId] : null;
+            const viewMultiplier = viewMode ? Math.max(1, Number(viewMode.maxViews || 1)) : 1;
+            const validityMultiplier = validityOption ? Math.max(1, (Number(validityOption.days || 30) / 30)) : 1;
+          
+            // Auto-calculate price if base price provided and no previous price exists
+            let autoPrice = 0;
+            if (basePrice && basePrice > 0 && (!previous || (previous && Number(previous.price || 0) === 0))) {
+              autoPrice = Math.round(basePrice * viewMultiplier * validityMultiplier);
+            }
+          
+            let autoOriginalPrice: number | null = null;
+            if (baseOriginalPrice && baseOriginalPrice > 0 && (!previous || (previous && previous.originalPrice === null))) {
+              autoOriginalPrice = Math.round(baseOriginalPrice * viewMultiplier * validityMultiplier);
+            }
+          
+            rows.push({
+              id: previous?.id || `${idPrefix}-combo-${Date.now()}-${sortOrder}`,
+              label: previous?.label || "",
+              viewModeId,
+              validityOptionId,
+              attemptOptionId,
+              deliveryModeId,
+              price: previous?.price !== undefined && previous.price > 0 ? Number(previous.price) : autoPrice,
+              originalPrice: previous?.originalPrice !== undefined && previous.originalPrice !== null
+                ? Number(previous.originalPrice)
+                : autoOriginalPrice,
+              isActive: previous?.isActive !== false,
+              sortOrder,
+            });
+            sortOrder += 1;
+          }
+        }
+      }
+    }
+
+    return rows;
+  }, [
+    activeMasterDeliveryModes,
+    activeMasterAttemptOptions,
+    activeMasterValidityOptions,
+    activeMasterViewModes,
+    masterDeliveryModeMap,
+    masterValidityMap,
+    masterViewModeMap,
+  ]);
+
   const fileToBase64 = useCallback((file: File) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(String(reader.result || ""));
@@ -261,6 +496,10 @@ export default function AdminCourses() {
     try {
       const response = await adminApi.getCourses();
       const rawCurricula = response.curricula && typeof response.curricula === "object" ? response.curricula : {};
+      const nextCurricula = Object.fromEntries(
+        Object.entries(rawCurricula).map(([id, chapters]) => [id, Array.isArray(chapters) ? chapters as Chapter[] : []]),
+      );
+      setCourseCurricula(nextCurricula);
       setCurriculumMetaByCourse(Object.fromEntries(
         Object.entries(rawCurricula).map(([id, chapters]) => [id, computeCurriculumMeta(Array.isArray(chapters) ? chapters : [])]),
       ));
@@ -306,24 +545,135 @@ export default function AdminCourses() {
     void loadFacultyOptions();
   }, []);
 
+  useEffect(() => {
+    const loadMasters = async () => {
+      try {
+        const result = await adminApi.getCourseMasters();
+        setMasterViewModes(Array.isArray(result.viewModes) ? result.viewModes : []);
+        setMasterValidityOptions(Array.isArray(result.validityOptions) ? result.validityOptions : []);
+        setMasterAttemptOptions(Array.isArray(result.attemptOptions) ? result.attemptOptions : []);
+        setMasterDeliveryModes(Array.isArray(result.deliveryModes) ? result.deliveryModes : []);
+        setMasterLanguages(Array.isArray(result.languages) ? result.languages : []);
+        setMasterSubjects(Array.isArray(result.subjects) ? result.subjects : []);
+      } catch {
+        setMasterViewModes([]);
+        setMasterValidityOptions([]);
+        setMasterAttemptOptions([]);
+        setMasterDeliveryModes([]);
+        setMasterLanguages([]);
+        setMasterSubjects([]);
+      }
+    };
+
+    void loadMasters();
+  }, []);
+
   const categoriesById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
   const parentCategories = useMemo(() => categories.filter((c) => c.parentId === null), [categories]);
   const subcategoryOptions = useMemo(() => categories.filter((c) => c.parentId === form.category), [categories, form.category]);
+  const subjectOptions = useMemo(
+    () => masterSubjects
+      .filter((item) => item.isActive !== false)
+      .filter((item) => {
+        const courseMatch = (item.courseIds || []).includes(form.category);
+        const levelMatch = (item.levelIds || []).includes(form.subcategory);
+        if (form.subcategory && form.subcategory !== "general") {
+          return levelMatch || courseMatch;
+        }
+        return courseMatch;
+      })
+      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)),
+    [masterSubjects, form.category, form.subcategory],
+  );
+  const chapterOptions = useMemo(() => {
+    const activeSubject = subjectOptions.find((item) => item.name === form.subject);
+    if (!activeSubject || !Array.isArray(activeSubject.chapters)) return [];
+    return activeSubject.chapters
+      .filter((item) => item.isActive !== false)
+      .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+  }, [subjectOptions, form.subject]);
   const fallbackCategoryId = parentCategories[0]?.id || "general";
   const fallbackSubcategoryId = subcategoryOptions[0]?.id || "general";
 
   useEffect(() => {
+    if (!form.category) return;
     const hasValidParentCategory = parentCategories.some((c) => c.id === form.category);
     if (!hasValidParentCategory) {
       sf({ category: fallbackCategoryId, subcategory: categories.find((c) => c.parentId === fallbackCategoryId)?.id || "general" });
       return;
     }
 
+    if (!form.subcategory) return;
     const hasValidSubcategory = subcategoryOptions.some((s) => s.id === form.subcategory);
     if (!hasValidSubcategory) {
       sf({ subcategory: fallbackSubcategoryId });
     }
   }, [form.category, form.subcategory, parentCategories, subcategoryOptions, fallbackCategoryId, fallbackSubcategoryId, categories]);
+
+  useEffect(() => {
+    if (!form.subject) return;
+    const hasValidSubject = subjectOptions.some((item) => item.name === form.subject);
+    if (!hasValidSubject) {
+      sf({
+        subject: "",
+        chapter: "",
+        selectedChapters: [],
+      });
+      return;
+    }
+
+    const validSelectedChapters = form.selectedChapters.filter((name) => chapterOptions.some((item) => item.name === name));
+    const nextChapter = validSelectedChapters[0] || "";
+    const selectedChanged = validSelectedChapters.length !== form.selectedChapters.length
+      || validSelectedChapters.some((item, index) => item !== form.selectedChapters[index]);
+    if (selectedChanged || form.chapter !== nextChapter) {
+      sf({
+        selectedChapters: validSelectedChapters,
+        chapter: nextChapter,
+      });
+    }
+  }, [form.subject, form.chapter, form.selectedChapters, subjectOptions, chapterOptions]);
+
+  const toggleChapterSelection = (chapterName: string, checked: boolean) => {
+    const nextSelected = checked
+      ? Array.from(new Set([...form.selectedChapters, chapterName]))
+      : form.selectedChapters.filter((item) => item !== chapterName);
+    sf({
+      selectedChapters: nextSelected,
+      chapter: nextSelected[0] || "",
+    });
+  };
+
+  const syncSelectedChaptersToCurriculum = useCallback(async (courseId: string, selectedChapterNames: string[]) => {
+    const normalizedSelected = Array.from(new Set(selectedChapterNames.map((item) => String(item || "").trim()).filter(Boolean)));
+    if (normalizedSelected.length === 0) return;
+
+    const rawExisting = courseCurricula[courseId];
+    const existing = Array.isArray(rawExisting) ? rawExisting : [];
+
+    const matchedTitles = new Set<string>();
+    const seeded = normalizedSelected.map((name, index) => {
+      const existingChapter = existing.find((chapter) => String(chapter.title || "").trim().toLowerCase() === name.toLowerCase());
+      if (existingChapter) {
+        matchedTitles.add(String(existingChapter.title || "").trim().toLowerCase());
+        return existingChapter;
+      }
+
+      return {
+        id: `ch_${Date.now()}_${index + 1}`,
+        title: name,
+        description: "",
+        lessons: [],
+      } satisfies Chapter;
+    });
+
+    const untouched = existing.filter((chapter) => !matchedTitles.has(String(chapter.title || "").trim().toLowerCase()));
+    const nextCurriculum = [...seeded, ...untouched];
+    setCourseCurricula((prev) => ({ ...prev, [courseId]: nextCurriculum }));
+    setCurriculumForCourse(courseId, nextCurriculum);
+    await adminApi.saveCurriculum(courseId, nextCurriculum);
+    window.dispatchEvent(new CustomEvent("curriculum-updated", { detail: { courseId, updatedAt: Date.now() } }));
+  }, [courseCurricula, setCurriculumForCourse]);
 
   const filteredCourses = useMemo(() =>
     courses.filter((c) =>
@@ -346,10 +696,85 @@ export default function AdminCourses() {
     if (next) adminApi.upsertCourse({ ...next, isVisible: !next.isVisible }).catch(() => {});
   };
 
+  const openCourseCombinationSelector = () => {
+    if (!form.combinationUseView && !form.combinationUseValidity && !form.combinationUseAttempt && !form.combinationUseMode) {
+      alert("Select at least one basis (View, Validity, Attempt, or Mode)");
+      return;
+    }
+    if (form.combinationUseView && activeMasterViewModes.length === 0) {
+      alert("No View options found in Masters. Configure them first.");
+      return;
+    }
+    if (form.combinationUseValidity && activeMasterValidityOptions.length === 0) {
+      alert("No Validity options found in Masters. Configure them first.");
+      return;
+    }
+    if (form.combinationUseAttempt && activeMasterAttemptOptions.length === 0) {
+      alert("No Attempt options found in Masters. Configure them first.");
+      return;
+    }
+    if (form.combinationUseMode && activeMasterDeliveryModes.length === 0) {
+      alert("No Lecture Mode options found in Masters. Configure them first.");
+      return;
+    }
+
+    setCourseSelectedViewModeIds(
+      form.combinationUseView ? activeMasterViewModes.map((item) => item.id) : [],
+    );
+    setCourseSelectedValidityIds(
+      form.combinationUseValidity ? activeMasterValidityOptions.map((item) => item.id) : [],
+    );
+    setCourseSelectedAttemptIds(
+      form.combinationUseAttempt ? activeMasterAttemptOptions.map((item) => item.id) : [],
+    );
+    setCourseSelectedDeliveryModeIds(
+      form.combinationUseMode ? activeMasterDeliveryModes.map((item) => item.id) : [],
+    );
+    setCourseComboSelectorOpen(true);
+  };
+
+  const generateCourseCombinationsFromSelected = () => {
+    if (form.combinationUseView && courseSelectedViewModeIds.length === 0) {
+      alert("Select at least one View option.");
+      return;
+    }
+    if (form.combinationUseValidity && courseSelectedValidityIds.length === 0) {
+      alert("Select at least one Validity option.");
+      return;
+    }
+    if (form.combinationUseAttempt && courseSelectedAttemptIds.length === 0) {
+      alert("Select at least one Attempt option.");
+      return;
+    }
+    if (form.combinationUseMode && courseSelectedDeliveryModeIds.length === 0) {
+      alert("Select at least one Lecture Mode option.");
+      return;
+    }
+
+    sf({
+      masterCombinationRows: buildCombinationRows(
+        {
+          useView: Boolean(form.combinationUseView),
+          useValidity: Boolean(form.combinationUseValidity),
+          useAttempt: Boolean(form.combinationUseAttempt),
+          useMode: Boolean(form.combinationUseMode),
+          selectedViewModeIds: courseSelectedViewModeIds,
+          selectedValidityOptionIds: courseSelectedValidityIds,
+          selectedAttemptOptionIds: courseSelectedAttemptIds,
+          selectedDeliveryModeIds: courseSelectedDeliveryModeIds,
+        },
+        form.masterCombinationRows || [],
+        "course",
+        Number(form.price || 0),
+        Number(form.originalPrice || form.price || 0),
+      ),
+    });
+    setCourseComboSelectorOpen(false);
+  };
+
   const openCreateDialog = () => {
-    const firstCat = parentCategories[0]?.id || "general";
     setEditingId(null);
-    setForm({ ...BLANK_FORM, id: `course-${Date.now()}`, category: firstCat, subcategory: categories.find((c) => c.parentId === firstCat)?.id || "general" });
+    setForm({ ...BLANK_FORM, id: `course-${Date.now()}`, category: "", subcategory: "", subject: "", selectedChapters: [], chapter: "", language: masterLanguages[0]?.name || "" });
     setCourseThumbnailUploading(false);
     setCourseDemoVideoUploading(false);
     setCourseDemoThumbUploading(false);
@@ -437,6 +862,12 @@ export default function AdminCourses() {
 
   const handleSaveCourse = async () => {
     if (!form.title.trim()) { alert("Please add a valid course title"); return; }
+    const UNLIMITED_VALIDITY_DAYS = 36500;
+    const hasValidCourseComboPrice = (form.masterCombinationRows || []).some(
+      (row) => row.isActive !== false
+        && Number(row.price || 0) > 0
+        && Boolean(row.viewModeId || row.validityOptionId || row.attemptOptionId || row.deliveryModeId || row.languageId),
+    );
     const deliveryModes: Array<{ id: string; label: string; price: number; originalPrice?: number }> = [];
     if (form.deliveryModePricingEnabled) {
       if (form.enableOnlineMode && Number(form.onlineModePrice || 0) > 0) deliveryModes.push({ id: "online", label: "Online", price: Number(form.onlineModePrice), originalPrice: Number(form.originalPrice || form.onlineModePrice) });
@@ -445,18 +876,118 @@ export default function AdminCourses() {
       if (form.enableCustomMode && String(form.customModeName || "").trim() && Number(form.customModePrice || 0) > 0) deliveryModes.push({ id: "custom", label: String(form.customModeName).trim(), price: Number(form.customModePrice), originalPrice: Number(form.originalPrice || form.customModePrice) });
       parseCustomModes(form.customModesText || "").forEach((m) => deliveryModes.push({ id: m.id, label: m.label, price: m.price, originalPrice: Number(form.originalPrice || m.price) }));
     }
-    if (!form.deliveryModePricingEnabled && Number(form.price || 0) <= 0) { alert("Please add a valid base price"); return; }
+    if (!form.deliveryModePricingEnabled && Number(form.price || 0) <= 0 && !hasValidCourseComboPrice) {
+      alert("Please add a valid base price or active combination price");
+      return;
+    }
     if (form.deliveryModePricingEnabled && deliveryModes.length === 0) { alert("Please enable at least one delivery mode with a valid price"); return; }
     const bookAddons: Array<{ id: string; label: string; price: number; enabled?: boolean }> = [];
     if (form.bookAddonEnabled) {
       if (form.enableEnotesAddon) bookAddons.push({ id: "enotes", label: "eNotes", price: Math.max(0, Number(form.enotesAddonPrice || 0)), enabled: true });
       if (form.enablePhysicalBookAddon) bookAddons.push({ id: "physical-book", label: "Physical Book", price: Math.max(0, Number(form.physicalBookAddonPrice || 0)), enabled: true });
     }
-    const derivedBasePrice = form.deliveryModePricingEnabled ? Number(deliveryModes[0]?.price || 0) : Number(form.price || 0);
-    const derivedBaseOriginalPrice = form.deliveryModePricingEnabled ? Number(deliveryModes[0]?.originalPrice || derivedBasePrice) : Number(form.originalPrice || form.price || 0);
+    const selectedMasterCombinationsWithPricing = (form.masterCombinationRows || [])
+      .map((item, index) => ({
+        id: String(item.id || `combo-${index + 1}`).trim(),
+        label: String(item.label || "").trim(),
+        viewModeId: item.viewModeId ? String(item.viewModeId).trim() : null,
+        validityOptionId: item.validityOptionId ? String(item.validityOptionId).trim() : null,
+        attemptOptionId: item.attemptOptionId ? String(item.attemptOptionId).trim() : null,
+        deliveryModeId: item.deliveryModeId ? String(item.deliveryModeId).trim() : null,
+        languageId: item.languageId ? String(item.languageId).trim() : null,
+        price: Number(item.price || 0),
+        originalPrice: item.originalPrice === null || item.originalPrice === undefined
+          ? null
+          : Number(item.originalPrice || 0),
+        isActive: item.isActive !== false,
+        sortOrder: Number(item.sortOrder || index + 1),
+      }))
+      .filter((item) => item.isActive !== false && Boolean(item.viewModeId || item.validityOptionId || item.attemptOptionId || item.deliveryModeId || item.languageId));
+
+    const hasMasterCombinationPricing = selectedMasterCombinationsWithPricing.length > 0;
+
+    if (selectedMasterCombinationsWithPricing.some((item) => Number(item.price || 0) <= 0)) {
+      alert("Selected master combinations must have valid price greater than 0");
+      return;
+    }
+
+    const masterBasedPrice = selectedMasterCombinationsWithPricing.length > 0 ? Number(selectedMasterCombinationsWithPricing[0].price || 0) : null;
+    const masterBasedOriginalPrice = selectedMasterCombinationsWithPricing.length > 0
+      ? Number(selectedMasterCombinationsWithPricing[0].originalPrice || selectedMasterCombinationsWithPricing[0].price || 0)
+      : null;
+
+    const derivedBasePrice = form.deliveryModePricingEnabled
+      ? Number(deliveryModes[0]?.price || 0)
+      : Number(masterBasedPrice ?? Number(form.price || 0));
+    const derivedBaseOriginalPrice = form.deliveryModePricingEnabled
+      ? Number(deliveryModes[0]?.originalPrice || derivedBasePrice)
+      : Number(masterBasedOriginalPrice ?? Number(form.originalPrice || form.price || 0));
+
+    const selectedMasterViewModes = selectedMasterCombinationsWithPricing
+      .map((combo) => (combo.viewModeId ? masterViewModeMap[combo.viewModeId] : null))
+      .filter((item): item is CourseMasterViewMode => Boolean(item));
+    const selectedMasterValidity = selectedMasterCombinationsWithPricing
+      .map((combo) => (combo.validityOptionId ? masterValidityMap[combo.validityOptionId] : null))
+      .filter((item): item is CourseMasterValidityOption => Boolean(item));
+
+    const selectedMasterDeliveryModeIds = Array.from(new Set(
+      selectedMasterCombinationsWithPricing
+        .map((combo) => String(combo.deliveryModeId || "").trim())
+        .filter(Boolean),
+    ));
+    const selectedMasterLanguageIds = Array.from(new Set(
+      selectedMasterCombinationsWithPricing
+        .map((combo) => String(combo.languageId || "").trim())
+        .filter(Boolean),
+    ));
+
+    const selectedMasterDeliveryModes = selectedMasterDeliveryModeIds
+      .map((id) => masterDeliveryModeMap[id])
+      .filter((item): item is CourseMasterDeliveryMode => Boolean(item));
+    const selectedMasterLanguages = selectedMasterLanguageIds
+      .map((id) => masterLanguageMap[id])
+      .filter((item): item is CourseMasterLanguage => Boolean(item));
+
+    const autoDeliveryModesFromMasters = selectedMasterDeliveryModes.map((mode) => {
+      const modeCombos = selectedMasterCombinationsWithPricing
+        .filter((combo) => combo.deliveryModeId === mode.id)
+        .sort((a, b) => Number(a.price || 0) - Number(b.price || 0));
+      const best = modeCombos[0];
+      return {
+        id: mode.id,
+        label: mode.name,
+        price: Number(best?.price || 0),
+        originalPrice: Number(best?.originalPrice || best?.price || 0),
+      };
+    }).filter((item) => Number.isFinite(item.price) && item.price > 0);
+
+    const finalDeliveryModes = form.deliveryModePricingEnabled
+      ? deliveryModes
+      : (autoDeliveryModesFromMasters.length > 0 ? autoDeliveryModesFromMasters : deliveryModes);
+
+    const derivedLanguage = selectedMasterLanguages.length === 1
+      ? selectedMasterLanguages[0].name
+      : selectedMasterLanguages.length > 1
+        ? selectedMasterLanguages.map((item) => item.name).join(" / ")
+        : (form.language || "English");
+
+    const combinedViewOptions = Array.from(new Set(
+      selectedMasterViewModes
+        .map((item) => Number(item.maxViews || 0))
+        .filter((value) => Number.isFinite(value) && value >= 1),
+    ));
+    const combinedValidityOptions = Array.from(new Set(
+      selectedMasterValidity
+        .map((item) => Number(item.days || 0))
+        .filter((value) => Number.isFinite(value) && value >= 1),
+    ));
+
     const nextCourse: ManagedCourse = {
       id: form.id, title: form.title.trim(), category: form.category || "general",
-      subcategory: form.subcategory || "general", language: form.language || "English",
+      subcategory: form.subcategory || "general", language: derivedLanguage,
+      subject: String(form.subject || "").trim(),
+      chapter: String((form.selectedChapters[0] || form.chapter || "")).trim(),
+      selectedChapters: form.selectedChapters,
       lectures: Number(autoMeta.lectures || 0), hours: Number(autoMeta.hours || 0),
       price: derivedBasePrice, originalPrice: derivedBaseOriginalPrice,
       taxPercentage: Math.max(0, Number(form.taxPercentage || 0)),
@@ -467,14 +998,23 @@ export default function AdminCourses() {
       demoVideoTitle: form.demoVideoTitle?.trim() || "", demoVideoDescription: form.demoVideoDescription?.trim() || "",
       demoVideoSource: form.demoVideoSource || "youtube", demoVideoUrl: form.demoVideoUrl?.trim() || "",
       demoVideoThumbnailUrl: form.demoVideoThumbnailUrl?.trim() || "", demoVideoVisible: form.demoVideoVisible || false,
-      viewPricingEnabled: Boolean(form.viewPricingEnabled), unlimitedViewsEnabled: Boolean(form.unlimitedViewsEnabled),
-      validityPricingEnabled: Boolean(form.validityPricingEnabled),
-      viewOptions: parsePositiveNumberList(form.viewOptionsText || "", [1, 2]),
-      validityOptionsDays: parsePositiveNumberList(form.validityOptionsDaysText || "", [30, 90, 180]),
-      selectedViews: 1, selectedValidityDays: 30,
-      deliveryModePricingEnabled: Boolean(form.deliveryModePricingEnabled), deliveryModes,
-      selectedDeliveryModeId: deliveryModes[0]?.id || "online",
-      selectedDeliveryModeIds: deliveryModes.length > 0 ? [deliveryModes[0].id] : [],
+      viewPricingEnabled: hasMasterCombinationPricing ? Boolean(form.combinationUseView) : false,
+      unlimitedViewsEnabled: hasMasterCombinationPricing
+        ? selectedMasterViewModes.some((item) => item.isLifetime === true)
+        : true,
+      validityPricingEnabled: hasMasterCombinationPricing ? Boolean(form.combinationUseValidity) : false,
+      viewOptions: hasMasterCombinationPricing
+        ? (combinedViewOptions.length > 0 ? combinedViewOptions : parsePositiveNumberList(form.viewOptionsText || "", [1, 2]))
+        : [1],
+      validityOptionsDays: hasMasterCombinationPricing
+        ? (combinedValidityOptions.length > 0 ? combinedValidityOptions : parsePositiveNumberList(form.validityOptionsDaysText || "", [30, 90, 180]))
+        : [UNLIMITED_VALIDITY_DAYS],
+      selectedViews: 1,
+      selectedValidityDays: hasMasterCombinationPricing ? 30 : UNLIMITED_VALIDITY_DAYS,
+      deliveryModePricingEnabled: Boolean(form.deliveryModePricingEnabled || autoDeliveryModesFromMasters.length > 0),
+      deliveryModes: finalDeliveryModes,
+      selectedDeliveryModeId: finalDeliveryModes[0]?.id || "online",
+      selectedDeliveryModeIds: finalDeliveryModes.length > 0 ? [finalDeliveryModes[0].id] : [],
       bookAddonEnabled: Boolean(form.bookAddonEnabled), bookAddons, selectedBookAddonIds: [],
       aboutCourseEnabled: Boolean(form.aboutCourseEnabled), aboutCourseText: String(form.aboutCourseText || "").trim(),
       ratingsEnabled: form.ratingsEnabled !== false, reviewsEnabled: form.reviewsEnabled !== false,
@@ -486,11 +1026,60 @@ export default function AdminCourses() {
       showMetaHours: form.showMetaHours !== false, showMetaValidity: form.showMetaValidity !== false,
       showMetaResources: form.showMetaResources !== false, showMetaViews: form.showMetaViews !== false,
       showMetaPerHour: form.showMetaPerHour !== false, showMetaLanguage: form.showMetaLanguage !== false,
+      masterConfig: {
+        combinationIds: selectedMasterCombinationsWithPricing.map((item) => item.id),
+        combinationPrices: Object.fromEntries(
+          selectedMasterCombinationsWithPricing.map((item) => [item.id, {
+            price: Number(item.price || 0),
+            originalPrice: Number(item.originalPrice || 0) || null,
+          }]),
+        ),
+        combinations: selectedMasterCombinationsWithPricing.map((item) => ({
+          id: item.id,
+          label: item.label || [
+            item.viewModeId ? masterViewModeMap[item.viewModeId]?.name : null,
+            item.validityOptionId ? masterValidityMap[item.validityOptionId]?.label : null,
+            item.attemptOptionId ? masterAttemptMap[item.attemptOptionId]?.label : null,
+            item.deliveryModeId ? masterDeliveryModeMap[item.deliveryModeId]?.name : null,
+            item.languageId ? masterLanguageMap[item.languageId]?.name : null,
+          ].filter((part): part is string => Boolean(part)).join(" | "),
+          viewModeId: item.viewModeId,
+          viewModeName: item.viewModeId ? (masterViewModeMap[item.viewModeId]?.name || "") : "",
+          viewCount: item.viewModeId
+            ? (() => {
+                const mode = masterViewModeMap[item.viewModeId];
+                const direct = Number(mode?.maxViews || 0);
+                const parsed = parseFirstPositiveInt(mode?.name) || parseFirstPositiveInt(item.label);
+                const next = parsed > direct ? parsed : direct;
+                return next > 0 ? next : null;
+              })()
+            : null,
+          validityOptionId: item.validityOptionId,
+          validityLabel: item.validityOptionId ? (masterValidityMap[item.validityOptionId]?.label || "") : "",
+          validityDays: item.validityOptionId ? Number(masterValidityMap[item.validityOptionId]?.days || 0) : null,
+          attemptOptionId: item.attemptOptionId,
+          attemptLabel: item.attemptOptionId ? (masterAttemptMap[item.attemptOptionId]?.label || "") : "",
+          attemptEndDate: item.attemptOptionId ? (masterAttemptMap[item.attemptOptionId]?.endDate || "") : null,
+          deliveryModeId: item.deliveryModeId || null,
+          deliveryModeName: item.deliveryModeId ? (masterDeliveryModeMap[item.deliveryModeId]?.name || "") : "",
+          languageId: item.languageId || null,
+          languageName: item.languageId ? (masterLanguageMap[item.languageId]?.name || "") : "",
+          price: item.price,
+          originalPrice: item.originalPrice,
+        })),
+        combinationBasis: {
+          useView: Boolean(form.combinationUseView),
+          useValidity: Boolean(form.combinationUseValidity),
+          useAttempt: Boolean(form.combinationUseAttempt),
+          useMode: Boolean(form.combinationUseMode),
+        },
+      },
     };
     setIsSaving(true);
     try {
       upsertCourse(nextCourse);
       await adminApi.upsertCourse(nextCourse);
+      await syncSelectedChaptersToCurriculum(nextCourse.id, form.selectedChapters);
       setDialogOpen(false);
     } catch (e) { alert(e instanceof Error ? e.message : "Failed to save"); }
     finally { setIsSaving(false); }
@@ -530,6 +1119,8 @@ export default function AdminCourses() {
     setPkgEditingId(null); setPkgTab("courses");
     setPkgTitle(""); setPkgThumbnail(""); setPkgCategory(firstCat); setPkgSubcategory(firstSub);
     setPkgPrice(0); setPkgOriginalPrice(0); setPkgTaxPct(0);
+    setPkgMasterCombinationRows([]);
+      setPkgCombinationUseView(true); setPkgCombinationUseValidity(true); setPkgCombinationUseMode(false);
     setPkgLanguage("Hindi + English"); setPkgProfessor("Multiple Faculty");
     setPkgCourseIds([]); setPkgSearch("");
     setPkgViewPricingEnabled(false); setPkgUnlimitedViews(false); setPkgViewOptionsText("1,2");
@@ -553,6 +1144,32 @@ export default function AdminCourses() {
     setPkgCategory(course.category || ""); setPkgSubcategory(course.subcategory || "");
     setPkgPrice(course.price); setPkgOriginalPrice(course.originalPrice);
     setPkgTaxPct(Number(course.taxPercentage || 0));
+    setPkgMasterCombinationRows(
+      Array.isArray(course.masterConfig?.combinations)
+        ? course.masterConfig.combinations
+            .map((item, index) => ({
+              id: String(item.id || `pkg-combo-${index + 1}`),
+              label: String(item.label || ""),
+              viewModeId: item.viewModeId ? String(item.viewModeId) : null,
+              validityOptionId: item.validityOptionId ? String(item.validityOptionId) : null,
+              attemptOptionId: item.attemptOptionId ? String(item.attemptOptionId) : null,
+              deliveryModeId: item.deliveryModeId ? String(item.deliveryModeId) : null,
+              languageId: item.languageId ? String(item.languageId) : null,
+              price: Number(item.price || 0),
+              originalPrice: item.originalPrice === null || item.originalPrice === undefined ? null : Number(item.originalPrice || 0),
+              isActive: true,
+              sortOrder: index + 1,
+            }))
+        : [],
+    );
+    setPkgCombinationUseView(
+      course.masterConfig?.combinationBasis?.useView
+        ?? Boolean(course.masterConfig?.combinations?.some((item) => item.viewModeId)),
+    );
+    setPkgCombinationUseValidity(
+      course.masterConfig?.combinationBasis?.useValidity
+        ?? Boolean(course.masterConfig?.combinations?.some((item) => item.validityOptionId)),
+    );
     setPkgLanguage(course.language || "Hindi + English"); setPkgProfessor(course.professor || "Multiple Faculty");
     setPkgCourseIds(Array.isArray(course.packageCourseIds) ? course.packageCourseIds : []);
     setPkgSearch("");
@@ -691,7 +1308,12 @@ export default function AdminCourses() {
   const handleSavePackage = async () => {
     if (!pkgTitle.trim()) { alert("Package name is required"); return; }
     if (pkgCourseIds.length < 2) { alert("Select at least 2 courses for a package"); return; }
-    if (!pkgDeliveryEnabled && pkgPrice <= 0) { alert("Set a valid package price"); return; }
+    const hasValidPkgComboPrice = (pkgMasterCombinationRows || []).some(
+      (row) => row.isActive !== false
+        && Number(row.price || 0) > 0
+        && Boolean(row.viewModeId || row.validityOptionId || row.attemptOptionId || row.deliveryModeId || row.languageId),
+    );
+    if (!pkgDeliveryEnabled && pkgPrice <= 0 && !hasValidPkgComboPrice) { alert("Set a valid package price"); return; }
     setPkgSaving(true);
     try {
       const id = pkgEditingId || `pkg-${Date.now()}`;
@@ -706,9 +1328,41 @@ export default function AdminCourses() {
         if (pkgEnotesEnabled) bookAddons.push({ id: "enotes", label: "eNotes", price: Math.max(0, pkgEnotesPrice), enabled: true });
         if (pkgPhysBookEnabled) bookAddons.push({ id: "physical-book", label: "Physical Book", price: Math.max(0, pkgPhysBookPrice), enabled: true });
       }
-      const derivedPrice = pkgDeliveryEnabled ? (deliveryModes[0]?.price || 0) : pkgPrice;
-      const originalPrice = pkgOriginalPrice > 0 ? pkgOriginalPrice : pkgTotalRetailPrice;
+      const normalizedPkgCombos = (pkgMasterCombinationRows || [])
+        .map((item, index) => ({
+          id: String(item.id || `pkg-combo-${index + 1}`),
+          label: String(item.label || "").trim(),
+          viewModeId: item.viewModeId ? String(item.viewModeId).trim() : null,
+          validityOptionId: item.validityOptionId ? String(item.validityOptionId).trim() : null,
+          attemptOptionId: item.attemptOptionId ? String(item.attemptOptionId).trim() : null,
+          deliveryModeId: item.deliveryModeId ? String(item.deliveryModeId).trim() : null,
+          languageId: item.languageId ? String(item.languageId).trim() : null,
+          price: Number(item.price || 0),
+          originalPrice: item.originalPrice === null || item.originalPrice === undefined ? null : Number(item.originalPrice || 0),
+          isActive: item.isActive !== false,
+          sortOrder: Number(item.sortOrder || index + 1),
+        }))
+        .filter((item) => item.isActive !== false && item.price > 0 && Boolean(item.viewModeId || item.validityOptionId || item.attemptOptionId || item.deliveryModeId || item.languageId));
+
+
+      const comboBasedPrice = normalizedPkgCombos.length > 0 ? Number(normalizedPkgCombos[0].price || 0) : 0;
+      const comboBasedOriginal = normalizedPkgCombos.length > 0
+        ? Number(normalizedPkgCombos[0].originalPrice || normalizedPkgCombos[0].price || 0)
+        : 0;
+
+      const derivedPrice = pkgDeliveryEnabled ? (deliveryModes[0]?.price || 0) : (comboBasedPrice || pkgPrice);
+      const originalPrice = pkgOriginalPrice > 0
+        ? pkgOriginalPrice
+        : (comboBasedOriginal || pkgTotalRetailPrice || derivedPrice);
       const discount = originalPrice > derivedPrice ? Math.round(((originalPrice - derivedPrice) / originalPrice) * 100) : 0;
+
+      const comboViewModes = normalizedPkgCombos
+        .map((item) => (item.viewModeId ? masterViewModeMap[item.viewModeId] : null))
+        .filter((item): item is CourseMasterViewMode => Boolean(item));
+      const comboValidityModes = normalizedPkgCombos
+        .map((item) => (item.validityOptionId ? masterValidityMap[item.validityOptionId] : null))
+        .filter((item): item is CourseMasterValidityOption => Boolean(item));
+
       const pkg: ManagedCourse = {
         id, title: pkgTitle.trim(), category: pkgCategory || "general",
         subcategory: pkgSubcategory || "general", language: pkgLanguage || "Hindi + English",
@@ -718,10 +1372,17 @@ export default function AdminCourses() {
         lectures: pkgTotalLectures, hours: pkgTotalHours,
         isCombo: true, isMaterial: false, isVisible: true,
         packageCourseIds: pkgCourseIds,
-        viewPricingEnabled: pkgViewPricingEnabled, unlimitedViewsEnabled: pkgUnlimitedViews,
-        validityPricingEnabled: pkgValidityEnabled,
-        viewOptions: parsePositiveNumberList(pkgViewOptionsText, [1,2]),
-        validityOptionsDays: parsePositiveNumberList(pkgValidityDaysText, [30,90,180]),
+        viewPricingEnabled: normalizedPkgCombos.length > 0 ? true : pkgViewPricingEnabled,
+        unlimitedViewsEnabled: normalizedPkgCombos.length > 0
+          ? comboViewModes.some((item) => item.isLifetime === true)
+          : pkgUnlimitedViews,
+        validityPricingEnabled: normalizedPkgCombos.length > 0 ? true : pkgValidityEnabled,
+        viewOptions: normalizedPkgCombos.length > 0
+          ? Array.from(new Set(comboViewModes.map((item) => Number(item.maxViews || 0)).filter((value) => Number.isFinite(value) && value >= 1)))
+          : parsePositiveNumberList(pkgViewOptionsText, [1,2]),
+        validityOptionsDays: normalizedPkgCombos.length > 0
+          ? Array.from(new Set(comboValidityModes.map((item) => Number(item.days || 0)).filter((value) => Number.isFinite(value) && value >= 1)))
+          : parsePositiveNumberList(pkgValidityDaysText, [30,90,180]),
         selectedViews: 1, selectedValidityDays: 30,
         deliveryModePricingEnabled: pkgDeliveryEnabled, deliveryModes,
         selectedDeliveryModeId: deliveryModes[0]?.id || "online",
@@ -749,6 +1410,52 @@ export default function AdminCourses() {
         demoVideoSource: pkgDemoVideoSource,
         demoVideoUrl: String(pkgDemoVideoUrl || "").trim(),
         demoVideoThumbnailUrl: String(pkgDemoVideoThumbnailUrl || "").trim(),
+        masterConfig: {
+          combinationIds: normalizedPkgCombos.map((item) => item.id),
+          combinationPrices: Object.fromEntries(normalizedPkgCombos.map((item) => [item.id, {
+            price: Number(item.price || 0),
+            originalPrice: item.originalPrice === null || item.originalPrice === undefined ? null : Number(item.originalPrice || 0),
+          }])),
+          combinations: normalizedPkgCombos.map((item) => ({
+            id: item.id,
+            label: item.label || [
+              item.viewModeId ? masterViewModeMap[item.viewModeId]?.name : null,
+              item.validityOptionId ? masterValidityMap[item.validityOptionId]?.label : null,
+              item.attemptOptionId ? masterAttemptMap[item.attemptOptionId]?.label : null,
+              item.deliveryModeId ? masterDeliveryModeMap[item.deliveryModeId]?.name : null,
+              item.languageId ? masterLanguageMap[item.languageId]?.name : null,
+            ].filter((part): part is string => Boolean(part)).join(" | "),
+            viewModeId: item.viewModeId,
+            viewModeName: item.viewModeId ? (masterViewModeMap[item.viewModeId]?.name || "") : "",
+            viewCount: item.viewModeId
+              ? (() => {
+                  const mode = masterViewModeMap[item.viewModeId];
+                  const direct = Number(mode?.maxViews || 0);
+                  const parsed = parseFirstPositiveInt(mode?.name) || parseFirstPositiveInt(item.label);
+                  const next = parsed > direct ? parsed : direct;
+                  return next > 0 ? next : null;
+                })()
+              : null,
+            validityOptionId: item.validityOptionId,
+            validityLabel: item.validityOptionId ? (masterValidityMap[item.validityOptionId]?.label || "") : "",
+            validityDays: item.validityOptionId ? Number(masterValidityMap[item.validityOptionId]?.days || 0) : null,
+            attemptOptionId: item.attemptOptionId,
+            attemptLabel: item.attemptOptionId ? (masterAttemptMap[item.attemptOptionId]?.label || "") : "",
+            attemptEndDate: item.attemptOptionId ? (masterAttemptMap[item.attemptOptionId]?.endDate || "") : null,
+            deliveryModeId: item.deliveryModeId || null,
+            deliveryModeName: item.deliveryModeId ? (masterDeliveryModeMap[item.deliveryModeId]?.name || "") : "",
+            languageId: item.languageId || null,
+            languageName: item.languageId ? (masterLanguageMap[item.languageId]?.name || "") : "",
+            price: Number(item.price || 0),
+            originalPrice: item.originalPrice === null || item.originalPrice === undefined ? null : Number(item.originalPrice || 0),
+          })),
+          combinationBasis: {
+            useView: pkgCombinationUseView,
+            useValidity: pkgCombinationUseValidity,
+            useAttempt: false,
+            useMode: pkgCombinationUseMode,
+          },
+        },
       };
       upsertCourse(pkg);
       await adminApi.upsertCourse(pkg);
@@ -766,7 +1473,7 @@ export default function AdminCourses() {
     { key: "content",  label: "Content",  icon: FileText },
   ];
 
-  const selectCls = "h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/40";
+  const selectCls = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 shadow-sm hover:border-slate-300";
 
   return (
     <div className="space-y-5 font-['Inter']">
@@ -802,31 +1509,34 @@ export default function AdminCourses() {
           </div>
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
-              <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold" onClick={openCreateDialog}>
+              <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-lg shadow-primary/20" onClick={openCreateDialog}>
                 <Plus className="h-3.5 w-3.5" /> Add Course
               </Button>
             </DialogTrigger>
 
             {/* ─── Package Builder Button + Dialog ─────────── */}
-            <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl border-primary/40 px-4 text-xs font-semibold text-primary hover:bg-primary/5" onClick={openCreatePackage}>
+            <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl border-violet-200 bg-violet-50 px-4 text-xs font-semibold text-violet-700 hover:bg-violet-100 hover:border-violet-300" onClick={openCreatePackage}>
               <Layers className="h-3.5 w-3.5" /> Create Package
             </Button>
 
             {/* Package Builder Dialog */}
             <Dialog open={pkgOpen} onOpenChange={setPkgOpen}>
-              <DialogContent className="flex max-h-[94vh] max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-100 p-0 shadow-2xl">
-                <DialogHeader className="shrink-0 border-b border-slate-100 bg-gradient-to-r from-primary/5 to-accent/5 px-6 py-4">
-                  <div className="flex items-center gap-2.5">
-                    <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                      <Layers className="h-4 w-4 text-primary" />
+              <DialogContent className="flex max-h-[94vh] max-w-5xl flex-col overflow-hidden rounded-2xl border-0 p-0 shadow-2xl">
+                <DialogHeader className="shrink-0 relative overflow-hidden bg-gradient-to-br from-violet-600 via-violet-500 to-purple-600 px-6 py-5">
+                  <div className="absolute inset-0 bg-[url('data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iNjAiIGhlaWdodD0iNjAiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyI+PGRlZnM+PHBhdHRlcm4gaWQ9ImdyaWQiIHdpZHRoPSI2MCIgaGVpZ2h0PSI2MCIgcGF0dGVyblVuaXRzPSJ1c2VyU3BhY2VPblVzZSI+PHBhdGggZD0iTSA2MCAwIEwgMCAwIDAgNjAiIGZpbGw9Im5vbmUiIHN0cm9rZT0icmdiYSgyNTUsMjU1LDI1NSwwLjEpIiBzdHJva2Utd2lkdGg9IjEiLz48L3BhdHRlcm4+PC9kZWZzPjxyZWN0IHdpZHRoPSIxMDAlIiBoZWlnaHQ9IjEwMCUiIGZpbGw9InVybCgjZ3JpZCkiIC8+PC9zdmc+')] opacity-20"></div>
+                  <div className="relative flex items-center gap-3">
+                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-white/20 backdrop-blur-sm shadow-lg">
+                      <Layers className="h-5 w-5 text-white" />
                     </div>
-                    <DialogTitle className="text-base font-bold text-slate-900">{pkgEditingId ? "Edit Package" : "Create Course Package"}</DialogTitle>
+                    <div>
+                      <DialogTitle className="text-lg font-bold text-white">{pkgEditingId ? "Edit Package" : "Create Course Package"}</DialogTitle>
+                      <p className="text-xs text-white/70 mt-0.5">Bundle multiple courses into one combo package with custom pricing</p>
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-slate-500">Bundle multiple courses into one combo package with a custom price.</p>
                 </DialogHeader>
 
                 {/* Tabs */}
-                <div className="shrink-0 flex border-b border-slate-100 px-6">
+                <div className="shrink-0 flex border-b border-slate-100 bg-white px-6 shadow-sm">
                   {([
                     { key: "courses" as const, label: "Courses", icon: BookOpen },
                     { key: "details" as const, label: "Details", icon: Tag },
@@ -836,9 +1546,15 @@ export default function AdminCourses() {
                     { key: "content" as const, label: "Content", icon: FileText },
                   ]).map((t) => (
                     <button key={t.key} type="button" onClick={() => setPkgTab(t.key)}
-                      className={`flex items-center gap-1.5 px-3 py-3 text-xs font-semibold transition-colors ${pkgTab === t.key ? "border-b-2 border-primary text-primary" : "text-slate-500 hover:text-slate-700"}`}>
-                      <t.icon className="h-3.5 w-3.5" />{t.label}
-                      {t.key === "courses" && pkgCourseIds.length > 0 && <span className="ml-0.5 rounded-full bg-primary/10 px-1.5 text-[9px] font-bold text-primary">{pkgCourseIds.length}</span>}
+                      className={`group flex items-center gap-2 px-4 py-3.5 text-xs font-semibold transition-all relative ${pkgTab === t.key ? "text-violet-600" : "text-slate-400 hover:text-slate-600"}`}>
+                      <div className={`p-1.5 rounded-lg transition-all ${pkgTab === t.key ? "bg-violet-100" : "bg-slate-100 group-hover:bg-slate-200"}`}>
+                        <t.icon className={`h-3.5 w-3.5 transition-colors ${pkgTab === t.key ? "text-violet-600" : "text-slate-400 group-hover:text-slate-600"}`} />
+                      </div>
+                      {t.label}
+                      {t.key === "courses" && pkgCourseIds.length > 0 && <span className="ml-0.5 rounded-full bg-violet-100 px-1.5 text-[9px] font-bold text-violet-600">{pkgCourseIds.length}</span>}
+                      {pkgTab === t.key && (
+                        <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-gradient-to-r from-violet-500 to-purple-500 rounded-full"></div>
+                      )}
                     </button>
                   ))}
                 </div>
@@ -893,26 +1609,28 @@ export default function AdminCourses() {
 
                   {/* ── DETAILS TAB ── */}
                   {pkgTab === "details" && (
-                    <div className="space-y-4">
-                      <div className="space-y-1.5">
-                        <Label>Package Name *</Label>
-                        <Input className={fieldCls} placeholder="e.g., CA Final Complete Combo Pack" value={pkgTitle} onChange={(e) => setPkgTitle(e.target.value)} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Thumbnail</Label>
-                        <div className="flex gap-2 items-start">
-                          {pkgThumbnail && <img src={pkgThumbnail} alt="thumb" className="h-14 w-20 rounded-xl object-cover shrink-0" />}
-                          <div className="flex-1 space-y-1.5">
-                            <Input className={fieldCls} placeholder="https://… or upload below" value={pkgThumbnail} onChange={(e) => setPkgThumbnail(e.target.value)} />
-                            <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-primary/40 hover:text-primary transition-colors w-fit">
-                              {pkgThumbnailUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
-                              {pkgThumbnailUploading ? "Uploading..." : "Upload Image"}
-                              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadPkgThumbnail(e.target.files?.[0])} />
-                            </label>
+                    <div className="space-y-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        <div className="space-y-1.5">
+                          <Label>Package Name *</Label>
+                          <Input className={fieldCls} placeholder="e.g., CA Final Complete Combo Pack" value={pkgTitle} onChange={(e) => setPkgTitle(e.target.value)} />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label>Thumbnail</Label>
+                          <div className="flex gap-2 items-start">
+                            {pkgThumbnail && <img src={pkgThumbnail} alt="thumb" className="h-14 w-20 rounded-xl object-cover shrink-0" />}
+                            <div className="flex-1 space-y-1.5">
+                              <Input className={fieldCls} placeholder="https://… or upload below" value={pkgThumbnail} onChange={(e) => setPkgThumbnail(e.target.value)} />
+                              <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-primary/40 hover:text-primary transition-colors w-fit">
+                                {pkgThumbnailUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
+                                {pkgThumbnailUploading ? "Uploading..." : "Upload Image"}
+                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadPkgThumbnail(e.target.files?.[0])} />
+                              </label>
+                            </div>
                           </div>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-1.5">
                           <Label>Category</Label>
                           <select className={selectCls} value={pkgCategory} onChange={(e) => { setPkgCategory(e.target.value); setPkgSubcategory(categories.find((c) => c.parentId === e.target.value)?.id || "general"); }}>
@@ -926,7 +1644,7 @@ export default function AdminCourses() {
                           </select>
                         </div>
                       </div>
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                         <div className="space-y-1.5"><Label>Language</Label><Input className={fieldCls} value={pkgLanguage} onChange={(e) => setPkgLanguage(e.target.value)} /></div>
                         <div className="space-y-1.5"><Label>Professor</Label><Input className={fieldCls} value={pkgProfessor} onChange={(e) => setPkgProfessor(e.target.value)} /></div>
                       </div>
@@ -968,6 +1686,216 @@ export default function AdminCourses() {
                         {pkgValidityEnabled && (
                           <div className="pl-5 space-y-1.5"><Label>Validity options in days (comma-separated)</Label><Input className={fieldCls} placeholder="30,90,180" value={pkgValidityDaysText} onChange={(e) => setPkgValidityDaysText(e.target.value)} /></div>
                         )}
+                      </div>
+                      <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4 space-y-3">
+                        <p className="text-xs font-bold text-orange-800">Package Price Combinations</p>
+                        <p className="text-[11px] text-orange-700">Master se options aayenge. Yahan tick karke select karein kis base par bechna hai, phir possibilities generate karke price set karein.</p>
+                        <div className="rounded-lg border border-orange-100 bg-white p-3 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <p className="text-[11px] font-semibold text-slate-700">Sell Based On</p>
+                            <a href="/admin/masters" target="_blank" className="text-[10px] text-primary hover:underline flex items-center gap-1">
+                              <Settings className="h-3 w-3" /> Configure Masters
+                            </a>
+                          </div>
+                          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+                            <label className={`flex cursor-pointer items-center gap-2.5 rounded-lg border p-2.5 transition-all ${pkgCombinationUseView ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'}`}>
+                              <input type="checkbox" checked={pkgCombinationUseView} onChange={(e) => setPkgCombinationUseView(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-primary" />
+                              <div className="flex flex-col">
+                                <span className="text-xs font-semibold text-slate-700">View</span>
+                                <span className={`text-[10px] ${activeMasterViewModes.length > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                  {activeMasterViewModes.length} option{activeMasterViewModes.length !== 1 ? 's' : ''} available
+                                </span>
+                              </div>
+                            </label>
+                            <label className={`flex cursor-pointer items-center gap-2.5 rounded-lg border p-2.5 transition-all ${pkgCombinationUseValidity ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'}`}>
+                              <input type="checkbox" checked={pkgCombinationUseValidity} onChange={(e) => setPkgCombinationUseValidity(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-primary" />
+                              <div className="flex flex-col">
+                                <span className="text-xs font-semibold text-slate-700">Validity</span>
+                                <span className={`text-[10px] ${activeMasterValidityOptions.length > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                  {activeMasterValidityOptions.length} option{activeMasterValidityOptions.length !== 1 ? 's' : ''} available
+                                </span>
+                              </div>
+                            </label>
+                            <label className={`flex cursor-pointer items-center gap-2.5 rounded-lg border p-2.5 transition-all ${pkgCombinationUseMode ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'}`}>
+                              <input type="checkbox" checked={pkgCombinationUseMode} onChange={(e) => setPkgCombinationUseMode(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-primary" />
+                              <div className="flex flex-col">
+                                <span className="text-xs font-semibold text-slate-700">Lecture Mode</span>
+                                <span className={`text-[10px] ${activeMasterDeliveryModes.length > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                  {activeMasterDeliveryModes.length} option{activeMasterDeliveryModes.length !== 1 ? 's' : ''} available
+                                </span>
+                              </div>
+                            </label>
+                          </div>
+                          <div className="flex flex-wrap gap-2 pt-1">
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9"
+                              onClick={() => {
+                                if (!pkgCombinationUseView && !pkgCombinationUseValidity && !pkgCombinationUseMode) {
+                                  alert("At least one basis is required to generate combinations");
+                                  return;
+                                }
+                                if (pkgCombinationUseView && activeMasterViewModes.length === 0) {
+                                  alert("No active View options found in Master");
+                                  return;
+                                }
+                                if (pkgCombinationUseValidity && activeMasterValidityOptions.length === 0) {
+                                  alert("No active Validity options found in Master");
+                                  return;
+                                }
+                                if (pkgCombinationUseMode && activeMasterDeliveryModes.length === 0) {
+                                  alert("No active Lecture Mode options found in Master");
+                                  return;
+                                }
+                                setPkgMasterCombinationRows(
+                                  buildCombinationRows(
+                                    {
+                                      useView: pkgCombinationUseView,
+                                      useValidity: pkgCombinationUseValidity,
+                                      useAttempt: false,
+                                      useMode: pkgCombinationUseMode,
+                                    },
+                                    pkgMasterCombinationRows,
+                                    "pkg",
+                                    pkgPrice,
+                                    pkgOriginalPrice,
+                                  ),
+                                );
+                              }}
+                            >
+                              Generate Possibilities
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              className="h-9"
+                              onClick={() => setPkgMasterCombinationRows((prev) => prev.filter((row) => row.isActive !== false))}
+                            >
+                              Remove Inactive
+                            </Button>
+                          </div>
+                        </div>
+                        <div className="space-y-2">
+                          {pkgMasterCombinationRows.map((combo, index) => (
+                            <div key={`${combo.id}-${index}`} className="grid gap-2 rounded-lg border border-orange-100 bg-white p-3 md:grid-cols-[90px_1fr_1fr_1fr_120px_120px_auto]">
+                              <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 text-[11px] font-semibold text-slate-700">
+                                <input
+                                  type="checkbox"
+                                  checked={combo.isActive !== false}
+                                  onChange={(event) => {
+                                    const nextRows = [...pkgMasterCombinationRows];
+                                    nextRows[index] = { ...combo, isActive: event.target.checked };
+                                    setPkgMasterCombinationRows(nextRows);
+                                  }}
+                                  className="h-4 w-4 rounded border-slate-300 accent-primary"
+                                />
+                                Active
+                              </label>
+                              <select
+                                className={selectCls}
+                                value={combo.viewModeId || ""}
+                                disabled={!pkgCombinationUseView}
+                                onChange={(event) => {
+                                  const nextRows = [...pkgMasterCombinationRows];
+                                  nextRows[index] = { ...combo, viewModeId: event.target.value || null };
+                                  setPkgMasterCombinationRows(nextRows);
+                                }}
+                              >
+                                <option value="">{pkgCombinationUseView ? "View" : "Not used"}</option>
+                                {activeMasterViewModes.map((item) => (
+                                  <option key={item.id} value={item.id}>{item.name}</option>
+                                ))}
+                              </select>
+                              <select
+                                className={selectCls}
+                                value={combo.validityOptionId || ""}
+                                disabled={!pkgCombinationUseValidity}
+                                onChange={(event) => {
+                                  const nextRows = [...pkgMasterCombinationRows];
+                                  nextRows[index] = { ...combo, validityOptionId: event.target.value || null };
+                                  setPkgMasterCombinationRows(nextRows);
+                                }}
+                              >
+                                <option value="">{pkgCombinationUseValidity ? "Validity" : "Not used"}</option>
+                                {activeMasterValidityOptions.map((item) => (
+                                  <option key={item.id} value={item.id}>{item.label}</option>
+                                ))}
+                              </select>
+                              <select
+                                className={selectCls}
+                                value={combo.deliveryModeId || ""}
+                                disabled={!pkgCombinationUseMode}
+                                onChange={(event) => {
+                                  const nextRows = [...pkgMasterCombinationRows];
+                                  nextRows[index] = { ...combo, deliveryModeId: event.target.value || null };
+                                  setPkgMasterCombinationRows(nextRows);
+                                }}
+                              >
+                                <option value="">{pkgCombinationUseMode ? "Lecture mode" : "Not used"}</option>
+                                {activeMasterDeliveryModes.map((item) => (
+                                  <option key={item.id} value={item.id}>{item.name}</option>
+                                ))}
+                              </select>
+                              <Input
+                                className={fieldCls}
+                                type="number"
+                                min={0}
+                                placeholder="Price"
+                                value={Number(combo.price || 0)}
+                                onChange={(event) => {
+                                  const nextRows = [...pkgMasterCombinationRows];
+                                  nextRows[index] = { ...combo, price: Number(event.target.value) || 0 };
+                                  setPkgMasterCombinationRows(nextRows);
+                                }}
+                              />
+                              <Input
+                                className={fieldCls}
+                                type="number"
+                                min={0}
+                                placeholder="Original"
+                                value={Number(combo.originalPrice || 0)}
+                                onChange={(event) => {
+                                  const nextRows = [...pkgMasterCombinationRows];
+                                  const nextOriginal = Number(event.target.value) || 0;
+                                  nextRows[index] = { ...combo, originalPrice: nextOriginal > 0 ? nextOriginal : null };
+                                  setPkgMasterCombinationRows(nextRows);
+                                }}
+                              />
+                              <Button
+                                type="button"
+                                variant="outline"
+                                className="h-9"
+                                onClick={() => setPkgMasterCombinationRows((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
+                              >
+                                Remove
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="h-9"
+                          onClick={() => {
+                            setPkgMasterCombinationRows((prev) => [
+                              ...prev,
+                              {
+                                id: `pkg-combo-${Date.now()}-${prev.length + 1}`,
+                                label: "",
+                                viewModeId: pkgCombinationUseView ? (activeMasterViewModes[0]?.id || null) : null,
+                                validityOptionId: pkgCombinationUseValidity ? (activeMasterValidityOptions[0]?.id || null) : null,
+                                deliveryModeId: pkgCombinationUseMode ? (activeMasterDeliveryModes[0]?.id || null) : null,
+                                price: 0,
+                                originalPrice: null,
+                                isActive: true,
+                                sortOrder: prev.length + 1,
+                              },
+                            ]);
+                          }}
+                        >
+                          Add Combination
+                        </Button>
                       </div>
                       {/* Book addons */}
                       <div className="rounded-xl border border-slate-200 p-4 space-y-3">
@@ -1163,11 +2091,16 @@ export default function AdminCourses() {
                 </div>
 
                 {/* Footer */}
-                <div className="shrink-0 flex items-center justify-between border-t border-slate-100 bg-slate-50 px-6 py-4">
-                  <p className="text-[11px] text-slate-400">{pkgCourseIds.length < 2 ? "Select at least 2 courses" : `${pkgCourseIds.length} courses · ${pkgTotalLectures} lectures · ${pkgTotalHours}h total`}</p>
-                  <div className="flex gap-2">
-                    <Button type="button" variant="outline" size="sm" className="rounded-xl text-xs" onClick={() => setPkgOpen(false)}>Cancel</Button>
-                    <Button size="sm" className="gap-1.5 rounded-xl px-5 text-xs font-semibold" onClick={handleSavePackage} disabled={pkgSaving || pkgCourseIds.length < 2}>
+                <div className="shrink-0 flex items-center justify-between border-t border-slate-100 bg-gradient-to-r from-slate-50 to-white px-6 py-4">
+                  <div className="flex items-center gap-2">
+                    <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${pkgCourseIds.length >= 2 ? "bg-emerald-100" : "bg-amber-100"}`}>
+                      <Layers className={`h-4 w-4 ${pkgCourseIds.length >= 2 ? "text-emerald-600" : "text-amber-600"}`} />
+                    </div>
+                    <p className="text-xs font-medium text-slate-600">{pkgCourseIds.length < 2 ? "Select at least 2 courses to create a package" : `${pkgCourseIds.length} courses · ${pkgTotalLectures} lectures · ${pkgTotalHours}h total`}</p>
+                  </div>
+                  <div className="flex gap-2.5">
+                    <Button type="button" variant="outline" size="sm" className="rounded-xl text-xs font-medium hover:bg-slate-50" onClick={() => setPkgOpen(false)}>Cancel</Button>
+                    <Button size="sm" className="gap-1.5 rounded-xl px-5 text-xs font-semibold shadow-lg shadow-violet-500/20" onClick={handleSavePackage} disabled={pkgSaving || pkgCourseIds.length < 2}>
                       {pkgSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Layers className="h-3.5 w-3.5" />}
                       {pkgEditingId ? "Update Package" : "Save Package"}
                     </Button>
@@ -1177,340 +2110,571 @@ export default function AdminCourses() {
             </Dialog>
 
             {/* ─── Course Dialog ─────────────────────────────────── */}
-            <DialogContent className="flex max-h-[92vh] max-w-2xl flex-col overflow-hidden rounded-2xl border border-slate-100 p-0 shadow-2xl">
-              <DialogHeader className="shrink-0 border-b border-slate-100 px-6 py-4">
-                <DialogTitle className="text-base font-bold text-slate-900">{editingId ? "Edit Course" : "Add New Course"}</DialogTitle>
+            <DialogContent className="flex max-h-[95vh] max-w-5xl flex-col overflow-hidden rounded-2xl border-0 p-0 shadow-2xl">
+              {/* ── Gradient Header ── */}
+              <DialogHeader className="shrink-0 relative overflow-hidden bg-gradient-to-br from-indigo-700 via-blue-600 to-primary px-7 py-5">
+                <div className="absolute inset-0 opacity-20 bg-[linear-gradient(rgba(255,255,255,0.05)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.05)_1px,transparent_1px)] bg-[size:20px_20px]"></div>
+                <div className="relative flex items-center gap-4">
+                  <div className="flex h-13 w-13 shrink-0 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm shadow-xl ring-1 ring-white/20">
+                    <BookOpen className="h-6 w-6 text-white" />
+                  </div>
+                  <div className="flex-1">
+                    <DialogTitle className="text-xl font-bold text-white">{editingId ? "Edit Course" : "Create New Course"}</DialogTitle>
+                    <p className="text-xs text-white/60 mt-0.5">{editingId ? "Update course details, pricing & content settings" : "Fill in the details to publish a new course to your catalog"}</p>
+                  </div>
+                  {form.thumbnail && (
+                    <img src={form.thumbnail} alt="" className="h-14 w-20 shrink-0 rounded-xl object-cover ring-2 ring-white/30 shadow-lg" />
+                  )}
+                </div>
               </DialogHeader>
 
-              {/* Tabs row */}
-              <div className="shrink-0 flex border-b border-slate-100 px-6">
-                {dialogTabs.map((tab) => (
-                  <button key={tab.key} type="button" onClick={() => setDialogTab(tab.key)}
-                    className={`flex items-center gap-1.5 px-3 py-3 text-xs font-semibold transition-colors ${dialogTab === tab.key ? "border-b-2 border-primary text-primary" : "text-slate-500 hover:text-slate-700"}`}>
-                    <tab.icon className="h-3.5 w-3.5" />{tab.label}
-                  </button>
-                ))}
-              </div>
+              {/* ── Two-panel body ── */}
+              <div className="flex flex-1 overflow-hidden">
 
-              {/* Tab Content */}
-              <div className="flex-1 overflow-y-auto px-6 py-5">
-
-                {/* ── BASIC TAB ── */}
-                {dialogTab === "basic" && (
-                  <div className="space-y-4">
-                    <div className="space-y-1.5">
-                      <Label>Course Title *</Label>
-                      <Input className={fieldCls} placeholder="e.g., CA Final Advanced Accounting" value={form.title} onChange={(e) => sf({ title: e.target.value })} />
-                    </div>
-                    <div className="space-y-1.5">
-                      <Label>Thumbnail URL</Label>
-                      <div className="flex items-start gap-2">
-                        {form.thumbnail && <img src={form.thumbnail} alt="thumb" className="h-14 w-20 shrink-0 rounded-xl object-cover" />}
-                        <div className="flex-1 space-y-1.5">
-                          <Input className={fieldCls} placeholder="https://… or upload below" value={form.thumbnail || ""} onChange={(e) => sf({ thumbnail: e.target.value })} />
-                          <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
-                            {courseThumbnailUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
-                            {courseThumbnailUploading ? "Uploading..." : "Upload Image"}
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadCourseThumbnail(e.target.files?.[0])} />
-                          </label>
+                {/* Left sidebar navigation */}
+                <nav className="shrink-0 w-44 border-r border-slate-100 bg-slate-50/70 flex flex-col gap-1 p-3 overflow-y-auto">
+                  {dialogTabs.map((tab) => {
+                    const isActive = dialogTab === tab.key;
+                    const colors: Record<string, {grad: string; bg: string; text: string; border: string}> = {
+                      basic:    { grad: "from-indigo-500 to-blue-500",   bg: "bg-indigo-50",  text: "text-indigo-700",  border: "border-indigo-200" },
+                      demo:     { grad: "from-violet-500 to-purple-500", bg: "bg-violet-50",  text: "text-violet-700",  border: "border-violet-200" },
+                      pricing:  { grad: "from-emerald-500 to-teal-500",  bg: "bg-emerald-50", text: "text-emerald-700", border: "border-emerald-200" },
+                      delivery: { grad: "from-orange-500 to-amber-500",  bg: "bg-orange-50",  text: "text-orange-700",  border: "border-orange-200" },
+                      content:  { grad: "from-rose-500 to-pink-500",     bg: "bg-rose-50",    text: "text-rose-700",    border: "border-rose-200" },
+                    };
+                    const c = colors[tab.key] ?? colors.basic;
+                    return (
+                      <button key={tab.key} type="button" onClick={() => setDialogTab(tab.key)}
+                        className={`group flex w-full items-center gap-2.5 rounded-xl px-3 py-2.5 text-left text-xs font-semibold transition-all ${isActive ? `border ${c.border} ${c.bg} ${c.text} shadow-sm` : "text-slate-500 hover:bg-white hover:text-slate-700 hover:shadow-sm border border-transparent"}`}>
+                        <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br ${c.grad} shadow-sm`}>
+                          <tab.icon className="h-3.5 w-3.5 text-white" />
                         </div>
-                      </div>
+                        {tab.label}
+                      </button>
+                    );
+                  })}
+                  {/* Auto stats widget */}
+                  <div className="mt-auto pt-3 border-t border-slate-200 space-y-1.5">
+                    <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 px-1">Auto Stats</p>
+                    <div className="rounded-xl bg-white border border-slate-200 px-2 py-2 text-center">
+                      <p className="text-lg font-black text-slate-800">{autoMeta.lectures}</p>
+                      <p className="text-[10px] text-slate-400">Lectures</p>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label>Category</Label>
-                        <select className={selectCls} value={form.category} onChange={(e) => sf({ category: e.target.value })}>
-                          {parentCategories.length === 0 && <option value="general">General</option>}
-                          {parentCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Subcategory / Level</Label>
-                        <select className={selectCls} value={form.subcategory} onChange={(e) => sf({ subcategory: e.target.value })}>
-                          {subcategoryOptions.length === 0 && <option value="general">General</option>}
-                          {subcategoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                        </select>
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-3 gap-3">
-                      <div className="space-y-1.5">
-                        <Label>Price (₹)</Label>
-                        <Input className={fieldCls} type="number" placeholder="999" value={form.price} disabled={Boolean(form.deliveryModePricingEnabled)} onChange={(e) => sf({ price: Number(e.target.value) || 0 })} />
-                        {form.deliveryModePricingEnabled && <p className="text-[10px] text-slate-400">Controlled by delivery mode pricing</p>}
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Original Price (₹)</Label>
-                        <Input className={fieldCls} type="number" placeholder="1299" value={form.originalPrice} disabled={Boolean(form.deliveryModePricingEnabled)} onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })} />
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Tax (%)</Label>
-                        <Input className={fieldCls} type="number" min={0} step={0.01} placeholder="18" value={form.taxPercentage} onChange={(e) => sf({ taxPercentage: Math.max(0, Number(e.target.value) || 0) })} />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label>Professor</Label>
-                        <Input
-                          className={fieldCls}
-                          placeholder="Faculty Name"
-                          list="course-faculty-options"
-                          value={form.professor}
-                          onChange={(e) => sf({ professor: e.target.value })}
-                        />
-                        <datalist id="course-faculty-options">
-                          {suggestedFaculty.map((name) => (
-                            <option key={name} value={name} />
-                          ))}
-                        </datalist>
-                        {form.professor.trim() && suggestedFaculty.length > 0 && (
-                          <div className="flex flex-wrap gap-1 pt-1">
-                            {suggestedFaculty.map((name) => (
-                              <button
-                                key={name}
-                                type="button"
-                                onClick={() => sf({ professor: name })}
-                                className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-medium text-slate-600 hover:border-primary/40 hover:text-primary"
-                              >
-                                {name}
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Language</Label>
-                        <Input className={fieldCls} placeholder="English" value={form.language} onChange={(e) => sf({ language: e.target.value })} />
-                      </div>
-                    </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="space-y-1.5">
-                        <Label>Lectures (Auto)</Label>
-                        <Input className={`${fieldCls} bg-slate-50`} type="number" value={autoMeta.lectures} disabled />
-                        <p className="text-[10px] text-slate-400">Auto-counted from Course Content</p>
-                      </div>
-                      <div className="space-y-1.5">
-                        <Label>Total Duration (Auto)</Label>
-                        <Input className={`${fieldCls} bg-slate-50`} value={autoMeta.formattedDuration} disabled />
-                        <p className="text-[10px] text-slate-400">Auto-calculated HH:MM:SS</p>
-                      </div>
+                    <div className="rounded-xl bg-white border border-slate-200 px-2 py-2 text-center">
+                      <p className="text-base font-black text-slate-800 tabular-nums">{autoMeta.formattedDuration.slice(0,5)}</p>
+                      <p className="text-[10px] text-slate-400">Duration</p>
                     </div>
                   </div>
-                )}
+                </nav>
 
-                {/* ── DEMO TAB ── */}
-                {dialogTab === "demo" && (
-                  <div className="space-y-4">
-                    {checkboxRow("Show Demo Lecture on Course Page", form.demoVideoVisible || false, (v) => sf({ demoVideoVisible: v }))}
-                    {form.demoVideoVisible && (
-                      <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-                        <div className="space-y-1.5">
-                          <Label>Demo Lecture Title</Label>
-                          <Input className={fieldCls} placeholder="Introduction Lecture" value={form.demoVideoTitle || ""} onChange={(e) => sf({ demoVideoTitle: e.target.value })} />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label>Description</Label>
-                          <textarea className="h-20 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" value={form.demoVideoDescription || ""} onChange={(e) => sf({ demoVideoDescription: e.target.value })} placeholder="Brief description…" />
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label>Video Source</Label>
-                          <div className="flex gap-3">
-                            {(["youtube", "upload", "direct"] as const).map((src) => (
-                              <label key={src} className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-700">
-                                <input type="radio" name="videoSource" value={src} checked={form.demoVideoSource === src} onChange={() => sf({ demoVideoSource: src })} className="accent-primary" />
-                                {src === "youtube" ? "YouTube" : src === "upload" ? "CDN Upload" : "Direct URL"}
-                              </label>
-                            ))}
+                {/* Right content panel */}
+                <div className="flex-1 overflow-y-auto">
+                  <div className="px-7 py-5 space-y-5">
+
+                    {/* ── BASIC TAB ── */}
+                    {dialogTab === "basic" && (
+                      <div className="space-y-5">
+                        {/* Course Identity */}
+                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-slate-100 px-5 py-3">
+                            <div className="h-5 w-5 rounded-md bg-indigo-600 flex items-center justify-center shrink-0"><BookOpen className="h-3 w-3 text-white" /></div>
+                            <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Course Identity</p>
+                          </div>
+                          <div className="p-5 space-y-4">
+                            <div className="space-y-1.5">
+                              <Label>Course Title *</Label>
+                              <Input className={fieldCls} placeholder="e.g., CA Final Advanced Accounting" value={form.title} onChange={(e) => sf({ title: e.target.value })} />
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1.5">
+                                <Label>Category *</Label>
+                                <select className={selectCls} value={form.category} onChange={(e) => sf({ category: e.target.value, subcategory: "" })}>
+                                  <option value="">Select Category</option>
+                                  {parentCategories.length === 0 && <option value="general">General</option>}
+                                  {parentCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Level / Subcategory</Label>
+                                <select className={selectCls} value={form.subcategory} onChange={(e) => sf({ subcategory: e.target.value })}>
+                                  <option value="">Select Level</option>
+                                  {subcategoryOptions.length === 0 && <option value="general">General</option>}
+                                  {subcategoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                                </select>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1.5">
+                                <Label>Subject</Label>
+                                <select
+                                  className={selectCls}
+                                  value={form.subject}
+                                  onChange={(e) => sf({ subject: e.target.value, chapter: "" })}
+                                >
+                                  <option value="">Select Subject</option>
+                                  {subjectOptions.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+                                </select>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Chapter</Label>
+                                <div className={`rounded-xl border border-slate-200 bg-white p-2 ${!form.subject ? "opacity-60" : ""}`}>
+                                  {!form.subject ? (
+                                    <p className="px-1 py-2 text-xs text-slate-400">Select Subject First</p>
+                                  ) : chapterOptions.length === 0 ? (
+                                    <p className="px-1 py-2 text-xs text-slate-400">No chapters found for this subject</p>
+                                  ) : (
+                                    <div className="max-h-40 space-y-1 overflow-y-auto pr-1">
+                                      {chapterOptions.map((item) => {
+                                        const checked = form.selectedChapters.includes(item.name);
+                                        return (
+                                          <label key={item.id} className={`flex cursor-pointer items-center gap-2 rounded-lg px-2 py-1.5 text-xs transition-colors ${checked ? "bg-indigo-50 text-indigo-700" : "hover:bg-slate-50 text-slate-600"}`}>
+                                            <input
+                                              type="checkbox"
+                                              checked={checked}
+                                              onChange={(e) => toggleChapterSelection(item.name, e.target.checked)}
+                                              className="h-3.5 w-3.5 rounded border-slate-300 accent-indigo-600"
+                                            />
+                                            <span className="font-medium">{item.name}</span>
+                                          </label>
+                                        );
+                                      })}
+                                    </div>
+                                  )}
+                                </div>
+                                <p className="text-[10px] text-slate-400">
+                                  {form.selectedChapters.length > 0
+                                    ? `${form.selectedChapters.length} chapter${form.selectedChapters.length > 1 ? "s" : ""} selected`
+                                    : "Select one or more chapters"}
+                                </p>
+                              </div>
+                            </div>
+                            <div className="grid grid-cols-2 gap-4">
+                              <div className="space-y-1.5">
+                                <Label>Professor / Faculty</Label>
+                                <Input className={fieldCls} placeholder="Faculty Name" list="course-faculty-options2" value={form.professor} onChange={(e) => sf({ professor: e.target.value })} />
+                                <datalist id="course-faculty-options2">{suggestedFaculty.map((name) => <option key={name} value={name} />)}</datalist>
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Language</Label>
+                                {masterLanguages.length > 0 ? (
+                                  <select className={selectCls} value={form.language} onChange={(e) => sf({ language: e.target.value })}>
+                                    <option value="">Select Language</option>
+                                    {masterLanguages.map((lang) => <option key={lang.id} value={lang.name}>{lang.name}</option>)}
+                                  </select>
+                                ) : (
+                                  <Input className={fieldCls} placeholder="Hindi / English" value={form.language} onChange={(e) => sf({ language: e.target.value })} />
+                                )}
+                              </div>
+                            </div>
                           </div>
                         </div>
-                        <div className="space-y-1.5">
-                          <Label>{form.demoVideoSource === "youtube" ? "YouTube Video ID" : "Video URL"}</Label>
-                          <Input className={fieldCls} placeholder={form.demoVideoSource === "youtube" ? "e.g., dQw4w9WgXcQ" : "https://…"} value={form.demoVideoUrl || ""} onChange={(e) => sf({ demoVideoUrl: e.target.value })} />
-                          {form.demoVideoSource !== "youtube" && (
-                            <div className="flex items-center gap-2">
-                              <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
-                              {courseDemoVideoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
-                              {courseDemoVideoUploading ? `Uploading ${courseUploadPercent}%...` : "Upload Video File"}
-                              <input type="file" accept="video/*" className="hidden" onChange={(e) => handleUploadCourseDemoVideo(e.target.files?.[0])} />
-                              </label>
-                              {courseDemoVideoUploading && (
-                                <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>
-                                  Cancel
-                                </Button>
+
+                        {/* Thumbnail */}
+                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-indigo-50 to-blue-50 border-b border-slate-100 px-5 py-3">
+                            <div className="h-5 w-5 rounded-md bg-blue-600 flex items-center justify-center shrink-0"><Eye className="h-3 w-3 text-white" /></div>
+                            <p className="text-xs font-bold text-indigo-700 uppercase tracking-wider">Thumbnail</p>
+                          </div>
+                          <div className="p-5">
+                            <div className="flex items-start gap-4">
+                              {form.thumbnail ? (
+                                <img src={form.thumbnail} alt="" className="h-20 w-28 shrink-0 rounded-xl object-cover ring-2 ring-indigo-100 shadow-md" />
+                              ) : (
+                                <div className="flex h-20 w-28 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 border-2 border-dashed border-slate-200 text-slate-300">
+                                  <BookOpen className="h-8 w-8" />
+                                </div>
                               )}
+                              <div className="flex-1 space-y-2">
+                                <Input className={fieldCls} placeholder="Paste image URL here or upload →" value={form.thumbnail || ""} onChange={(e) => sf({ thumbnail: e.target.value })} />
+                                <label className="flex w-fit cursor-pointer items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 text-[11px] font-bold text-white shadow-md shadow-indigo-200/50 transition-all hover:bg-indigo-700 hover:shadow-lg active:scale-95">
+                                  {courseThumbnailUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
+                                  {courseThumbnailUploading ? "Uploading..." : "Upload Image"}
+                                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadCourseThumbnail(e.target.files?.[0])} />
+                                </label>
+                              </div>
                             </div>
-                          )}
-                          {form.demoVideoSource === "youtube" && form.demoVideoUrl && <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{form.demoVideoUrl}</p>}
+                          </div>
                         </div>
-                        <div className="space-y-1.5">
-                          <Label>Video Thumbnail URL (Optional)</Label>
-                          <Input className={fieldCls} placeholder="https://…" value={form.demoVideoThumbnailUrl || ""} onChange={(e) => sf({ demoVideoThumbnailUrl: e.target.value })} />
-                          <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
-                            {courseDemoThumbUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
-                            {courseDemoThumbUploading ? "Uploading..." : "Upload Thumbnail"}
-                            <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadCourseDemoThumbnail(e.target.files?.[0])} />
-                          </label>
-                          {form.demoVideoThumbnailUrl && <img src={form.demoVideoThumbnailUrl} alt="thumb" className="mt-1 h-16 rounded-xl object-cover" />}
+
+                        {/* Base Pricing */}
+                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-slate-100 px-5 py-3">
+                            <div className="h-5 w-5 rounded-md bg-emerald-600 flex items-center justify-center shrink-0"><DollarSign className="h-3 w-3 text-white" /></div>
+                            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Base Pricing</p>
+                          </div>
+                          <div className="p-5">
+                            <div className="grid grid-cols-3 gap-4">
+                              <div className="space-y-1.5">
+                                <Label>Sell Price (₹) *</Label>
+                                <Input className={`${fieldCls} font-bold text-emerald-700`} type="number" placeholder="3999" value={form.price || ""} disabled={Boolean(form.deliveryModePricingEnabled)} onChange={(e) => sf({ price: Number(e.target.value) || 0 })} />
+                                {form.deliveryModePricingEnabled && <p className="text-[10px] text-slate-400">Set via mode pricing</p>}
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Original / MRP (₹)</Label>
+                                <Input className={`${fieldCls} text-slate-500 line-through-placeholder`} type="number" placeholder="5999" value={form.originalPrice || ""} disabled={Boolean(form.deliveryModePricingEnabled)} onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })} />
+                              </div>
+                              <div className="space-y-1.5">
+                                <Label>Tax (%)</Label>
+                                <Input className={fieldCls} type="number" min={0} step={0.01} placeholder="18" value={form.taxPercentage || ""} onChange={(e) => sf({ taxPercentage: Math.max(0, Number(e.target.value) || 0) })} />
+                              </div>
+                            </div>
+                            {form.price > 0 && form.originalPrice > form.price && (
+                              <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5">
+                                <span className="text-xs text-emerald-700">Student saves:</span>
+                                <span className="text-sm font-extrabold text-emerald-700">₹{(form.originalPrice - form.price).toLocaleString()} ({Math.round(((form.originalPrice - form.price) / form.originalPrice) * 100)}% off)</span>
+                              </div>
+                            )}
+                          </div>
                         </div>
                       </div>
                     )}
-                  </div>
-                )}
 
-                {/* ── PRICING TAB ── */}
-                {dialogTab === "pricing" && (
-                  <div className="space-y-4">
-                    {/* View pricing */}
-                    <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                      <p className="text-xs font-bold text-slate-800">View-based Pricing</p>
-                      {checkboxRow("Sell by number of views", form.viewPricingEnabled || false, (v) => sf({ viewPricingEnabled: v, unlimitedViewsEnabled: v ? false : form.unlimitedViewsEnabled }))}
-                      {form.viewPricingEnabled && (
-                        <div className="pl-5 space-y-1.5">
-                          <Label>View options (comma-separated)</Label>
-                          <Input className={fieldCls} placeholder="1,2,3" value={form.viewOptionsText || ""} onChange={(e) => sf({ viewOptionsText: e.target.value })} />
-                        </div>
-                      )}
-                      {checkboxRow("Grant unlimited views to buyers", form.unlimitedViewsEnabled || false, (v) => sf({ unlimitedViewsEnabled: v, viewPricingEnabled: v ? false : form.viewPricingEnabled }))}
-                    </div>
-                    {/* Validity pricing */}
-                    <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                      <p className="text-xs font-bold text-slate-800">Validity-based Pricing</p>
-                      {checkboxRow("Sell by validity period", form.validityPricingEnabled || false, (v) => sf({ validityPricingEnabled: v }))}
-                      {form.validityPricingEnabled && (
-                        <div className="pl-5 space-y-1.5">
-                          <Label>Validity options in days (comma-separated)</Label>
-                          <Input className={fieldCls} placeholder="30,90,180" value={form.validityOptionsDaysText || ""} onChange={(e) => sf({ validityOptionsDaysText: e.target.value })} />
-                        </div>
-                      )}
-                    </div>
-                    {/* Sidebar meta */}
-                    <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                      <p className="text-xs font-bold text-slate-800">Sidebar Display Controls</p>
-                      <div className="space-y-1.5">
-                        <Label>Enrollment Count</Label>
-                        <Input className={fieldCls} type="number" min={0} value={form.enrollmentCount || 0} onChange={(e) => sf({ enrollmentCount: Number(e.target.value) || 0 })} />
-                      </div>
-                      <div className="grid grid-cols-2 gap-2 pt-1">
-                        {[
-                          ["showEnrollmentCount", "Show enrolled count"], ["showMetaLectures", "Show lectures"],
-                          ["showMetaHours", "Show hours"], ["showMetaValidity", "Show validity"],
-                          ["showMetaResources", "Show resources"], ["showMetaViews", "Show views"],
-                          ["showMetaPerHour", "Show ₹/hr"], ["showMetaLanguage", "Show language"],
-                        ].map(([key, label]) => checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v })))}
-                      </div>
-                    </div>
-                    {/* Ratings */}
-                    <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                      <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5"><Star className="h-4 w-4 text-amber-500" /> Ratings & Reviews</p>
-                      <div className="grid grid-cols-2 gap-3">
-                        {checkboxRow("Show Ratings tab", form.ratingsEnabled !== false, (v) => sf({ ratingsEnabled: v }))}
-                        {checkboxRow("Show Reviews tab", form.reviewsEnabled !== false, (v) => sf({ reviewsEnabled: v }))}
-                      </div>
-                      {form.ratingsEnabled && (
-                        <div className="grid grid-cols-2 gap-3">
-                          <div className="space-y-1.5"><Label>Rating Value (0-5)</Label><Input className={fieldCls} type="number" step={0.1} min={0} max={5} value={form.ratingValue || 0} onChange={(e) => sf({ ratingValue: Number(e.target.value) || 0 })} /></div>
-                          <div className="space-y-1.5"><Label>Rating Count</Label><Input className={fieldCls} type="number" min={0} value={form.ratingCount || 0} onChange={(e) => sf({ ratingCount: Number(e.target.value) || 0 })} /></div>
-                        </div>
-                      )}
-                      {form.reviewsEnabled && (
-                        <div className="space-y-1.5">
-                          <Label>Reviews (one per line)</Label>
-                          <textarea className="h-28 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40" placeholder="Name | 5 | Great course | 2 weeks ago" value={form.reviewsText || ""} onChange={(e) => sf({ reviewsText: e.target.value })} />
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
-
-                {/* ── DELIVERY TAB ── */}
-                {dialogTab === "delivery" && (
-                  <div className="space-y-4">
-                    <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                      <p className="text-xs font-bold text-slate-800">Lecture Mode Pricing</p>
-                      {checkboxRow("Enable delivery mode-wise pricing", form.deliveryModePricingEnabled || false, (v) => sf({ deliveryModePricingEnabled: v }))}
-                      {form.deliveryModePricingEnabled && (
-                        <div className="space-y-3 pl-4">
-                          {[
-                            { key: "enableOnlineMode", label: "Online", priceKey: "onlineModePrice" },
-                            { key: "enableGoogleDriveMode", label: "Google Drive", priceKey: "googleDriveModePrice" },
-                            { key: "enablePenDriveMode", label: "Pen Drive", priceKey: "penDriveModePrice" },
-                          ].map(({ key, label, priceKey }) => (
-                            <div key={key} className="grid grid-cols-[auto_1fr] items-center gap-3">
-                              {checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v }))}
-                              <Input className={fieldCls} type="number" placeholder={`${label} price`} value={(form[priceKey as keyof CourseForm] as number) || 0} onChange={(e) => sf({ [priceKey]: Number(e.target.value) || 0 })} />
-                            </div>
-                          ))}
-                          {/* Custom mode */}
-                          <div className="grid grid-cols-[auto_1fr_1fr] items-center gap-3">
-                            {checkboxRow("Custom", form.enableCustomMode || false, (v) => sf({ enableCustomMode: v }))}
-                            <Input className={fieldCls} placeholder="Mode name" value={form.customModeName || ""} onChange={(e) => sf({ customModeName: e.target.value })} />
-                            <Input className={fieldCls} type="number" placeholder="Price" value={form.customModePrice || 0} onChange={(e) => sf({ customModePrice: Number(e.target.value) || 0 })} />
+                    {/* ── DEMO TAB ── */}
+                    {dialogTab === "demo" && (
+                      <div className="space-y-5">
+                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-slate-100 px-5 py-3">
+                            <div className="h-5 w-5 rounded-md bg-violet-600 flex items-center justify-center shrink-0"><Video className="h-3 w-3 text-white" /></div>
+                            <p className="text-xs font-bold text-violet-700 uppercase tracking-wider">Demo Lecture Settings</p>
                           </div>
-                          <div className="space-y-1.5">
-                            <Label>Additional custom modes (one per line: Name: Price)</Label>
-                            <textarea className="h-20 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40" placeholder={"Android App: 1499\nPrinted Book + Online: 2499"} value={form.customModesText || ""} onChange={(e) => sf({ customModesText: e.target.value })} />
+                          <div className="p-5 space-y-4">
+                            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-violet-200 bg-violet-50/50 px-4 py-3 hover:bg-violet-50 transition-colors">
+                              <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-violet-600" checked={form.demoVideoVisible || false} onChange={(e) => sf({ demoVideoVisible: e.target.checked })} />
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">Show Demo Lecture on Course Page</p>
+                                <p className="text-xs text-slate-500">Allow students to preview a free lecture before purchasing</p>
+                              </div>
+                            </label>
+                            {form.demoVideoVisible && (
+                              <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-1.5">
+                                    <Label>Demo Lecture Title</Label>
+                                    <Input className={fieldCls} placeholder="Introduction Lecture" value={form.demoVideoTitle || ""} onChange={(e) => sf({ demoVideoTitle: e.target.value })} />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label>Video Source</Label>
+                                    <div className="flex gap-2 pt-1">
+                                      {(["youtube", "upload", "direct"] as const).map((src) => (
+                                        <label key={src} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${form.demoVideoSource === src ? "border-violet-400 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                                          <input type="radio" name="videoSource" value={src} checked={form.demoVideoSource === src} onChange={() => sf({ demoVideoSource: src })} className="accent-violet-600 h-3 w-3" />
+                                          {src === "youtube" ? "YouTube" : src === "upload" ? "CDN" : "Direct"}
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Description</Label>
+                                  <textarea className="h-16 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/30" value={form.demoVideoDescription || ""} onChange={(e) => sf({ demoVideoDescription: e.target.value })} placeholder="Brief description…" />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>{form.demoVideoSource === "youtube" ? "YouTube Video ID" : "Video URL"}</Label>
+                                  <Input className={fieldCls} placeholder={form.demoVideoSource === "youtube" ? "e.g., dQw4w9WgXcQ" : "https://…"} value={form.demoVideoUrl || ""} onChange={(e) => sf({ demoVideoUrl: e.target.value })} />
+                                  {form.demoVideoSource !== "youtube" && (
+                                    <div className="flex items-center gap-2">
+                                      <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-[11px] font-bold text-white shadow-md hover:bg-violet-700 transition-all">
+                                        {courseDemoVideoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+                                        {courseDemoVideoUploading ? `Uploading ${courseUploadPercent}%...` : "Upload Video File"}
+                                        <input type="file" accept="video/*" className="hidden" onChange={(e) => handleUploadCourseDemoVideo(e.target.files?.[0])} />
+                                      </label>
+                                      {courseDemoVideoUploading && <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>Cancel</Button>}
+                                    </div>
+                                  )}
+                                  {form.demoVideoSource === "youtube" && form.demoVideoUrl && <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{form.demoVideoUrl}</p>}
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Thumbnail URL (Optional)</Label>
+                                  <div className="flex items-start gap-3">
+                                    {form.demoVideoThumbnailUrl && <img src={form.demoVideoThumbnailUrl} alt="" className="h-14 rounded-xl object-cover ring-2 ring-violet-100 shadow" />}
+                                    <div className="flex-1 space-y-1.5">
+                                      <Input className={fieldCls} placeholder="https://…" value={form.demoVideoThumbnailUrl || ""} onChange={(e) => sf({ demoVideoThumbnailUrl: e.target.value })} />
+                                      <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-600 transition-colors">
+                                        {courseDemoThumbUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
+                                        {courseDemoThumbUploading ? "Uploading..." : "Upload Thumbnail"}
+                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadCourseDemoThumbnail(e.target.files?.[0])} />
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
                           </div>
                         </div>
-                      )}
-                    </div>
-                    {/* Book Addons */}
-                    <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                      <p className="text-xs font-bold text-slate-800">Book Add-ons</p>
-                      {checkboxRow("Enable book selection add-ons", form.bookAddonEnabled || false, (v) => sf({ bookAddonEnabled: v }))}
-                      {form.bookAddonEnabled && (
-                        <div className="space-y-3 pl-4">
-                          {[
-                            { key: "enableEnotesAddon", label: "eNotes", priceKey: "enotesAddonPrice" },
-                            { key: "enablePhysicalBookAddon", label: "Physical Book", priceKey: "physicalBookAddonPrice" },
-                          ].map(({ key, label, priceKey }) => (
-                            <div key={key} className="grid grid-cols-[auto_1fr] items-center gap-3">
-                              {checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v }))}
-                              <Input className={fieldCls} type="number" placeholder={`${label} add-on price`} value={(form[priceKey as keyof CourseForm] as number) || 0} onChange={(e) => sf({ [priceKey]: Number(e.target.value) || 0 })} />
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                )}
+                      </div>
+                    )}
 
-                {/* ── CONTENT TAB ── */}
-                {dialogTab === "content" && (
-                  <div className="space-y-4">
-                    <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                      <p className="text-xs font-bold text-slate-800">About Course Section</p>
-                      {checkboxRow("Show About Course section on course page", form.aboutCourseEnabled || false, (v) => sf({ aboutCourseEnabled: v }))}
-                      {form.aboutCourseEnabled && (
-                        <div className="space-y-1.5">
-                          <Label>About Course Text</Label>
-                          <textarea className="min-h-[160px] w-full resize-y rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" placeholder="Dear Students, this course covers…" value={form.aboutCourseText || ""} onChange={(e) => sf({ aboutCourseText: e.target.value })} />
-                          <p className="text-[10px] text-slate-400">Supports multi-line content and bullet points.</p>
+                    {/* ── PRICING TAB ── */}
+                    {dialogTab === "pricing" && (
+                      <div className="space-y-5">
+                        {/* Active combinations banner */}
+                        {(form.masterCombinationRows || []).length > 0 && (
+                          <div className="flex items-center gap-3 rounded-2xl border-2 border-emerald-300 bg-emerald-50 px-5 py-4 shadow-sm">
+                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 shadow-md">
+                              <CheckCircle2 className="h-5 w-5 text-white" />
+                            </div>
+                            <div className="flex-1">
+                              <p className="text-sm font-bold text-emerald-900">Price Combinations Active</p>
+                              <p className="text-xs text-emerald-700">{(form.masterCombinationRows || []).filter(r => r.isActive !== false).length} combination(s) configured</p>
+                            </div>
+                            <a href="/admin/masters" target="_blank" className="text-xs text-emerald-600 hover:underline font-semibold flex items-center gap-1"><Settings className="h-3.5 w-3.5" /> Masters</a>
+                          </div>
+                        )}
+
+
+
+                        {/* Master combination builder */}
+                        <div className="rounded-2xl border border-blue-200 bg-white shadow-sm overflow-hidden">
+                          <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 px-5 py-3">
+                            <div className="flex items-center gap-2">
+                              <div className="h-5 w-5 rounded-md bg-blue-600 flex items-center justify-center shrink-0"><DollarSign className="h-3 w-3 text-white" /></div>
+                              <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Master Price Combinations</p>
+                            </div>
+                            <a href="/admin/masters" target="_blank" className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"><Settings className="h-3 w-3" /> Configure Masters</a>
+                          </div>
+                          <div className="p-5 space-y-4">
+                            <p className="text-xs text-slate-500">Choose which dimensions to price by. Each must have active options in Masters.</p>
+                            <div className="grid grid-cols-3 gap-3">
+                              {[
+                                { key: "combinationUseView" as const, label: "View Mode", count: activeMasterViewModes.length },
+                                { key: "combinationUseValidity" as const, label: "Validity", count: activeMasterValidityOptions.length },
+                                { key: "combinationUseAttempt" as const, label: "Attempt", count: activeMasterAttemptOptions.length },
+                                { key: "combinationUseMode" as const, label: "Lecture Mode", count: activeMasterDeliveryModes.length },
+                              ].map(({ key, label, count }) => (
+                                <label key={key} className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 transition-all ${form[key] ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}>
+                                  <input 
+                                    type="checkbox" 
+                                    checked={Boolean(form[key])} 
+                                    onChange={(e) => {
+                                      if (key === "combinationUseAttempt" && e.target.checked) {
+                                        sf({ combinationUseAttempt: true, combinationUseValidity: false });
+                                      } else if (key === "combinationUseValidity" && e.target.checked) {
+                                        sf({ combinationUseValidity: true, combinationUseAttempt: false });
+                                      } else {
+                                        sf({ [key]: e.target.checked });
+                                      }
+                                    }} 
+                                    className="h-4 w-4 rounded border-slate-300 accent-blue-600" 
+                                  />
+                                  <div>
+                                    <p className="text-xs font-bold text-slate-700">{label}</p>
+                                    <p className={`text-[10px] font-semibold ${count > 0 ? "text-emerald-600" : "text-red-500"}`}>{count} active</p>
+                                  </div>
+                                </label>
+                              ))}
+                            </div>
+                            <div className="flex flex-wrap gap-2">
+                              <Button type="button" className="h-9 gap-2 rounded-xl bg-blue-600 text-xs font-semibold shadow hover:bg-blue-700" onClick={openCourseCombinationSelector}>
+                                <Settings className="h-3.5 w-3.5" /> Select &amp; Generate
+                              </Button>
+                              {(form.masterCombinationRows || []).length > 0 && (
+                                <Button type="button" variant="outline" className="h-9 rounded-xl text-xs" onClick={() => sf({ masterCombinationRows: (form.masterCombinationRows || []).filter((row) => row.isActive !== false) })}>Clean Inactive</Button>
+                              )}
+                            </div>
+
+                            {/* Combinations list */}
+                            {(form.masterCombinationRows || []).length > 0 && (
+                              <div className="space-y-2 pt-2 border-t border-blue-100">
+                                <p className="text-xs font-semibold text-slate-700">Pricing Grid ({(form.masterCombinationRows || []).length} rows)</p>
+                                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
+                                  {(form.masterCombinationRows || []).map((combo, index) => (
+                                    <div key={`${combo.id}-${index}`} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all ${combo.isActive !== false ? "border-blue-100 bg-blue-50/60" : "border-slate-100 bg-slate-50 opacity-50"}`}>
+                                      <input type="checkbox" checked={combo.isActive !== false} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, isActive: ev.target.checked }; sf({ masterCombinationRows: r }); }} className="h-3.5 w-3.5 rounded accent-blue-600 shrink-0" />
+                                      {form.combinationUseView && (
+                                        <select className="text-[10px] h-7 rounded-lg border border-slate-200 px-2 flex-1" value={combo.viewModeId || ""} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, viewModeId: ev.target.value || null }; sf({ masterCombinationRows: r }); }}>
+                                          <option value="">View</option>
+                                          {activeMasterViewModes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                                        </select>
+                                      )}
+                                      {form.combinationUseValidity && (
+                                        <select className="text-[10px] h-7 rounded-lg border border-slate-200 px-2 flex-1" value={combo.validityOptionId || ""} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, validityOptionId: ev.target.value || null }; sf({ masterCombinationRows: r }); }}>
+                                          <option value="">Validity</option>
+                                          {activeMasterValidityOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                                        </select>
+                                      )}
+                                      {form.combinationUseAttempt && (
+                                        <select className="text-[10px] h-7 rounded-lg border border-slate-200 px-2 flex-1" value={combo.attemptOptionId || ""} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, attemptOptionId: ev.target.value || null }; sf({ masterCombinationRows: r }); }}>
+                                          <option value="">Attempt</option>
+                                          {activeMasterAttemptOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
+                                        </select>
+                                      )}
+                                      {form.combinationUseMode && (
+                                        <select className="text-[10px] h-7 rounded-lg border border-slate-200 px-2 flex-1" value={combo.deliveryModeId || ""} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, deliveryModeId: ev.target.value || null }; sf({ masterCombinationRows: r }); }}>
+                                          <option value="">Mode</option>
+                                          {activeMasterDeliveryModes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
+                                        </select>
+                                      )}
+                                      <Input className="text-[10px] h-7 w-24 rounded-lg border-slate-200 shrink-0 font-bold text-emerald-700" type="number" min={0} placeholder="Price" value={Number(combo.price || 0)} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, price: Number(ev.target.value) || 0 }; sf({ masterCombinationRows: r }); }} />
+                                      <Input className="text-[10px] h-7 w-24 rounded-lg border-slate-200 shrink-0 text-slate-400" type="number" min={0} placeholder="MRP" value={Number(combo.originalPrice || 0)} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; const v = Number(ev.target.value) || 0; r[index] = { ...combo, originalPrice: v > 0 ? v : null }; sf({ masterCombinationRows: r }); }} />
+                                      <button type="button" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors" onClick={() => sf({ masterCombinationRows: (form.masterCombinationRows || []).filter((_, i) => i !== index) })}>
+                                        <X className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  ))}
+                                </div>
+                                <Button type="button" variant="outline" className="h-8 text-xs rounded-xl gap-1.5 border-dashed" onClick={() => { const r = [...(form.masterCombinationRows || [])]; r.push({ id: `c-combo-${Date.now()}-${r.length+1}`, label: "", viewModeId: form.combinationUseView ? (activeMasterViewModes[0]?.id || null) : null, validityOptionId: form.combinationUseValidity ? (activeMasterValidityOptions[0]?.id || null) : null, deliveryModeId: form.combinationUseMode ? (activeMasterDeliveryModes[0]?.id || null) : null, price: 0, originalPrice: null, isActive: true, sortOrder: r.length+1 }); sf({ masterCombinationRows: r }); }}>
+                                  <Plus className="h-3.5 w-3.5" /> Add Row
+                                </Button>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      )}
-                    </div>
-                    <div className="rounded-xl border border-slate-100 bg-slate-50 p-4">
-                      <p className="text-xs text-slate-500">💡 To manage curriculum chapters and lessons, go to <strong>Course Content</strong> from the course row actions.</p>
-                    </div>
+
+                        {/* Sidebar + Ratings */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="flex items-center gap-2 bg-gradient-to-r from-slate-50 to-gray-50 border-b border-slate-100 px-4 py-3">
+                              <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">📊 Sidebar Display</p>
+                            </div>
+                            <div className="p-4 space-y-2">
+                              <div className="space-y-1.5 mb-3">
+                                <Label>Enrollment Count</Label>
+                                <Input className={fieldCls} type="number" min={0} value={form.enrollmentCount || 0} onChange={(e) => sf({ enrollmentCount: Number(e.target.value) || 0 })} />
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                                {[["showEnrollmentCount","Enrolled"],["showMetaLectures","Lectures"],["showMetaHours","Hours"],["showMetaValidity","Validity"],["showMetaResources","Resources"],["showMetaViews","Views"],["showMetaPerHour","₹/hr"],["showMetaLanguage","Language"]].map(([key, label]) => checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v })))}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-slate-100 px-4 py-3">
+                              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">⭐ Ratings & Reviews</p>
+                            </div>
+                            <div className="p-4 space-y-3">
+                              {checkboxRow("Show Ratings tab", form.ratingsEnabled !== false, (v) => sf({ ratingsEnabled: v }))}
+                              {checkboxRow("Show Reviews tab", form.reviewsEnabled !== false, (v) => sf({ reviewsEnabled: v }))}
+                              {form.ratingsEnabled && (
+                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                  <div className="space-y-1"><Label>Rating (0–5)</Label><Input className={fieldCls} type="number" step={0.1} min={0} max={5} value={form.ratingValue || 0} onChange={(e) => sf({ ratingValue: Number(e.target.value) || 0 })} /></div>
+                                  <div className="space-y-1"><Label>Count</Label><Input className={fieldCls} type="number" min={0} value={form.ratingCount || 0} onChange={(e) => sf({ ratingCount: Number(e.target.value) || 0 })} /></div>
+                                </div>
+                              )}
+                              {form.reviewsEnabled && (
+                                <div className="space-y-1.5">
+                                  <Label>Reviews (one per line)</Label>
+                                  <textarea className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-300/40" placeholder="Name | 5 | Great course | 2 weeks ago" value={form.reviewsText || ""} onChange={(e) => sf({ reviewsText: e.target.value })} />
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── DELIVERY TAB ── */}
+                    {dialogTab === "delivery" && (
+                      <div className="space-y-5">
+                        {form.combinationUseMode && (form.masterCombinationRows || []).length > 0 ? (
+                          <div className="flex items-center gap-3 rounded-2xl border-2 border-blue-300 bg-blue-50 px-5 py-4 shadow-sm">
+                            <DollarSign className="h-5 w-5 text-blue-600 shrink-0" />
+                            <div>
+                              <p className="text-sm font-bold text-blue-900">Delivery Mode Pricing via Combinations</p>
+                              <p className="text-xs text-blue-700">Delivery modes are already handled in your Pricing tab combinations.</p>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-slate-100 px-5 py-3">
+                              <div className="h-5 w-5 rounded-md bg-orange-500 flex items-center justify-center shrink-0"><Package className="h-3 w-3 text-white" /></div>
+                              <p className="text-xs font-bold text-orange-700 uppercase tracking-wider">Lecture Mode Pricing</p>
+                            </div>
+                            <div className="p-5 space-y-4">
+                              {checkboxRow("Enable delivery mode-wise pricing", form.deliveryModePricingEnabled || false, (v) => sf({ deliveryModePricingEnabled: v }))}
+                              {form.deliveryModePricingEnabled && (
+                                <div className="space-y-3 rounded-xl bg-slate-50 border border-slate-200 p-4">
+                                  {[
+                                    { key: "enableOnlineMode", label: "Online", priceKey: "onlineModePrice" },
+                                    { key: "enableGoogleDriveMode", label: "Google Drive", priceKey: "googleDriveModePrice" },
+                                    { key: "enablePenDriveMode", label: "Pen Drive", priceKey: "penDriveModePrice" },
+                                  ].map(({ key, label, priceKey }) => (
+                                    <div key={key} className="flex items-center gap-4">
+                                      <div className="w-32">{checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v }))}</div>
+                                      <Input className={`${fieldCls} flex-1`} type="number" placeholder={`${label} price (₹)`} value={(form[priceKey as keyof CourseForm] as number) || 0} onChange={(e) => sf({ [priceKey]: Number(e.target.value) || 0 })} />
+                                    </div>
+                                  ))}
+                                  <div className="flex items-center gap-4">
+                                    <div className="w-32">{checkboxRow("Custom", form.enableCustomMode || false, (v) => sf({ enableCustomMode: v }))}</div>
+                                    <Input className={`${fieldCls} flex-1`} placeholder="Mode name" value={form.customModeName || ""} onChange={(e) => sf({ customModeName: e.target.value })} />
+                                    <Input className={`${fieldCls} w-32`} type="number" placeholder="Price (₹)" value={form.customModePrice || 0} onChange={(e) => sf({ customModePrice: Number(e.target.value) || 0 })} />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label>Additional modes (Name: Price per line)</Label>
+                                    <textarea className="h-16 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300/40" placeholder={"Android App: 1499\nPrinted Book + Online: 2499"} value={form.customModesText || ""} onChange={(e) => sf({ customModesText: e.target.value })} />
+                                  </div>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-slate-100 px-5 py-3">
+                            <div className="h-5 w-5 rounded-md bg-amber-500 flex items-center justify-center shrink-0"><BookOpen className="h-3 w-3 text-white" /></div>
+                            <p className="text-xs font-bold text-orange-700 uppercase tracking-wider">Book Add-ons</p>
+                          </div>
+                          <div className="p-5 space-y-3">
+                            {checkboxRow("Enable book selection add-ons", form.bookAddonEnabled || false, (v) => sf({ bookAddonEnabled: v }))}
+                            {form.bookAddonEnabled && (
+                              <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-3">
+                                {[
+                                  { key: "enableEnotesAddon", label: "eNotes", priceKey: "enotesAddonPrice" },
+                                  { key: "enablePhysicalBookAddon", label: "Physical Book", priceKey: "physicalBookAddonPrice" },
+                                ].map(({ key, label, priceKey }) => (
+                                  <div key={key} className="flex items-center gap-4">
+                                    <div className="w-32">{checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v }))}</div>
+                                    <Input className={`${fieldCls} flex-1`} type="number" placeholder={`${label} add-on price (₹)`} value={(form[priceKey as keyof CourseForm] as number) || 0} onChange={(e) => sf({ [priceKey]: Number(e.target.value) || 0 })} />
+                                  </div>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    )}
+
+                    {/* ── CONTENT TAB ── */}
+                    {dialogTab === "content" && (
+                      <div className="space-y-5">
+                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-rose-50 to-pink-50 border-b border-slate-100 px-5 py-3">
+                            <div className="h-5 w-5 rounded-md bg-rose-600 flex items-center justify-center shrink-0"><FileText className="h-3 w-3 text-white" /></div>
+                            <p className="text-xs font-bold text-rose-700 uppercase tracking-wider">About Course Section</p>
+                          </div>
+                          <div className="p-5 space-y-4">
+                            {checkboxRow("Show About Course section on course page", form.aboutCourseEnabled || false, (v) => sf({ aboutCourseEnabled: v }))}
+                            {form.aboutCourseEnabled && (
+                              <div className="space-y-1.5">
+                                <Label>Course Description Text</Label>
+                                <textarea className="min-h-[200px] w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300/40 leading-relaxed" placeholder="Dear Students, this course covers…" value={form.aboutCourseText || ""} onChange={(e) => sf({ aboutCourseText: e.target.value })} />
+                                <p className="text-[10px] text-slate-400">Supports multi-line content.</p>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50/60 px-5 py-4">
+                          <FileText className="h-5 w-5 text-blue-500 shrink-0" />
+                          <p className="text-xs text-blue-700">To manage <strong>curriculum chapters and lessons</strong>, use the <strong>Course Content</strong> button from the course list after saving this form.</p>
+                        </div>
+                      </div>
+                    )}
+
                   </div>
-                )}
+                </div>
               </div>
 
-              {/* Dialog footer */}
-              <div className="shrink-0 flex items-center justify-between border-t border-slate-100 bg-slate-50/60 px-6 py-4">
-                <div className="flex gap-1">
-                  {dialogTabs.map((tab, i) => (
+              {/* ── Sticky footer ── */}
+              <div className="shrink-0 flex items-center justify-between border-t border-slate-100 bg-white/95 backdrop-blur-sm px-7 py-3.5 shadow-[0_-4px_16px_rgba(0,0,0,0.06)]">
+                <div className="flex items-center gap-1.5">
+                  {dialogTabs.map((tab) => (
                     <button key={tab.key} type="button" onClick={() => setDialogTab(tab.key)}
-                      className={`h-1.5 w-6 rounded-full transition-all ${dialogTab === tab.key ? "bg-primary" : "bg-slate-200"}`} />
+                      className={`h-1.5 rounded-full transition-all duration-300 ${dialogTab === tab.key ? "w-8 bg-gradient-to-r from-indigo-500 to-blue-500" : "w-3 bg-slate-200 hover:bg-slate-300"}`} />
                   ))}
                 </div>
-                <div className="flex gap-2">
-                  {dialogTab !== "content" && (
-                    <Button variant="outline" size="sm" className="rounded-xl border-slate-200 text-xs" onClick={() => {
-                      const idx = dialogTabs.findIndex((t) => t.key === dialogTab);
-                      if (idx < dialogTabs.length - 1) setDialogTab(dialogTabs[idx + 1].key);
-                    }}>Next →</Button>
+                <div className="flex items-center gap-3">
+                  {dialogTab !== dialogTabs[dialogTabs.length - 1].key && (
+                    <Button variant="outline" size="sm" className="rounded-xl border-slate-200 text-xs font-medium" onClick={() => { const idx = dialogTabs.findIndex((t) => t.key === dialogTab); if (idx < dialogTabs.length - 1) setDialogTab(dialogTabs[idx + 1].key); }}>Next →</Button>
                   )}
-                  <Button size="sm" className="gap-1.5 rounded-xl px-5 text-xs font-semibold" onClick={handleSaveCourse} disabled={isSaving}>
-                    {isSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving…</> : editingId ? "Update Course" : "Create Course"}
+                  <Button size="sm" className="gap-2 rounded-xl px-6 py-2 text-xs font-bold bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 shadow-lg shadow-indigo-300/30 transition-all hover:scale-[1.02] active:scale-95" onClick={handleSaveCourse} disabled={isSaving}>
+                    {isSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving…</> : editingId ? "✓ Update Course" : "✓ Create Course"}
                   </Button>
                 </div>
               </div>
@@ -1520,6 +2684,177 @@ export default function AdminCourses() {
       </div>
 
       {/* ─── Course List ──────────────────────────────────────── */}
+      <Dialog open={courseComboSelectorOpen} onOpenChange={setCourseComboSelectorOpen}>
+        <DialogContent className="max-w-2xl rounded-2xl border-slate-200">
+          <DialogHeader>
+            <DialogTitle>Select Master Options For Generation</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <p className="text-xs text-slate-500">
+              Choose only the View, Validity, Attempt, and Lecture Mode options you want from Master module. Same selected options se combinations generate honge.
+            </p>
+
+            {form.combinationUseView && (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">View Options</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="text-[11px] text-blue-600 hover:underline"
+                      onClick={() => setCourseSelectedViewModeIds(activeMasterViewModes.map((item) => item.id))}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[11px] text-slate-500 hover:underline"
+                      onClick={() => setCourseSelectedViewModeIds([])}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {activeMasterViewModes.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                        checked={courseSelectedViewModeIds.includes(item.id)}
+                        onChange={(event) => setCourseSelectedViewModeIds((prev) => event.target.checked ? Array.from(new Set([...prev, item.id])) : prev.filter((id) => id !== item.id))}
+                      />
+                      <span className="font-medium text-slate-700">{item.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {form.combinationUseValidity && (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">Validity Options</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="text-[11px] text-blue-600 hover:underline"
+                      onClick={() => setCourseSelectedValidityIds(activeMasterValidityOptions.map((item) => item.id))}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[11px] text-slate-500 hover:underline"
+                      onClick={() => setCourseSelectedValidityIds([])}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {activeMasterValidityOptions.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                        checked={courseSelectedValidityIds.includes(item.id)}
+                        onChange={(event) => setCourseSelectedValidityIds((prev) => event.target.checked ? Array.from(new Set([...prev, item.id])) : prev.filter((id) => id !== item.id))}
+                      />
+                      <span className="font-medium text-slate-700">{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {form.combinationUseAttempt && (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">Attempt Options</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="text-[11px] text-blue-600 hover:underline"
+                      onClick={() => setCourseSelectedAttemptIds(activeMasterAttemptOptions.map((item) => item.id))}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[11px] text-slate-500 hover:underline"
+                      onClick={() => setCourseSelectedAttemptIds([])}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {activeMasterAttemptOptions.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                        checked={courseSelectedAttemptIds.includes(item.id)}
+                        onChange={(event) => setCourseSelectedAttemptIds((prev) => event.target.checked ? Array.from(new Set([...prev, item.id])) : prev.filter((id) => id !== item.id))}
+                      />
+                      <span className="font-medium text-slate-700">{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {form.combinationUseMode && (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">Lecture Mode Options</p>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      className="text-[11px] text-blue-600 hover:underline"
+                      onClick={() => setCourseSelectedDeliveryModeIds(activeMasterDeliveryModes.map((item) => item.id))}
+                    >
+                      Select all
+                    </button>
+                    <button
+                      type="button"
+                      className="text-[11px] text-slate-500 hover:underline"
+                      onClick={() => setCourseSelectedDeliveryModeIds([])}
+                    >
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {activeMasterDeliveryModes.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                        checked={courseSelectedDeliveryModeIds.includes(item.id)}
+                        onChange={(event) => setCourseSelectedDeliveryModeIds((prev) => event.target.checked ? Array.from(new Set([...prev, item.id])) : prev.filter((id) => id !== item.id))}
+                      />
+                      <span className="font-medium text-slate-700">{item.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setCourseComboSelectorOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" className="bg-blue-600 hover:bg-blue-700" onClick={generateCourseCombinationsFromSelected}>
+              Generate Selected
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       {filteredCourses.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-20 text-center">
           <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">

@@ -462,6 +462,190 @@ const normalizeCategoryPayload = (payload = {}) => {
   };
 };
 
+const normalizeMasterId = (value, fallbackPrefix, index) => {
+  const cleaned = String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return cleaned || `${fallbackPrefix}-${index + 1}`;
+};
+
+const normalizeCourseMasterViewModes = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => {
+      const row = item && typeof item === "object" ? item : {};
+      const name = String(row.name || "").trim();
+      const maxViewsRaw = Number(row.maxViews);
+      const isLifetime = row.isLifetime === true;
+      if (!name) return null;
+      return {
+        id: normalizeMasterId(row.id || name, "view-mode", index),
+        name,
+        maxViews: Number.isFinite(maxViewsRaw) && maxViewsRaw > 0 ? Math.floor(maxViewsRaw) : null,
+        isLifetime,
+        isActive: row.isActive !== false,
+        sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index + 1,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+};
+
+const normalizeCourseMasterValidityOptions = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => {
+      const row = item && typeof item === "object" ? item : {};
+      const label = String(row.label || row.name || "").trim();
+      const daysRaw = Number(row.days);
+      const isLifetime = row.isLifetime === true;
+      if (!label) return null;
+      return {
+        id: normalizeMasterId(row.id || label, "validity", index),
+        label,
+        days: Number.isFinite(daysRaw) && daysRaw > 0 ? Math.floor(daysRaw) : null,
+        isLifetime,
+        isActive: row.isActive !== false,
+        sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index + 1,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+};
+
+const normalizeCourseMasterAttemptOptions = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => {
+      const row = item && typeof item === "object" ? item : {};
+      const label = String(row.label || row.name || "").trim();
+      const rawEndDate = String(row.endDate || row.attemptEndDate || "").trim();
+      const parsedEndDate = new Date(rawEndDate);
+      if (!label) return null;
+      if (!rawEndDate || !Number.isFinite(parsedEndDate.getTime())) return null;
+      const endDate = parsedEndDate.toISOString();
+      return {
+        id: normalizeMasterId(row.id || label, "attempt", index),
+        label,
+        endDate,
+        isActive: row.isActive !== false,
+        sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index + 1,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+};
+
+const normalizeCourseMasterDeliveryModes = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => {
+      const row = item && typeof item === "object" ? item : {};
+      const name = String(row.name || row.label || "").trim();
+      if (!name) return null;
+      return {
+        id: normalizeMasterId(row.id || name, "delivery-mode", index),
+        name,
+        isActive: row.isActive !== false,
+        sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index + 1,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+};
+
+const normalizeCourseMasterLanguages = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => {
+      const row = item && typeof item === "object" ? item : {};
+      const name = String(row.name || row.label || "").trim();
+      if (!name) return null;
+      return {
+        id: normalizeMasterId(row.id || name, "language", index),
+        name,
+        isActive: row.isActive !== false,
+        sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index + 1,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+};
+
+const normalizeCourseMasterSubjectChapters = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => {
+      const row = item && typeof item === "object" ? item : {};
+      const name = String(row.name || row.label || "").trim();
+      if (!name) return null;
+      return {
+        id: normalizeMasterId(row.id || name, "chapter", index),
+        name,
+        isActive: row.isActive !== false,
+        sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index + 1,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+};
+
+const normalizeCourseMasterSubjects = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => {
+      const row = item && typeof item === "object" ? item : {};
+      const name = String(row.name || row.label || "").trim();
+      if (!name) return null;
+      return {
+        id: normalizeMasterId(row.id || name, "subject", index),
+        name,
+        isActive: row.isActive !== false,
+        sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index + 1,
+        courseIds: normalizeStringList(row.courseIds),
+        levelIds: normalizeStringList(row.levelIds),
+        chapters: normalizeCourseMasterSubjectChapters(row.chapters),
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+};
+
+const normalizeCourseMasterPricingCombinations = (items) => {
+  if (!Array.isArray(items)) return [];
+  return items
+    .map((item, index) => {
+      const row = item && typeof item === "object" ? item : {};
+      const viewModeId = String(row.viewModeId || "").trim();
+      const validityOptionId = String(row.validityOptionId || "").trim();
+      const attemptOptionId = String(row.attemptOptionId || "").trim();
+      const deliveryModeId = String(row.deliveryModeId || "").trim();
+      const languageId = String(row.languageId || "").trim();
+      const label = String(row.label || "").trim();
+      const price = Number(row.price);
+      const originalPrice = Number(row.originalPrice);
+      const hasAtLeastOneDimension = Boolean(viewModeId || validityOptionId || attemptOptionId || deliveryModeId || languageId);
+      if (!hasAtLeastOneDimension || !Number.isFinite(price) || price <= 0) return null;
+      return {
+        id: normalizeMasterId(row.id || `${viewModeId || "any"}-${validityOptionId || "any"}-${attemptOptionId || "any"}-${deliveryModeId || "any"}-${languageId || "any"}-${index + 1}`, "combo", index),
+        label,
+        viewModeId: viewModeId || null,
+        validityOptionId: validityOptionId || null,
+        attemptOptionId: attemptOptionId || null,
+        deliveryModeId: deliveryModeId || null,
+        languageId: languageId || null,
+        price: Math.round(price),
+        originalPrice: Number.isFinite(originalPrice) && originalPrice >= price ? Math.round(originalPrice) : null,
+        isActive: row.isActive !== false,
+        sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index + 1,
+      };
+    })
+    .filter(Boolean)
+    .sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0));
+};
+
 const normalizeLeadStatus = (value) => {
   const normalized = String(value || "fresh").trim().toLowerCase();
   return LEAD_ALLOWED_STATUSES.includes(normalized) ? normalized : "fresh";
@@ -1171,6 +1355,7 @@ const ADMIN_MODULES = [
   "courses",
   "course-content",
   "categories",
+  "masters",
   "coupons",
   "faculty",
   "homepage",
@@ -1475,6 +1660,7 @@ const getModuleFromPath = (pathName) => {
   if (pathName.startsWith("/api/students") || pathName.startsWith("/api/admin/quick-login")) return "users";
   if (pathName.startsWith("/api/auth/student/support") || pathName.startsWith("/api/admin/technical-support")) return "technical-support";
   if (pathName.startsWith("/api/admin/categories")) return "categories";
+  if (pathName.startsWith("/api/admin/course-masters")) return "masters";
   if (pathName.startsWith("/api/admin/lead-form-settings")) return "leads";
   if (pathName.startsWith("/api/admin/leads")) return "leads";
   if (pathName.startsWith("/api/admin/marketing")) return "marketing";
@@ -1482,6 +1668,7 @@ const getModuleFromPath = (pathName) => {
   if (pathName.startsWith("/api/courses/")) return "courses";
   if (pathName === "/api/courses/upsert") return "courses";
   if (pathName.startsWith("/api/homepage")) return "homepage";
+  if (pathName.startsWith("/api/admin/bunny")) return "settings";
   if (pathName.startsWith("/api/uploads") || pathName.startsWith("/api/bunny")) return "course-content";
   if (pathName.startsWith("/api/admin/activity-logs")) return "logs";
   if (pathName.startsWith("/api/admin/subadmins") || pathName.startsWith("/api/admin/audit-logs")) return "subadmins";
@@ -2797,6 +2984,11 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
         ? rawItem.packageCourseIds.map((value) => String(value || "").trim()).filter(Boolean)
         : [];
       const durationDays = Math.max(1, Number(rawItem?.durationDays || 180));
+      const explicitExpiresAtRaw = String(rawItem?.expiresAt || "").trim();
+      const explicitExpiresAtMs = explicitExpiresAtRaw ? new Date(explicitExpiresAtRaw).getTime() : Number.NaN;
+      const explicitExpiresAt = Number.isFinite(explicitExpiresAtMs)
+        ? new Date(explicitExpiresAtMs).toISOString()
+        : "";
       const explicitUnlimited = typeof rawItem?.isUnlimitedViews === "boolean" ? rawItem.isUnlimitedViews : null;
       const totalViews = Math.max(1, Number(rawItem?.totalViews || 2));
       const usedViews = Math.max(0, Number(rawItem?.usedViews || 0));
@@ -2830,7 +3022,8 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
       purchaseAmountTotal += amount;
 
       if (grantAccess) {
-        const expiresAt = new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+        const expiresAt = explicitExpiresAt || new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
+        const computedDurationDays = Math.max(1, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
         const courseDurationSeconds = await getCourseDurationSeconds(pool, courseId);
         const allowedWatchSeconds = isUnlimitedViews ? 0 : Math.max(0, courseDurationSeconds) * totalViews;
         const usedWatchSeconds = isUnlimitedViews ? 0 : Math.min(allowedWatchSeconds, Math.max(0, courseDurationSeconds) * usedViews);
@@ -2868,7 +3061,7 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
             courseId,
             title,
             purchaseDate,
-            durationDays,
+            computedDurationDays,
             expiresAt,
             totalViews,
             isUnlimitedViews,
@@ -5416,6 +5609,149 @@ app.delete("/api/admin/categories/:id", requireAdminPermission("categories", "de
   }
 });
 
+app.get("/api/course-masters", async (_request, response) => {
+  try {
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const mastersRaw = settings.siteSettings?.courseMasters && typeof settings.siteSettings.courseMasters === "object"
+      ? settings.siteSettings.courseMasters
+      : {};
+
+    const viewModes = normalizeCourseMasterViewModes(mastersRaw.viewModes || []);
+    const validityOptions = normalizeCourseMasterValidityOptions(mastersRaw.validityOptions || []);
+    const attemptOptions = normalizeCourseMasterAttemptOptions(mastersRaw.attemptOptions || []);
+    const deliveryModes = normalizeCourseMasterDeliveryModes(mastersRaw.deliveryModes || []);
+    const languages = normalizeCourseMasterLanguages(mastersRaw.languages || []);
+    const subjects = normalizeCourseMasterSubjects(mastersRaw.subjects || []);
+    const pricingCombinations = normalizeCourseMasterPricingCombinations(mastersRaw.pricingCombinations || []);
+
+    response.json({ viewModes, validityOptions, attemptOptions, deliveryModes, languages, subjects, pricingCombinations });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load course masters" });
+  }
+});
+
+app.get("/api/admin/course-masters", requireAdminPermission("masters", "read"), async (_request, response) => {
+  try {
+    const [categoriesResult, settingsRaw] = await Promise.all([
+      pool.query(
+        `
+        SELECT id, name, slug, color, is_visible, parent_id, sort_order, created_at, updated_at
+        FROM course_categories
+        ORDER BY sort_order ASC, name ASC
+        `,
+      ),
+      getPlatformSettings(),
+    ]);
+
+    const settings = sanitizePlatformSettings(settingsRaw);
+    const mastersRaw = settings.siteSettings?.courseMasters && typeof settings.siteSettings.courseMasters === "object"
+      ? settings.siteSettings.courseMasters
+      : {};
+
+    const viewModes = normalizeCourseMasterViewModes(mastersRaw.viewModes || []);
+    const validityOptions = normalizeCourseMasterValidityOptions(mastersRaw.validityOptions || []);
+    const attemptOptions = normalizeCourseMasterAttemptOptions(mastersRaw.attemptOptions || []);
+    const deliveryModes = normalizeCourseMasterDeliveryModes(mastersRaw.deliveryModes || []);
+    const languages = normalizeCourseMasterLanguages(mastersRaw.languages || []);
+    const categories = categoriesResult.rows.map(mapCourseCategoryRow);
+    const categoryIds = new Set(categories.map((item) => item.id));
+    const levelIds = new Set(categories.filter((item) => item.parentId).map((item) => item.id));
+    const subjects = normalizeCourseMasterSubjects(mastersRaw.subjects || []).map((item) => ({
+      ...item,
+      courseIds: item.courseIds.filter((id) => categoryIds.has(id)),
+      levelIds: item.levelIds.filter((id) => levelIds.has(id)),
+    }));
+    const viewModeIds = new Set(viewModes.map((item) => item.id));
+    const validityIds = new Set(validityOptions.map((item) => item.id));
+    const attemptIds = new Set(attemptOptions.map((item) => item.id));
+    const deliveryModeIds = new Set(deliveryModes.map((item) => item.id));
+    const languageIds = new Set(languages.map((item) => item.id));
+    const pricingCombinations = normalizeCourseMasterPricingCombinations(mastersRaw.pricingCombinations || [])
+      .filter((item) => (!item.viewModeId || viewModeIds.has(item.viewModeId))
+        && (!item.validityOptionId || validityIds.has(item.validityOptionId))
+        && (!item.attemptOptionId || attemptIds.has(item.attemptOptionId))
+        && (!item.deliveryModeId || deliveryModeIds.has(item.deliveryModeId))
+        && (!item.languageId || languageIds.has(item.languageId)));
+
+    response.json({
+      categories,
+      viewModes,
+      validityOptions,
+      attemptOptions,
+      deliveryModes,
+      languages,
+      subjects,
+      pricingCombinations,
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load course masters" });
+  }
+});
+
+app.put("/api/admin/course-masters", requireAdminPermission("masters", "edit"), async (request, response) => {
+  try {
+    const existing = sanitizePlatformSettings(await getPlatformSettings());
+    const incoming = request.body?.masters && typeof request.body.masters === "object" ? request.body.masters : {};
+
+    const viewModes = normalizeCourseMasterViewModes(incoming.viewModes || []);
+    const validityOptions = normalizeCourseMasterValidityOptions(incoming.validityOptions || []);
+    const attemptOptions = normalizeCourseMasterAttemptOptions(incoming.attemptOptions || []);
+    const deliveryModes = normalizeCourseMasterDeliveryModes(incoming.deliveryModes || []);
+    const languages = normalizeCourseMasterLanguages(incoming.languages || []);
+    const categoriesResult = await pool.query(
+      `
+      SELECT id, parent_id
+      FROM course_categories
+      `,
+    );
+    const categoryRows = categoriesResult.rows || [];
+    const categoryIds = new Set(categoryRows.map((item) => String(item.id || "")).filter(Boolean));
+    const levelIds = new Set(
+      categoryRows
+        .filter((item) => item.parent_id)
+        .map((item) => String(item.id || "").trim())
+        .filter(Boolean),
+    );
+    const subjects = normalizeCourseMasterSubjects(incoming.subjects || []).map((item) => ({
+      ...item,
+      courseIds: item.courseIds.filter((id) => categoryIds.has(id)),
+      levelIds: item.levelIds.filter((id) => levelIds.has(id)),
+    }));
+    const viewModeIds = new Set(viewModes.map((item) => item.id));
+    const validityIds = new Set(validityOptions.map((item) => item.id));
+    const attemptIds = new Set(attemptOptions.map((item) => item.id));
+    const deliveryModeIds = new Set(deliveryModes.map((item) => item.id));
+    const languageIds = new Set(languages.map((item) => item.id));
+    const pricingCombinations = normalizeCourseMasterPricingCombinations(incoming.pricingCombinations || [])
+      .filter((item) => (!item.viewModeId || viewModeIds.has(item.viewModeId))
+        && (!item.validityOptionId || validityIds.has(item.validityOptionId))
+        && (!item.attemptOptionId || attemptIds.has(item.attemptOptionId))
+        && (!item.deliveryModeId || deliveryModeIds.has(item.deliveryModeId))
+        && (!item.languageId || languageIds.has(item.languageId)));
+
+    const nextData = sanitizePlatformSettings({
+      ...existing,
+      siteSettings: {
+        ...(existing.siteSettings || {}),
+        courseMasters: {
+          viewModes,
+          validityOptions,
+          attemptOptions,
+          deliveryModes,
+          languages,
+          subjects,
+          pricingCombinations,
+        },
+      },
+    });
+
+    await setPlatformSettings(nextData);
+    response.json({ ok: true, masters: { viewModes, validityOptions, attemptOptions, deliveryModes, languages, subjects, pricingCombinations } });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save course masters" });
+  }
+});
+
 app.get("/api/courses", async (_request, response) => {
   try {
     const courseResult = await pool.query("SELECT id, payload FROM courses ORDER BY updated_at DESC");
@@ -6241,7 +6577,9 @@ app.post("/api/uploads/bunny-video", requireAdminPermission("course-content", "c
       }
     })();
     const headerFolder = String(request.headers["x-upload-folder"] || "").trim();
+    const headerCollectionId = String(request.headers["x-collection-id"] || "").trim();
     const fileName = sanitizeFileName(decodedFileName || request.body?.fileName || `video-${Date.now()}.mp4`);
+    const collectionId = sanitizeFileName(headerCollectionId || request.body?.collectionId || "");
     const isRawUpload = !request.body?.base64Data && Number(request.headers["content-length"] || 0) > 0;
     const binary = isRawUpload ? null : decodeBase64File(request.body?.base64Data);
     if (!isRawUpload && !binary) {
@@ -6253,6 +6591,11 @@ app.post("/api/uploads/bunny-video", requireAdminPermission("course-content", "c
     if (!forceStorageUpload && bunnySettings.enabled && bunnySettings.libraryId && bunnySettings.apiKey) {
       const title = fileName.replace(/\.[a-z0-9]+$/i, "") || `video-${Date.now()}`;
 
+      const createPayload = {
+        title,
+        ...(collectionId ? { collectionId } : {}),
+      };
+
       const createRes = await fetch(
         `https://video.bunnycdn.com/library/${encodeURIComponent(bunnySettings.libraryId)}/videos`,
         {
@@ -6261,7 +6604,7 @@ app.post("/api/uploads/bunny-video", requireAdminPermission("course-content", "c
             AccessKey: bunnySettings.apiKey,
             "Content-Type": "application/json",
           },
-          body: JSON.stringify({ title }),
+          body: JSON.stringify(createPayload),
         },
       );
 
@@ -6297,7 +6640,7 @@ app.post("/api/uploads/bunny-video", requireAdminPermission("course-content", "c
         return;
       }
 
-      response.json({ url: videoGuid, remotePath: videoGuid, source: "bunny-stream" });
+      response.json({ url: videoGuid, remotePath: videoGuid, source: "bunny-stream", collectionId: collectionId || null });
       return;
     }
 
@@ -6441,6 +6784,341 @@ app.get("/api/admin/bunny/video-duration/:videoId", requireAdminPermission("cour
     });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load Bunny video duration" });
+  }
+});
+
+app.get("/api/admin/bunny/library", requireAdminPermission("settings", "read"), async (request, response) => {
+  try {
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const bunny = settings.bunnyStreamApi || {};
+
+    if (!bunny.enabled || !bunny.libraryId || !bunny.apiKey) {
+      response.status(400).json({ message: "Bunny Stream is not configured in admin settings" });
+      return;
+    }
+
+    const limit = Math.max(1, Math.min(250, Number(request.query?.limit || 100)));
+    const startOffset = Math.max(0, Number(request.query?.offset || 0));
+    const searchText = String(request.query?.search || "").trim().toLowerCase();
+    const filterCollectionId = String(request.query?.collectionId || "").trim();
+
+    const headers = {
+      AccessKey: bunny.apiKey,
+      Accept: "application/json",
+    };
+
+    const [collectionsRes, firstVideosRes] = await Promise.all([
+      fetch(
+        `https://video.bunnycdn.com/library/${encodeURIComponent(bunny.libraryId)}/collections`,
+        { method: "GET", headers },
+      ),
+      fetch(
+        `https://video.bunnycdn.com/library/${encodeURIComponent(bunny.libraryId)}/videos?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(startOffset))}`,
+        { method: "GET", headers },
+      ),
+    ]);
+
+    if (!collectionsRes.ok) {
+      const raw = await collectionsRes.text();
+      response.status(502).json({ message: "Bunny Stream collections fetch failed", details: raw.slice(0, 500) });
+      return;
+    }
+
+    if (!firstVideosRes.ok) {
+      const raw = await firstVideosRes.text();
+      response.status(502).json({ message: "Bunny Stream videos fetch failed", details: raw.slice(0, 500) });
+      return;
+    }
+
+    const collectionsRaw = await collectionsRes.json().catch(() => ({}));
+    const firstVideosRaw = await firstVideosRes.json().catch(() => ({}));
+
+    const normalizeArray = (payload) => {
+      if (Array.isArray(payload)) return payload;
+      if (Array.isArray(payload?.items)) return payload.items;
+      if (Array.isArray(payload?.Items)) return payload.Items;
+      if (Array.isArray(payload?.data)) return payload.data;
+      return [];
+    };
+
+    const collections = normalizeArray(collectionsRaw)
+      .map((item, index) => {
+        const id = String(item?.guid || item?.id || item?.collectionId || `collection-${index + 1}`).trim();
+        return {
+          id,
+          name: String(item?.name || item?.title || item?.collectionName || id).trim() || id,
+          videoCount: Math.max(0, Number(item?.videoCount || item?.videosCount || item?.totalVideos || 0)),
+          previewVideoIds: Array.isArray(item?.previewVideoIds)
+            ? item.previewVideoIds.map((entry) => String(entry || "").trim()).filter(Boolean)
+            : [],
+        };
+      })
+      .filter((item) => Boolean(item.id));
+
+    const collectionLookup = Object.fromEntries(collections.map((item) => [item.id, item.name]));
+
+    const pagedVideos = [...normalizeArray(firstVideosRaw)];
+    let runningOffset = startOffset + limit;
+    const maxPages = 40;
+    let pagesFetched = 1;
+    while (pagesFetched < maxPages) {
+      const lastBatchSize = normalizeArray({ items: pagedVideos.slice(-limit) }).length;
+      if (lastBatchSize < limit) break;
+
+      const nextRes = await fetch(
+        `https://video.bunnycdn.com/library/${encodeURIComponent(bunny.libraryId)}/videos?limit=${encodeURIComponent(String(limit))}&offset=${encodeURIComponent(String(runningOffset))}`,
+        { method: "GET", headers },
+      );
+
+      if (!nextRes.ok) break;
+
+      const nextRaw = await nextRes.json().catch(() => ({}));
+      const nextBatch = normalizeArray(nextRaw);
+      if (nextBatch.length === 0) break;
+
+      pagedVideos.push(...nextBatch);
+      if (nextBatch.length < limit) break;
+
+      runningOffset += limit;
+      pagesFetched += 1;
+    }
+
+    const videos = pagedVideos
+      .map((item, index) => {
+        const id = String(item?.guid || item?.id || item?.videoId || `video-${index + 1}`).trim();
+        const collectionId = String(item?.collectionId || item?.videoLibraryCollectionId || "").trim();
+        const title = String(item?.title || item?.name || item?.videoTitle || id).trim() || id;
+        const lengthSeconds = Math.max(0, Number(item?.length || item?.duration || item?.videoLength || 0));
+        const status = String(item?.status || item?.encodeProgress || item?.state || "unknown").trim();
+        const dateCreated = String(item?.dateCreated || item?.createdAt || item?.created || "").trim();
+        return {
+          id,
+          title,
+          collectionId: collectionId || null,
+          collectionName: collectionId ? String(collectionLookup[collectionId] || "") : "",
+          lengthSeconds,
+          status,
+          dateCreated,
+        };
+      })
+      .filter((item) => Boolean(item.id));
+
+    const collectionVideoCountMap = videos.reduce((acc, item) => {
+      const key = String(item.collectionId || "").trim();
+      if (!key) return acc;
+      acc[key] = Number(acc[key] || 0) + 1;
+      return acc;
+    }, {});
+
+    const collectionsWithCounts = collections.map((item) => ({
+      ...item,
+      videoCount: Math.max(item.videoCount, Number(collectionVideoCountMap[item.id] || 0)),
+    }));
+
+    const filteredVideos = searchText
+      ? videos.filter((item) => {
+          const haystack = `${item.title} ${item.collectionName} ${item.status}`.toLowerCase();
+          return haystack.includes(searchText);
+        })
+      : videos;
+
+    const byCollectionVideos = filterCollectionId
+      ? filteredVideos.filter((item) => String(item.collectionId || "") === filterCollectionId)
+      : filteredVideos;
+
+    response.json({
+      libraryId: String(bunny.libraryId || ""),
+      collections: collectionsWithCounts,
+      videos: byCollectionVideos,
+      stats: {
+        collectionCount: collectionsWithCounts.length,
+        videoCount: byCollectionVideos.length,
+        totalVideoCount: videos.length,
+      },
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load Bunny Stream library" });
+  }
+});
+
+app.post("/api/admin/bunny/collections", requireAdminPermission("settings", "edit"), async (request, response) => {
+  try {
+    const name = String(request.body?.name || "").trim();
+    if (!name) {
+      response.status(400).json({ message: "Collection name is required" });
+      return;
+    }
+
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const bunny = settings.bunnyStreamApi || {};
+    if (!bunny.enabled || !bunny.libraryId || !bunny.apiKey) {
+      response.status(400).json({ message: "Bunny Stream is not configured in admin settings" });
+      return;
+    }
+
+    const createRes = await fetch(
+      `https://video.bunnycdn.com/library/${encodeURIComponent(bunny.libraryId)}/collections`,
+      {
+        method: "POST",
+        headers: {
+          AccessKey: bunny.apiKey,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ name }),
+      },
+    );
+
+    if (!createRes.ok) {
+      const raw = await createRes.text();
+      response.status(502).json({ message: "Bunny collection create failed", details: raw.slice(0, 500) });
+      return;
+    }
+
+    const created = await createRes.json().catch(() => ({}));
+    response.json({
+      ok: true,
+      collection: {
+        id: String(created?.guid || created?.id || created?.collectionId || "").trim(),
+        name: String(created?.name || name).trim(),
+      },
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to create Bunny collection" });
+  }
+});
+
+app.patch("/api/admin/bunny/collections/:collectionId", requireAdminPermission("settings", "edit"), async (request, response) => {
+  try {
+    const collectionId = sanitizeFileName(String(request.params?.collectionId || "").trim());
+    const name = String(request.body?.name || "").trim();
+    if (!collectionId) {
+      response.status(400).json({ message: "collectionId is required" });
+      return;
+    }
+    if (!name) {
+      response.status(400).json({ message: "Collection name is required" });
+      return;
+    }
+
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const bunny = settings.bunnyStreamApi || {};
+    if (!bunny.enabled || !bunny.libraryId || !bunny.apiKey) {
+      response.status(400).json({ message: "Bunny Stream is not configured in admin settings" });
+      return;
+    }
+
+    const updateRes = await fetch(
+      `https://video.bunnycdn.com/library/${encodeURIComponent(bunny.libraryId)}/collections/${encodeURIComponent(collectionId)}`,
+      {
+        method: "POST",
+        headers: {
+          AccessKey: bunny.apiKey,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({ name }),
+      },
+    );
+
+    if (!updateRes.ok) {
+      const raw = await updateRes.text();
+      response.status(502).json({ message: "Bunny collection update failed", details: raw.slice(0, 500) });
+      return;
+    }
+
+    response.json({ ok: true, collectionId, name });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to update Bunny collection" });
+  }
+});
+
+app.delete("/api/admin/bunny/videos/:videoId", requireAdminPermission("settings", "edit"), async (request, response) => {
+  try {
+    const videoId = sanitizeFileName(String(request.params?.videoId || "").trim());
+    if (!videoId) {
+      response.status(400).json({ message: "videoId is required" });
+      return;
+    }
+
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const bunny = settings.bunnyStreamApi || {};
+    if (!bunny.enabled || !bunny.libraryId || !bunny.apiKey) {
+      response.status(400).json({ message: "Bunny Stream is not configured in admin settings" });
+      return;
+    }
+
+    const deleteRes = await fetch(
+      `https://video.bunnycdn.com/library/${encodeURIComponent(bunny.libraryId)}/videos/${encodeURIComponent(videoId)}`,
+      {
+        method: "DELETE",
+        headers: {
+          AccessKey: bunny.apiKey,
+          Accept: "application/json",
+        },
+      },
+    );
+
+    if (!deleteRes.ok) {
+      const raw = await deleteRes.text();
+      response.status(502).json({ message: "Bunny video delete failed", details: raw.slice(0, 500) });
+      return;
+    }
+
+    response.json({ ok: true, videoId });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete Bunny video" });
+  }
+});
+
+app.patch("/api/admin/bunny/videos/:videoId", requireAdminPermission("settings", "edit"), async (request, response) => {
+  try {
+    const videoId = sanitizeFileName(String(request.params?.videoId || "").trim());
+    if (!videoId) {
+      response.status(400).json({ message: "videoId is required" });
+      return;
+    }
+
+    const hasCollectionId = Object.prototype.hasOwnProperty.call(request.body || {}, "collectionId");
+    const collectionId = String(request.body?.collectionId || "").trim();
+    const title = String(request.body?.title || "").trim();
+    if (!hasCollectionId && !title) {
+      response.status(400).json({ message: "collectionId or title is required" });
+      return;
+    }
+
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    const bunny = settings.bunnyStreamApi || {};
+    if (!bunny.enabled || !bunny.libraryId || !bunny.apiKey) {
+      response.status(400).json({ message: "Bunny Stream is not configured in admin settings" });
+      return;
+    }
+
+    const updateRes = await fetch(
+      `https://video.bunnycdn.com/library/${encodeURIComponent(bunny.libraryId)}/videos/${encodeURIComponent(videoId)}`,
+      {
+        method: "POST",
+        headers: {
+          AccessKey: bunny.apiKey,
+          "Content-Type": "application/json",
+          Accept: "application/json",
+        },
+        body: JSON.stringify({
+          ...(hasCollectionId ? { collectionId: collectionId || "" } : {}),
+          ...(title ? { title } : {}),
+        }),
+      },
+    );
+
+    if (!updateRes.ok) {
+      const raw = await updateRes.text();
+      response.status(502).json({ message: "Bunny video update failed", details: raw.slice(0, 500) });
+      return;
+    }
+
+    response.json({ ok: true, videoId, collectionId: hasCollectionId ? (collectionId || null) : null, title: title || null });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to update Bunny video" });
   }
 });
 

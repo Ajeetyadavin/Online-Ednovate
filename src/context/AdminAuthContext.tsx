@@ -7,6 +7,7 @@ export type AdminModuleKey =
   | "courses"
   | "course-content"
   | "categories"
+  | "masters"
   | "coupons"
   | "faculty"
   | "homepage"
@@ -66,6 +67,7 @@ const fullPermissions = (): AdminPermissions => ({
   courses: { read: true, create: true, edit: true, delete: true },
   "course-content": { read: true, create: true, edit: true, delete: true },
   categories: { read: true, create: true, edit: true, delete: true },
+  masters: { read: true, create: true, edit: true, delete: true },
   coupons: { read: true, create: true, edit: true, delete: true },
   faculty: { read: true, create: true, edit: true, delete: true },
   homepage: { read: true, create: true, edit: true, delete: true },

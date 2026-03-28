@@ -129,11 +129,28 @@ const formatSecondsToHms = (seconds: number) => {
 
 const formatDaysToValidityLabel = (days: number) => {
   const normalized = Math.max(1, Math.floor(Number(days) || 1));
+  if (normalized >= 36500) {
+    return "Unlimited days";
+  }
   if (normalized % 30 === 0) {
     const months = Math.max(1, normalized / 30);
     return `${months} Month${months > 1 ? "s" : ""}`;
   }
   return `${normalized} Days`;
+};
+
+const formatAttemptEndDateLabel = (value: string) => {
+  const date = new Date(String(value || "").trim());
+  if (!Number.isFinite(date.getTime())) return "";
+  return date.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric" });
+};
+
+const parseFirstPositiveInt = (value: unknown): number | null => {
+  const text = String(value || "");
+  const match = text.match(/(\d+)/);
+  if (!match) return null;
+  const numeric = Number(match[1]);
+  return Number.isFinite(numeric) && numeric >= 1 ? numeric : null;
 };
 
 const CourseDetails = () => {
@@ -149,6 +166,7 @@ const CourseDetails = () => {
   const [signupMode, setSignupMode] = useState(false);
   const [selectedViews, setSelectedViews] = useState<number>(1);
   const [selectedValidityDays, setSelectedValidityDays] = useState<number>(30);
+  const [selectedAttemptOptionId, setSelectedAttemptOptionId] = useState<string>("");
   const [selectedDeliveryModeIds, setSelectedDeliveryModeIds] = useState<string[]>([]);
   const [selectedBookAddonIds, setSelectedBookAddonIds] = useState<string[]>([]);
   const [openDesktopOptionSections, setOpenDesktopOptionSections] = useState({
@@ -156,25 +174,40 @@ const CourseDetails = () => {
     books: false,
     views: false,
     validity: false,
+    attempts: false,
   });
   const [openMobileOptionSections, setOpenMobileOptionSections] = useState({
     modes: false,
     books: false,
     views: false,
     validity: false,
+    attempts: false,
   });
   const [showMobileConfigurator, setShowMobileConfigurator] = useState(false);
 
-  const toggleDesktopOptionSection = (section: "modes" | "books" | "views" | "validity") => {
+  const toggleDesktopOptionSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
     setOpenDesktopOptionSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
-  const toggleMobileOptionSection = (section: "modes" | "books" | "views" | "validity") => {
+  const toggleMobileOptionSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
     setOpenMobileOptionSections((prev) => ({ ...prev, [section]: !prev[section] }));
   };
 
   const matchedCourse = courses.find((c) => c.id === id);
   const course = matchedCourse ?? FALLBACK_COURSE;
+  const resolvedMasterConfig = useMemo(() => {
+    const raw = (course as { masterConfig?: unknown }).masterConfig;
+    if (raw && typeof raw === "object") return raw as NonNullable<ManagedCourse["masterConfig"]>;
+    if (typeof raw === "string") {
+      try {
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === "object") return parsed as NonNullable<ManagedCourse["masterConfig"]>;
+      } catch {
+        return undefined;
+      }
+    }
+    return undefined;
+  }, [course]);
 
   const inCart = isInCart(course.id);
   const purchased = isPurchased(course.id);
@@ -320,34 +353,162 @@ const CourseDetails = () => {
     ...(showRatings ? [{ key: "ratings" as const, label: "Ratings" }] : []),
     ...(showReviews ? [{ key: "reviews" as const, label: "Reviews" }] : []),
   ];
-  const viewOptions = useMemo(
-    () =>
-      (course.viewOptions && course.viewOptions.length > 0 ? course.viewOptions : [1, 2])
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value) && value >= 1),
-    [course.viewOptions],
-  );
-  const validityOptionsDays = useMemo(
-    () =>
-      (course.validityOptionsDays && course.validityOptionsDays.length > 0
-        ? course.validityOptionsDays
-        : [30, 90, 180]
-      )
-        .map((value) => Number(value))
-        .filter((value) => Number.isFinite(value) && value >= 1),
-    [course.validityOptionsDays],
-  );
+  const getComboViewCount = (combo: NonNullable<ManagedCourse["masterConfig"]>["combinations"][number]) => {
+    const direct = Number(combo.viewCount || 0);
+    const parsed = parseFirstPositiveInt(combo.viewModeName)
+      || parseFirstPositiveInt(combo.viewModeId)
+      || parseFirstPositiveInt(combo.label)
+      || 0;
+    if (Number.isFinite(direct) && direct >= 1) {
+      return parsed > direct ? parsed : direct;
+    }
+    return parsed;
+  };
+
+  const getComboValidityDays = (combo: NonNullable<ManagedCourse["masterConfig"]>["combinations"][number]) => {
+    const direct = Number(combo.validityDays || 0);
+    const parsed = parseFirstPositiveInt(combo.validityLabel)
+      || parseFirstPositiveInt(combo.validityOptionId)
+      || parseFirstPositiveInt(combo.label)
+      || 0;
+    if (Number.isFinite(direct) && direct >= 1) {
+      return parsed > direct ? parsed : direct;
+    }
+    return parsed;
+  };
+
+  const combinationRows = useMemo(() => {
+    const combinations = resolvedMasterConfig?.combinations || [];
+    return combinations
+      .map((combo) => {
+        const viewCount = getComboViewCount(combo);
+        const validityDays = getComboValidityDays(combo);
+        const modeId = String(combo.deliveryModeId || "").trim();
+        const modeLabel = String(combo.deliveryModeName || "").trim() || "Lecture Mode";
+        const priceFromMap = Number(resolvedMasterConfig?.combinationPrices?.[combo.id]?.price || 0);
+        const originalFromMap = Number(resolvedMasterConfig?.combinationPrices?.[combo.id]?.originalPrice || 0);
+        const fallbackPrice = Number(combo.price || 0);
+        const price = priceFromMap > 0 ? priceFromMap : fallbackPrice;
+        const originalPrice = originalFromMap > 0 ? originalFromMap : Number(combo.originalPrice || fallbackPrice || 0);
+        return {
+          id: combo.id,
+          viewCount,
+          validityDays,
+          attemptOptionId: String(combo.attemptOptionId || "").trim(),
+          attemptLabel: String(combo.attemptLabel || "").trim(),
+          attemptEndDate: String(combo.attemptEndDate || "").trim(),
+          modeId,
+          modeLabel,
+          price,
+          originalPrice,
+        };
+      })
+      .filter((row) => Number(row.price) > 0 && (row.viewCount > 0 || row.validityDays > 0 || row.modeId || row.attemptOptionId));
+  }, [resolvedMasterConfig]);
+  const hasCombinationPricing = combinationRows.length > 0;
+
+  const viewOptions = useMemo(() => {
+    const comboValues = combinationRows.map((row) => Number(row.viewCount || 0)).filter((value) => value >= 1);
+    if (hasCombinationPricing && comboValues.length > 0) {
+      return Array.from(new Set(comboValues)).sort((a, b) => a - b);
+    }
+    const courseValues = (course.viewOptions && course.viewOptions.length > 0 ? course.viewOptions : [1, 2])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value >= 1);
+    const mergedValues = Array.from(new Set([...comboValues, ...courseValues])).sort((a, b) => a - b);
+    if (mergedValues.length > 0) return mergedValues;
+
+    const fromCombinations = Array.from(
+      new Set(
+        (resolvedMasterConfig?.combinations || [])
+          .map((combo) => getComboViewCount(combo))
+          .filter((value) => Number.isFinite(value) && value >= 1),
+      ),
+    );
+    if (fromCombinations.length > 0) return fromCombinations.sort((a, b) => a - b);
+
+    return (course.viewOptions && course.viewOptions.length > 0 ? course.viewOptions : [1, 2])
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value >= 1)
+      .sort((a, b) => a - b);
+  }, [course.viewOptions, resolvedMasterConfig, combinationRows, hasCombinationPricing]);
+  const validityOptionsDays = useMemo(() => {
+    const comboValues = combinationRows.map((row) => Number(row.validityDays || 0)).filter((value) => value >= 1);
+    if (hasCombinationPricing && comboValues.length > 0) {
+      return Array.from(new Set(comboValues)).sort((a, b) => a - b);
+    }
+    const courseValues = (course.validityOptionsDays && course.validityOptionsDays.length > 0
+      ? course.validityOptionsDays
+      : [30, 90, 180]
+    )
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value >= 1);
+    const mergedValues = Array.from(new Set([...comboValues, ...courseValues])).sort((a, b) => a - b);
+    if (mergedValues.length > 0) return mergedValues;
+
+    const fromCombinations = Array.from(
+      new Set(
+        (resolvedMasterConfig?.combinations || [])
+          .map((combo) => getComboValidityDays(combo))
+          .filter((value) => Number.isFinite(value) && value >= 1),
+      ),
+    );
+    if (fromCombinations.length > 0) return fromCombinations.sort((a, b) => a - b);
+
+    return (course.validityOptionsDays && course.validityOptionsDays.length > 0
+      ? course.validityOptionsDays
+      : [30, 90, 180]
+    )
+      .map((value) => Number(value))
+      .filter((value) => Number.isFinite(value) && value >= 1)
+      .sort((a, b) => a - b);
+  }, [course.validityOptionsDays, resolvedMasterConfig, combinationRows, hasCombinationPricing]);
   const backendDefaultValidityDays = useMemo(() => {
     const configured = Math.max(1, Number(course.selectedValidityDays || 0));
     if (configured > 0) return configured;
     return Math.max(1, Number(validityOptionsDays[0] || 30));
   }, [course.selectedValidityDays, validityOptionsDays]);
-  const deliveryModes = useMemo(
-    () =>
-      Array.isArray(course.deliveryModes)
-        ? course.deliveryModes.filter((mode) => mode && mode.id && Number(mode.price) > 0)
-        : [],
-    [course.deliveryModes],
+  const deliveryModes = useMemo(() => {
+    const fromCombinations = Array.from(
+      new Map(
+        combinationRows
+          .filter((row) => row.modeId)
+          .map((row) => [row.modeId, { id: row.modeId, label: row.modeLabel || row.modeId, price: 0, originalPrice: 0 }]),
+      ).values(),
+    );
+    if (fromCombinations.length > 0) return fromCombinations;
+
+    const explicitModes = Array.isArray(course.deliveryModes)
+      ? course.deliveryModes.filter((mode) => mode && mode.id)
+      : [];
+    if (explicitModes.length > 0) return explicitModes;
+
+    const combinations = resolvedMasterConfig?.combinations || [];
+    const modeMap = new Map<string, { id: string; label: string; price: number; originalPrice: number }>();
+    combinations.forEach((combo) => {
+      const modeId = String(combo.deliveryModeId || "").trim();
+      if (!modeId || modeMap.has(modeId)) return;
+      const comboPrice = Number(resolvedMasterConfig?.combinationPrices?.[combo.id]?.price || 0);
+      modeMap.set(modeId, {
+        id: modeId,
+        label: String(combo.deliveryModeName || "Lecture Mode"),
+        price: comboPrice,
+        originalPrice: comboPrice,
+      });
+    });
+    return Array.from(modeMap.values());
+  }, [course.deliveryModes, resolvedMasterConfig, combinationRows]);
+  const attemptOptions = useMemo(
+    () => Array.from(new Map(
+      combinationRows
+        .filter((row) => row.attemptOptionId)
+        .map((row) => [row.attemptOptionId, {
+          id: row.attemptOptionId,
+          label: row.attemptLabel || row.attemptOptionId,
+          endDate: row.attemptEndDate,
+        }]),
+    ).values()),
+    [combinationRows],
   );
   const enabledBookAddons = useMemo(
     () =>
@@ -356,6 +517,12 @@ const CourseDetails = () => {
         : [],
     [course.bookAddons],
   );
+  const combinationBasis = resolvedMasterConfig?.combinationBasis;
+  const hasMasterBasis = Boolean(combinationBasis);
+  const useViewPricing = hasMasterBasis ? Boolean(combinationBasis?.useView) : Boolean(course.viewPricingEnabled);
+  const useValidityPricing = hasMasterBasis ? Boolean(combinationBasis?.useValidity) : Boolean(course.validityPricingEnabled);
+  const useAttemptPricing = Boolean(combinationBasis?.useAttempt);
+  const useDeliveryModePricing = hasMasterBasis ? Boolean(combinationBasis?.useMode) : Boolean(course.deliveryModePricingEnabled);
 
   useEffect(() => {
     const defaultViews = Math.max(1, Number(course.selectedViews || viewOptions[0] || 1));
@@ -363,8 +530,24 @@ const CourseDetails = () => {
   }, [course.id, course.selectedViews, viewOptions]);
 
   useEffect(() => {
-    setSelectedValidityDays(backendDefaultValidityDays);
-  }, [course.id]);
+    const preferred = Math.max(1, Number(course.selectedValidityDays || backendDefaultValidityDays || 30));
+    const next = validityOptionsDays.includes(preferred)
+      ? preferred
+      : Math.max(1, Number(validityOptionsDays[0] || backendDefaultValidityDays || 30));
+    setSelectedValidityDays(next);
+  }, [course.id, course.selectedValidityDays, backendDefaultValidityDays, validityOptionsDays]);
+
+  useEffect(() => {
+    if (!useAttemptPricing) {
+      setSelectedAttemptOptionId("");
+      return;
+    }
+    const preferred = String(course.selectedAttemptOptionId || "").trim();
+    const next = attemptOptions.some((item) => item.id === preferred)
+      ? preferred
+      : String(attemptOptions[0]?.id || "").trim();
+    setSelectedAttemptOptionId(next);
+  }, [course.id, course.selectedAttemptOptionId, attemptOptions, useAttemptPricing]);
 
   useEffect(() => {
     const stored = Array.isArray(course.selectedDeliveryModeIds) ? course.selectedDeliveryModeIds : [];
@@ -372,6 +555,50 @@ const CourseDetails = () => {
     const defaults = stored.length > 0 ? stored : fallback ? [fallback] : deliveryModes[0]?.id ? [deliveryModes[0].id] : [];
     setSelectedDeliveryModeIds(defaults);
   }, [course.id, course.selectedDeliveryModeIds, course.selectedDeliveryModeId, deliveryModes]);
+
+  useEffect(() => {
+    if (combinationRows.length === 0) return;
+
+    const selectedModeId = selectedDeliveryModeIds[0] || "";
+    const exact = combinationRows.find((row) => {
+      const viewMatch = !useViewPricing || row.viewCount === Number(selectedViews);
+      const validityMatch = !useValidityPricing || row.validityDays === Number(selectedValidityDays);
+      const attemptMatch = !useAttemptPricing || row.attemptOptionId === selectedAttemptOptionId;
+      const modeMatch = !useDeliveryModePricing || row.modeId === selectedModeId;
+      return viewMatch && validityMatch && attemptMatch && modeMatch;
+    });
+    if (exact) return;
+
+    const fallback = combinationRows.find((row) => {
+      const attemptMatch = !useAttemptPricing || row.attemptOptionId === selectedAttemptOptionId;
+      const modeMatch = !useDeliveryModePricing || row.modeId === selectedModeId;
+      return attemptMatch && modeMatch;
+    }) || combinationRows[0];
+    if (!fallback) return;
+
+    if (useViewPricing && fallback.viewCount > 0 && fallback.viewCount !== selectedViews) {
+      setSelectedViews(fallback.viewCount);
+    }
+    if (useValidityPricing && fallback.validityDays > 0 && fallback.validityDays !== selectedValidityDays) {
+      setSelectedValidityDays(fallback.validityDays);
+    }
+    if (useAttemptPricing && fallback.attemptOptionId && fallback.attemptOptionId !== selectedAttemptOptionId) {
+      setSelectedAttemptOptionId(fallback.attemptOptionId);
+    }
+    if (useDeliveryModePricing && fallback.modeId && fallback.modeId !== selectedModeId) {
+      setSelectedDeliveryModeIds([fallback.modeId]);
+    }
+  }, [
+    combinationRows,
+    useViewPricing,
+    useValidityPricing,
+    useAttemptPricing,
+    useDeliveryModePricing,
+    selectedViews,
+    selectedValidityDays,
+    selectedAttemptOptionId,
+    selectedDeliveryModeIds,
+  ]);
 
   useEffect(() => {
     const defaults = Array.isArray(course.selectedBookAddonIds) ? course.selectedBookAddonIds : [];
@@ -384,7 +611,61 @@ const CourseDetails = () => {
     setOpenPackageCourseId(null);
   }, [course.id]);
 
-  const selectedDeliveryModes = course.deliveryModePricingEnabled
+  const selectedBookAddons = course.bookAddonEnabled
+    ? enabledBookAddons.filter((addon) => selectedBookAddonIds.includes(addon.id))
+    : [];
+  const bookAddOnPrice = selectedBookAddons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
+  
+  // Try to find matching combination from masterConfig
+  const matchingCombination = combinationRows.find((combo) => {
+    const viewMatch = !useViewPricing || (combo.viewCount === Number(selectedViews));
+    const validityMatch = !useValidityPricing || (combo.validityDays === Number(selectedValidityDays));
+    const attemptMatch = !useAttemptPricing || (combo.attemptOptionId === selectedAttemptOptionId);
+    const modeMatch = !useDeliveryModePricing || (combo.modeId === selectedDeliveryModeIds[0]);
+    return viewMatch && validityMatch && attemptMatch && modeMatch;
+  });
+
+  // Get combination price if found, otherwise fall back to dynamic calculation
+  const combinationPrice = matchingCombination
+    ? Number(matchingCombination.price || 0)
+    : null;
+  const combinationOriginalPrice = matchingCombination
+    ? Number(matchingCombination.originalPrice || matchingCombination.price || 0)
+    : null;
+  const combinationMatrixRows = useMemo(
+    () =>
+      combinationRows
+        .map((row) => ({
+          ...row,
+          selected:
+            (!useViewPricing || row.viewCount === Number(selectedViews))
+            && (!useValidityPricing || row.validityDays === Number(selectedValidityDays))
+            && (!useAttemptPricing || row.attemptOptionId === selectedAttemptOptionId)
+            && (!useDeliveryModePricing || row.modeId === selectedDeliveryModeIds[0]),
+        }))
+        .sort((a, b) => {
+          if (a.viewCount !== b.viewCount) return a.viewCount - b.viewCount;
+          if (a.validityDays !== b.validityDays) return a.validityDays - b.validityDays;
+          if (String(a.attemptLabel || "") !== String(b.attemptLabel || "")) {
+            return String(a.attemptLabel || "").localeCompare(String(b.attemptLabel || ""));
+          }
+          return String(a.modeLabel || "").localeCompare(String(b.modeLabel || ""));
+        }),
+    [
+      combinationRows,
+      selectedViews,
+      selectedValidityDays,
+      selectedAttemptOptionId,
+      selectedDeliveryModeIds,
+      useViewPricing,
+      useValidityPricing,
+      useAttemptPricing,
+      useDeliveryModePricing,
+    ],
+  );
+
+  // Fallback calculation for courses without combinations
+  const selectedDeliveryModes = useDeliveryModePricing
     ? deliveryModes.filter((mode) => selectedDeliveryModeIds.includes(mode.id))
     : [];
   const modeBasePrice = selectedDeliveryModes.length > 0
@@ -396,23 +677,35 @@ const CourseDetails = () => {
         0,
       )
     : course.originalPrice;
-  const selectedBookAddons = course.bookAddonEnabled
-    ? enabledBookAddons.filter((addon) => selectedBookAddonIds.includes(addon.id))
-    : [];
-  const bookAddOnPrice = selectedBookAddons.reduce((sum, addon) => sum + Number(addon.price || 0), 0);
-  const viewMultiplier = course.viewPricingEnabled ? selectedViews : 1;
+  const viewMultiplier = useViewPricing ? selectedViews : 1;
   const baseOnDemandSeconds = course.isCombo ? totalPackageSeconds : totalVideoSeconds;
   const effectiveOnDemandSeconds = Math.max(0, Math.round(baseOnDemandSeconds * viewMultiplier));
   const effectiveOnDemandLabel = formatSecondsToHms(effectiveOnDemandSeconds);
-  const effectiveValidityDays = course.validityPricingEnabled ? selectedValidityDays : backendDefaultValidityDays;
-  const validityMultiplier = course.validityPricingEnabled ? effectiveValidityDays / 30 : 1;
-  const dynamicPrice = Math.round((modeBasePrice * viewMultiplier * validityMultiplier) + bookAddOnPrice);
-  const dynamicOriginalPrice = Math.round((modeBaseOriginalPrice * viewMultiplier * validityMultiplier) + bookAddOnPrice);
+  const effectiveValidityDays = useValidityPricing ? selectedValidityDays : backendDefaultValidityDays;
+  const validityMultiplier = useValidityPricing ? effectiveValidityDays / 30 : 1;
+  const fallbackPrice = Math.round((modeBasePrice * viewMultiplier * validityMultiplier) + bookAddOnPrice);
+  const fallbackOriginalPrice = Math.round((modeBaseOriginalPrice * viewMultiplier * validityMultiplier) + bookAddOnPrice);
+
+  // Use combination price if available, otherwise use fallback
+  const dynamicPrice = hasCombinationPricing
+    ? (combinationPrice !== null ? combinationPrice + bookAddOnPrice : bookAddOnPrice)
+    : fallbackPrice;
+  const dynamicOriginalPrice = hasCombinationPricing
+    ? (combinationOriginalPrice !== null ? combinationOriginalPrice + bookAddOnPrice : dynamicPrice)
+    : fallbackOriginalPrice;
   const effectiveHours = derivedCourseHours > 0 ? derivedCourseHours : Number(course.hours || 0);
   const perHourCost = effectiveHours > 0 ? (dynamicPrice / effectiveHours).toFixed(2) : "0";
   const effectiveEnrollmentCount = Math.max(0, Number(course.enrollmentCount || 0));
   const showEnrollmentCount = course.showEnrollmentCount !== false;
-  const validityLabel = formatDaysToValidityLabel(effectiveValidityDays);
+  const selectedAttempt = useMemo(
+    () => attemptOptions.find((item) => item.id === selectedAttemptOptionId) || null,
+    [attemptOptions, selectedAttemptOptionId],
+  );
+  const validityLabel = useAttemptPricing && selectedAttempt?.endDate
+    ? formatAttemptEndDateLabel(selectedAttempt.endDate)
+    : (course.unlimitedViewsEnabled === true
+      ? "Unlimited days"
+      : formatDaysToValidityLabel(effectiveValidityDays));
   const sidebarMetaItems = [
     course.showMetaLectures !== false
       ? { icon: PlayCircle, label: `${totalLectures} Lectures` }
@@ -427,7 +720,7 @@ const CourseDetails = () => {
       ? { icon: Download, label: "Downloadable resources" }
       : null,
     course.showMetaViews !== false
-      ? { icon: Eye, label: course.viewPricingEnabled ? `${selectedViews} Times Views` : "Unlimited Views" }
+      ? { icon: Eye, label: useViewPricing ? `${selectedViews} Times Views` : "Unlimited Views" }
       : null,
     course.showMetaPerHour !== false
       ? { icon: IndianRupee, label: `₹${perHourCost} / Hour` }
@@ -439,10 +732,12 @@ const CourseDetails = () => {
 
   const buildConfiguredCourse = () => ({
     ...course,
-    selectedViews: course.viewPricingEnabled ? selectedViews : 1,
+    selectedViews: useViewPricing ? selectedViews : 1,
     selectedValidityDays: effectiveValidityDays,
+    selectedAttemptOptionId: selectedAttempt?.id || "",
+    selectedAttemptEndDate: selectedAttempt?.endDate || "",
     selectedDeliveryModeId: selectedDeliveryModeIds[0] || "online",
-    selectedDeliveryModeIds: course.deliveryModePricingEnabled ? selectedDeliveryModeIds : [],
+    selectedDeliveryModeIds: useDeliveryModePricing ? selectedDeliveryModeIds : [],
     selectedBookAddonIds: course.bookAddonEnabled ? selectedBookAddonIds : [],
     price: dynamicPrice,
     originalPrice: dynamicOriginalPrice,
@@ -845,58 +1140,31 @@ const CourseDetails = () => {
                   )}
                 </div>
 
-                {(course.deliveryModePricingEnabled || course.bookAddonEnabled || course.viewPricingEnabled || course.validityPricingEnabled) && (
+                {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && (
                   <div className="mb-4 space-y-2">
-                    {course.deliveryModePricingEnabled && deliveryModes.length > 0 && (
+                    {useDeliveryModePricing && deliveryModes.length > 0 && (
                       <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
                         <button
                           type="button"
                           onClick={() => toggleDesktopOptionSection("modes")}
                           className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-left"
                         >
-                          <span className="text-sm font-semibold text-foreground">
-                            {deliveryModes.length === 1 ? "Select Mode" : "Select Modes (Multiple)"}
-                          </span>
+                          <span className="text-sm font-semibold text-foreground">Select Mode</span>
                           <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${openDesktopOptionSections.modes ? "rotate-180" : "rotate-0"}`} />
                         </button>
                         {openDesktopOptionSections.modes && (
                           <div className="pt-1">
-                          {deliveryModes.length === 1 ? (
-                            <div className="rounded-lg border border-primary/60 bg-primary/15 px-3 py-2.5 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.2)]">
-                              <div className="flex items-center justify-between gap-2">
-                                <p className="text-sm font-bold text-foreground">{deliveryModes[0].label}</p>
-                                <span className="inline-flex items-center rounded-full bg-primary text-primary-foreground px-2 py-0.5 text-[10px] font-bold">Selected</span>
-                              </div>
-                              <p className="mt-1 text-xs font-semibold text-primary">+₹{Number(deliveryModes[0].price || 0).toLocaleString()}</p>
-                            </div>
-                          ) : (
-                            <div className="space-y-2">
-                              {deliveryModes.map((mode) => {
-                                const checked = selectedDeliveryModeIds.includes(mode.id);
-                                return (
-                                  <label
-                                    key={mode.id}
-                                    className={`flex items-center justify-between gap-2 rounded-lg border px-2.5 py-2 text-sm transition-colors ${
-                                      checked
-                                        ? "border-primary/70 bg-primary/15 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.18)]"
-                                        : "border-border bg-background/90 hover:bg-muted/60"
-                                    }`}
-                                  >
-                                    <span className="flex items-center gap-2.5 font-medium text-foreground/90">
-                                      <input
-                                        type="checkbox"
-                                        checked={checked}
-                                        onChange={(e) => toggleDeliveryModeSelection(mode.id, e.target.checked)}
-                                        className="w-4 h-4 accent-primary"
-                                      />
-                                      {mode.label}
-                                    </span>
-                                    <span className="text-xs font-semibold text-primary">+₹{Number(mode.price || 0).toLocaleString()}</span>
-                                  </label>
-                                );
-                              })}
-                            </div>
-                          )}
+                            <select
+                              value={selectedDeliveryModeIds[0] || deliveryModes[0]?.id || ""}
+                              onChange={(e) => setSelectedDeliveryModeIds(e.target.value ? [e.target.value] : [])}
+                              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm font-medium"
+                            >
+                              {deliveryModes.map((mode) => (
+                                <option key={mode.id} value={mode.id}>
+                                  {mode.label}
+                                </option>
+                              ))}
+                            </select>
                           </div>
                         )}
                       </div>
@@ -948,7 +1216,7 @@ const CourseDetails = () => {
                       </div>
                     )}
 
-                    {course.viewPricingEnabled && (
+                    {useViewPricing && (
                       <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
                         <button
                           type="button"
@@ -977,7 +1245,7 @@ const CourseDetails = () => {
                       </div>
                     )}
 
-                    {course.validityPricingEnabled && (
+                    {useValidityPricing && (
                       <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
                         <button
                           type="button"
@@ -1003,6 +1271,60 @@ const CourseDetails = () => {
                             </select>
                           </div>
                         )}
+                      </div>
+                    )}
+
+                    {useAttemptPricing && attemptOptions.length > 0 && (
+                      <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
+                        <button
+                          type="button"
+                          onClick={() => toggleDesktopOptionSection("attempts")}
+                          className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-left"
+                        >
+                          <span className="text-sm font-semibold text-foreground">Select Attempt</span>
+                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${openDesktopOptionSections.attempts ? "rotate-180" : "rotate-0"}`} />
+                        </button>
+                        {openDesktopOptionSections.attempts && (
+                          <div className="relative pt-1">
+                            <Clock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                            <select
+                              value={selectedAttemptOptionId}
+                              onChange={(e) => setSelectedAttemptOptionId(e.target.value)}
+                              className="w-full h-10 rounded-lg border border-input bg-background pl-9 pr-2 text-sm font-medium"
+                            >
+                              {attemptOptions.map((option) => (
+                                <option key={option.id} value={option.id}>
+                                  {option.label}
+                                </option>
+                              ))}
+                            </select>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {combinationMatrixRows.length > 0 && (
+                      <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
+                        <p className="text-xs font-semibold text-foreground mb-2">All Combinations</p>
+                        <div className="max-h-40 overflow-auto space-y-1.5 pr-1">
+                          {combinationMatrixRows.map((row) => (
+                            <div
+                              key={row.id}
+                              className={`rounded-md border px-2 py-1.5 text-[11px] ${
+                                row.selected
+                                  ? "border-primary/70 bg-primary/15"
+                                  : "border-border bg-background/80"
+                              }`}
+                            >
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-semibold text-foreground">
+                                  {row.viewCount > 0 ? `${row.viewCount} View` : "Any View"} | {row.validityDays > 0 ? `${row.validityDays} Days` : "Any Validity"} | {row.attemptLabel || "Any Attempt"} | {row.modeLabel || "Any Mode"}
+                                </span>
+                                <span className="font-bold text-primary">₹{Number(row.price || 0).toLocaleString()}</span>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
                       </div>
                     )}
                   </div>
@@ -1075,7 +1397,7 @@ const CourseDetails = () => {
         {/* Add to Cart & Buy Now */}
         <div className="bg-card border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
           <div className="px-4 py-2.5 space-y-2">
-              {(course.deliveryModePricingEnabled || course.bookAddonEnabled || course.viewPricingEnabled || course.validityPricingEnabled) && (
+              {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && (
                 <button
                   type="button"
                   onClick={() => setShowMobileConfigurator((prev) => !prev)}
@@ -1085,56 +1407,31 @@ const CourseDetails = () => {
                   <ChevronUp className={`h-4 w-4 transition-transform ${showMobileConfigurator ? "rotate-180" : "rotate-0"}`} />
                 </button>
               )}
-              {(course.deliveryModePricingEnabled || course.bookAddonEnabled || course.viewPricingEnabled || course.validityPricingEnabled) && showMobileConfigurator && (
+              {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && showMobileConfigurator && (
                 <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5">
                   <div className="grid grid-cols-1 gap-2">
-                  {course.deliveryModePricingEnabled && deliveryModes.length > 0 && (
+                  {useDeliveryModePricing && deliveryModes.length > 0 && (
                     <div className="rounded-lg border border-border/70 bg-card/80 p-2">
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("modes")}
                         className="flex w-full items-center justify-between rounded-md px-0.5 py-0.5 text-left"
                       >
-                        <span className="text-xs font-semibold text-foreground">
-                          {deliveryModes.length === 1 ? "Select Mode" : "Select Modes (Multiple)"}
-                        </span>
+                        <span className="text-xs font-semibold text-foreground">Select Mode</span>
                         <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${openMobileOptionSections.modes ? "rotate-180" : "rotate-0"}`} />
                       </button>
                       {openMobileOptionSections.modes && (
-                      deliveryModes.length === 1 ? (
-                        <div className="mt-1 rounded border border-primary/60 bg-primary/15 px-2 py-1.5 text-xs shadow-[inset_0_0_0_1px_rgba(59,130,246,0.2)]">
-                          <div className="flex items-center justify-between gap-1.5">
-                            <span className="font-bold text-foreground">{deliveryModes[0].label}</span>
-                            <span className="inline-flex items-center rounded-full bg-primary text-primary-foreground px-1.5 py-0.5 text-[9px] font-bold">Selected</span>
-                          </div>
-                          <div className="mt-1 font-semibold text-primary">+₹{Number(deliveryModes[0].price || 0).toLocaleString()}</div>
-                        </div>
-                      ) : (
-                      <div className="space-y-1.5 pt-1">
-                        {deliveryModes.map((mode) => {
-                          const checked = selectedDeliveryModeIds.includes(mode.id);
-                          return (
-                          <label
-                            key={mode.id}
-                            className={`flex items-center justify-between gap-1.5 rounded border px-2 py-1.5 text-xs ${
-                              checked ? "border-primary/70 bg-primary/15 shadow-[inset_0_0_0_1px_rgba(59,130,246,0.18)]" : "border-input bg-background"
-                            }`}
-                          >
-                            <span className="flex items-center gap-1.5 truncate font-medium">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => toggleDeliveryModeSelection(mode.id, e.target.checked)}
-                                className="w-3.5 h-3.5 accent-primary"
-                              />
-                              <span className="truncate">{mode.label}</span>
-                            </span>
-                            <span className="font-semibold text-primary">+₹{Number(mode.price || 0).toLocaleString()}</span>
-                          </label>
-                          );
-                        })}
-                      </div>
-                      )
+                      <select
+                        value={selectedDeliveryModeIds[0] || deliveryModes[0]?.id || ""}
+                        onChange={(e) => setSelectedDeliveryModeIds(e.target.value ? [e.target.value] : [])}
+                        className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
+                      >
+                        {deliveryModes.map((mode) => (
+                          <option key={mode.id} value={mode.id}>
+                            {mode.label}
+                          </option>
+                        ))}
+                      </select>
                       )}
                     </div>
                   )}
@@ -1181,7 +1478,7 @@ const CourseDetails = () => {
                       )}
                     </div>
                   )}
-                  {course.viewPricingEnabled && (
+                  {useViewPricing && (
                     <div className="rounded-lg border border-border/70 bg-card/80 p-2">
                       <button
                         type="button"
@@ -1206,7 +1503,7 @@ const CourseDetails = () => {
                       )}
                     </div>
                   )}
-                  {course.validityPricingEnabled && (
+                  {useValidityPricing && (
                     <div className="rounded-lg border border-border/70 bg-card/80 p-2">
                       <button
                         type="button"
@@ -1229,6 +1526,55 @@ const CourseDetails = () => {
                         ))}
                       </select>
                       )}
+                    </div>
+                  )}
+                  {useAttemptPricing && attemptOptions.length > 0 && (
+                    <div className="rounded-lg border border-border/70 bg-card/80 p-2">
+                      <button
+                        type="button"
+                        onClick={() => toggleMobileOptionSection("attempts")}
+                        className="flex w-full items-center justify-between rounded-md px-0.5 py-0.5 text-left"
+                      >
+                        <span className="text-xs font-semibold text-foreground">Select Attempt</span>
+                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${openMobileOptionSections.attempts ? "rotate-180" : "rotate-0"}`} />
+                      </button>
+                      {openMobileOptionSections.attempts && (
+                      <select
+                        value={selectedAttemptOptionId}
+                        onChange={(e) => setSelectedAttemptOptionId(e.target.value)}
+                        className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
+                      >
+                        {attemptOptions.map((option) => (
+                          <option key={option.id} value={option.id}>
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+                      )}
+                    </div>
+                  )}
+                  {combinationMatrixRows.length > 0 && (
+                    <div className="rounded-lg border border-border/70 bg-card/80 p-2">
+                      <p className="text-xs font-semibold text-foreground mb-1">All Combinations</p>
+                      <div className="max-h-28 overflow-auto space-y-1 pr-1">
+                        {combinationMatrixRows.map((row) => (
+                          <div
+                            key={row.id}
+                            className={`rounded border px-2 py-1 text-[10px] ${
+                              row.selected
+                                ? "border-primary/70 bg-primary/15"
+                                : "border-input bg-background"
+                            }`}
+                          >
+                            <div className="flex items-center justify-between gap-1.5">
+                              <span className="truncate font-medium">
+                                {row.viewCount > 0 ? `${row.viewCount}V` : "Any"} | {row.validityDays > 0 ? `${row.validityDays}D` : "Any"} | {(row.attemptLabel || "Any")} | {row.modeLabel || "Any"}
+                              </span>
+                              <span className="font-semibold text-primary">₹{Number(row.price || 0).toLocaleString()}</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                   </div>
