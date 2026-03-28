@@ -172,9 +172,29 @@ const authClass: Record<EndpointDoc["auth"], string> = {
   "Admin Token": "bg-orange-100 text-orange-700 border-orange-200",
 };
 
+const getDefaultApiBaseUrl = () => {
+  const envBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").trim();
+  if (envBaseUrl) return envBaseUrl.replace(/\/+$/, "");
+
+  if (typeof window === "undefined") return "";
+  const { protocol, hostname, host, port } = window.location;
+
+  // In local Vite dev, backend runs on 4000.
+  if (port === "8080") return `${protocol}//${hostname}:4000`;
+  return `${protocol}//${host}`;
+};
+
+const buildFullUrl = (baseUrl: string, path: string) => {
+  if (/^https?:\/\//i.test(path)) return path;
+  const normalizedBase = String(baseUrl || "").trim().replace(/\/+$/, "");
+  const normalizedPath = path.startsWith("/") ? path : `/${path}`;
+  return normalizedBase ? `${normalizedBase}${normalizedPath}` : normalizedPath;
+};
+
 export default function AdminApiModule() {
   const [query, setQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState<"ALL" | EndpointDoc["method"]>("ALL");
+  const [apiBaseUrl] = useState(getDefaultApiBaseUrl);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -195,7 +215,7 @@ export default function AdminApiModule() {
 
   const copyPath = async (path: string) => {
     try {
-      await navigator.clipboard.writeText(path);
+      await navigator.clipboard.writeText(buildFullUrl(apiBaseUrl, path));
     } catch {
       // ignore clipboard errors on unsupported browsers
     }
@@ -209,6 +229,7 @@ export default function AdminApiModule() {
           <CardDescription>
             Key endpoints from login to lecture tracking are listed in one place. Map these paths with your base URL in the Flutter network layer.
           </CardDescription>
+          <p className="text-xs text-slate-500">Copy uses base URL: <span className="font-mono">{apiBaseUrl || "(not detected)"}</span></p>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-3">
@@ -271,7 +292,7 @@ export default function AdminApiModule() {
                 <Badge variant="outline" className={authClass[item.auth]}>{item.auth}</Badge>
                 <Badge variant="outline">{item.module}</Badge>
                 <Button type="button" variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs" onClick={() => void copyPath(item.path)}>
-                  <Copy className="mr-1 h-3.5 w-3.5" /> Copy
+                  <Copy className="mr-1 h-3.5 w-3.5" /> Copy URL
                 </Button>
               </div>
               <p className="mt-2 text-sm text-slate-600">{item.description}</p>
