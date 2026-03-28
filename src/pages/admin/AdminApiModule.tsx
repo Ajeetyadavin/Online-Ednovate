@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -172,9 +172,13 @@ const authClass: Record<EndpointDoc["auth"], string> = {
   "Admin Token": "bg-orange-100 text-orange-700 border-orange-200",
 };
 
+const normalizeBase = (value: string) => String(value || "").trim().replace(/\/+$/, "");
+
+const getEnvApiBaseUrl = () => normalizeBase(String(import.meta.env.VITE_API_BASE_URL || ""));
+
 const getDefaultApiBaseUrl = () => {
-  const envBaseUrl = String(import.meta.env.VITE_API_BASE_URL || "").trim();
-  if (envBaseUrl) return envBaseUrl.replace(/\/+$/, "");
+  const envBaseUrl = getEnvApiBaseUrl();
+  if (envBaseUrl) return envBaseUrl;
 
   if (typeof window === "undefined") return "";
   const { protocol, hostname, host, port } = window.location;
@@ -184,9 +188,58 @@ const getDefaultApiBaseUrl = () => {
   return `${protocol}//${host}`;
 };
 
+const getApiBaseCandidates = () => {
+  if (typeof window === "undefined") return [];
+
+  const envBaseUrl = getEnvApiBaseUrl();
+  if (envBaseUrl) return [envBaseUrl];
+
+  const { protocol, hostname, host, port } = window.location;
+  const candidates = new Set<string>();
+
+  if (port === "8080") {
+    candidates.add(`${protocol}//${hostname}:4000`);
+  }
+
+  const hostParts = hostname.split(".").filter(Boolean);
+  const looksLikeDomain = hostParts.length >= 2 && !/^localhost$/i.test(hostname) && !/^\d+\.\d+\.\d+\.\d+$/.test(hostname);
+
+  if (looksLikeDomain) {
+    const parentDomain = hostParts.length > 2 ? hostParts.slice(1).join(".") : hostname;
+    candidates.add(`${protocol}//api.${parentDomain}`);
+    candidates.add(`${protocol}//backend.${parentDomain}`);
+
+    if (hostParts[0].toLowerCase() === "www") {
+      const root = hostParts.slice(1).join(".");
+      candidates.add(`${protocol}//api.${root}`);
+      candidates.add(`${protocol}//backend.${root}`);
+    }
+  }
+
+  candidates.add(`${protocol}//${host}`);
+  return Array.from(candidates).map(normalizeBase).filter(Boolean);
+};
+
+const detectApiBaseUrl = async () => {
+  const candidates = getApiBaseCandidates();
+  for (const base of candidates) {
+    try {
+      const response = await fetch(`${base}/api/health`, {
+        method: "GET",
+        credentials: "include",
+        cache: "no-store",
+      });
+      if (response.ok) return base;
+    } catch {
+      // ignore probe failures and continue trying next candidate
+    }
+  }
+  return "";
+};
+
 const buildFullUrl = (baseUrl: string, path: string) => {
   if (/^https?:\/\//i.test(path)) return path;
-  const normalizedBase = String(baseUrl || "").trim().replace(/\/+$/, "");
+  const normalizedBase = normalizeBase(baseUrl);
   const normalizedPath = path.startsWith("/") ? path : `/${path}`;
   return normalizedBase ? `${normalizedBase}${normalizedPath}` : normalizedPath;
 };
@@ -194,7 +247,26 @@ const buildFullUrl = (baseUrl: string, path: string) => {
 export default function AdminApiModule() {
   const [query, setQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState<"ALL" | EndpointDoc["method"]>("ALL");
-  const [apiBaseUrl] = useState(getDefaultApiBaseUrl);
+  const [apiBaseUrl, setApiBaseUrl] = useState(getDefaultApiBaseUrl);
+  const [detectingBaseUrl, setDetectingBaseUrl] = useState(false);
+
+  useEffect(() => {
+    // Explicit env config should always win over probing.
+    if (getEnvApiBaseUrl()) return;
+
+    let cancelled = false;
+    const run = async () => {
+      setDetectingBaseUrl(true);
+      const detected = await detectApiBaseUrl();
+      if (!cancelled && detected) setApiBaseUrl(detected);
+      if (!cancelled) setDetectingBaseUrl(false);
+    };
+
+    void run();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -229,7 +301,10 @@ export default function AdminApiModule() {
           <CardDescription>
             Key endpoints from login to lecture tracking are listed in one place. Map these paths with your base URL in the Flutter network layer.
           </CardDescription>
-          <p className="text-xs text-slate-500">Copy uses base URL: <span className="font-mono">{apiBaseUrl || "(not detected)"}</span></p>
+          <p className="text-xs text-slate-500">
+            Copy uses base URL: <span className="font-mono">{apiBaseUrl || "(not detected)"}</span>
+            {detectingBaseUrl ? " (detecting...)" : ""}
+          </p>
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 sm:grid-cols-3">
