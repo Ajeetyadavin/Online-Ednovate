@@ -200,7 +200,6 @@ const CourseDetails = () => {
 
   const matchedCourse = courses.find((c) => c.id === id);
   const course = matchedCourse ?? FALLBACK_COURSE;
-  const isWebPlayBlocked = course.webPlayEnabled !== true;
   const resolvedMasterConfig = useMemo(() => {
     const raw = (course as { masterConfig?: unknown }).masterConfig;
     if (raw && typeof raw === "object") return raw as NonNullable<ManagedCourse["masterConfig"]>;
@@ -863,25 +862,13 @@ const CourseDetails = () => {
             {/* Course Banner */}
             {courseDemo ? (
               <div>
-                {isWebPlayBlocked ? (
-                  <button
-                    type="button"
-                    onClick={() => setInstallPromptOpen(true)}
-                    className="w-full rounded-xl border border-amber-200 bg-amber-50 p-6 text-left shadow-sm transition-colors hover:bg-amber-100"
-                  >
-                    <p className="text-sm font-bold text-amber-800">WebPlay Disabled</p>
-                    <p className="mt-1 text-xs text-amber-700">This video is app-only. Install the app to continue playback.</p>
-                    <p className="mt-3 inline-flex rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white">Try Play</p>
-                  </button>
-                ) : (
-                  <VideoPlayer
-                    videoUrl={courseDemo.videoUrl}
-                    source={courseDemo.sourceType}
-                    poster={courseDemo.thumbnailUrl || undefined}
-                    aspectRatio="aspect-video"
-                    controls={true}
-                  />
-                )}
+                <VideoPlayer
+                  videoUrl={courseDemo.videoUrl}
+                  source={courseDemo.sourceType}
+                  poster={courseDemo.thumbnailUrl || undefined}
+                  aspectRatio="aspect-video"
+                  controls={true}
+                />
                 {/* Demo Info Below Video */}
                 <div className="mt-3 mb-8 rounded-xl border border-border bg-card p-4 sm:p-5 shadow-sm">
                   <p className="inline-flex items-center rounded-full bg-accent text-accent-foreground text-[10px] font-bold px-3 py-1.5 uppercase tracking-wider mb-3">
