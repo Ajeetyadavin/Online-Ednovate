@@ -20,6 +20,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import LoginModal from "@/components/LoginModal";
 import { useAuth } from "@/context/AuthContext";
 import { useCart } from "@/context/CartContext";
@@ -102,6 +103,10 @@ export default function CourseAbout() {
   const [loading, setLoading] = useState(true);
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
+  const [installPromptOpen, setInstallPromptOpen] = useState(false);
+
+  const PLAY_STORE_URL = "https://play.google.com/store";
+  const APP_STORE_URL = "https://www.apple.com/app-store/";
   const [openChapterIds, setOpenChapterIds] = useState<Set<string>>(new Set());
 
   const course = useMemo(() =>
@@ -183,6 +188,15 @@ export default function CourseAbout() {
   const isActive = isCourseAccessActive(accessItem);
   const thumbnail = course.thumbnail || course.image || "/placeholder.svg";
   const expiresAt = accessItem?.expiresAt;
+  const isWebPlayBlocked = course.webPlayEnabled !== true;
+
+  const handleContinueLearning = () => {
+    if (isWebPlayBlocked) {
+      setInstallPromptOpen(true);
+      return;
+    }
+    navigate(`/learn/${course.id}`);
+  };
 
   const toggleChapter = (id: string) =>
     setOpenChapterIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
@@ -203,7 +217,7 @@ export default function CourseAbout() {
             <span className={`h-2 w-2 shrink-0 rounded-full ${isActive ? "bg-emerald-500 animate-pulse" : "bg-red-400"}`} />
             <p className="truncate text-sm font-semibold text-slate-800">{course.title}</p>
           </div>
-          <Button size="sm" className="h-8 shrink-0 gap-1.5 rounded-xl px-4 text-xs font-semibold" onClick={() => navigate(`/learn/${course.id}`)}>
+          <Button size="sm" className="h-8 shrink-0 gap-1.5 rounded-xl px-4 text-xs font-semibold" onClick={handleContinueLearning}>
             <PlayCircle className="h-3.5 w-3.5" /> Continue
           </Button>
         </div>
@@ -409,7 +423,7 @@ export default function CourseAbout() {
 
         {/* ── Actions ── */}
         <div className="flex flex-wrap gap-3">
-          <Button className="gap-2 rounded-xl px-6 font-semibold" onClick={() => navigate(`/learn/${course.id}`)}>
+          <Button className="gap-2 rounded-xl px-6 font-semibold" onClick={handleContinueLearning}>
             <PlayCircle className="h-4 w-4" /> Continue Learning
           </Button>
           <Button variant="outline" className="gap-2 rounded-xl px-5 font-semibold border-slate-200" onClick={() => navigate(`/course/${course.id}`)}>
@@ -417,6 +431,23 @@ export default function CourseAbout() {
           </Button>
         </div>
       </div>
+
+      <Dialog open={installPromptOpen} onOpenChange={setInstallPromptOpen}>
+        <DialogContent className="max-w-md rounded-2xl border border-slate-200">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">Install App To Continue</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">WebPlay is OFF for this course. Video will not play on website. Install the app to continue.</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button type="button" className="rounded-xl" onClick={() => window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer")}>
+              Play Store
+            </Button>
+            <Button type="button" variant="outline" className="rounded-xl" onClick={() => window.open(APP_STORE_URL, "_blank", "noopener,noreferrer")}>
+              App Store
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

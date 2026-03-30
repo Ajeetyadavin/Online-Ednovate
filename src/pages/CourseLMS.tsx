@@ -3,6 +3,7 @@ import { useParams, useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Progress } from "@/components/ui/progress";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import {
   PlayCircle, CheckCircle2, Lock, Clock, FileText, ChevronLeft,
@@ -70,6 +71,11 @@ const CourseLMS = () => {
   const [lessonNotesDraft, setLessonNotesDraft] = useState("");
   const [isNotesLoading, setIsNotesLoading] = useState(false);
   const [isNotesSaving, setIsNotesSaving] = useState(false);
+  const [installPromptOpen, setInstallPromptOpen] = useState(false);
+  const autoPromptShownForCourseRef = useRef<string | null>(null);
+
+  const PLAY_STORE_URL = "https://play.google.com/store";
+  const APP_STORE_URL = "https://www.apple.com/app-store/";
 
   useEffect(() => {
     if (!course) {
@@ -80,14 +86,15 @@ const CourseLMS = () => {
     }
 
     const nextCurriculum = getCurriculumForCourse(course.id, course.title);
+    const firstAvailableLesson = nextCurriculum.flatMap((chapter) => chapter.lessons)[0] || null;
     setCurriculum(nextCurriculum);
 
     setActiveLesson((prev) => {
-      if (!prev) return nextCurriculum[0]?.lessons[0] || null;
+      if (!prev) return firstAvailableLesson;
       const stillExists = nextCurriculum
         .flatMap((chapter) => chapter.lessons)
         .find((lesson) => lesson.id === prev.id);
-      return stillExists || nextCurriculum[0]?.lessons[0] || null;
+      return stillExists || firstAvailableLesson;
     });
   }, [course, getCurriculumForCourse]);
 
@@ -165,6 +172,16 @@ const CourseLMS = () => {
   const notesStorageKey = course?.id && currentLessonId
     ? `lms-notes:${course.id}:${currentLessonId}`
     : "";
+
+  useEffect(() => {
+    if (!course?.id || !isLoggedIn || accessLoading || !hasCourseAccess) return;
+    if (course.webPlayEnabled === true) return;
+    if (activeLesson?.type !== "video") return;
+    if (autoPromptShownForCourseRef.current === course.id) return;
+
+    setInstallPromptOpen(true);
+    autoPromptShownForCourseRef.current = course.id;
+  }, [course?.id, course?.webPlayEnabled, activeLesson?.type, isLoggedIn, accessLoading, hasCourseAccess]);
 
   useEffect(() => {
     if (!notesStorageKey) {
@@ -497,12 +514,17 @@ const CourseLMS = () => {
   }
 
   if (!activeLesson) {
+    const hasAnyLesson = allLessons.length > 0;
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <p className="text-muted-foreground">Loading lesson content...</p>
+        <p className="text-muted-foreground">
+          {hasAnyLesson ? "Loading lesson content..." : "No lessons available for this course yet."}
+        </p>
       </div>
     );
   }
+
+  const isWebPlayBlocked = course.webPlayEnabled !== true;
 
   const lessonVideoUrl = decodeVideoUrl(activeLesson.videoUrl || "") || fallbackVideoUrl;
   const lessonVideoSource = activeLesson.videoSource || "direct";
@@ -724,57 +746,71 @@ const CourseLMS = () => {
             <div ref={playerShellRef} className="relative group/player w-full aspect-video lg:max-w-[1100px] lg:mx-auto lg:aspect-[16/9] bg-black">
               {activeLesson.type === "video" ? (
                 <>
-                  <Button
-                    type="button"
-                    size="icon"
-                    variant="secondary"
-                    className="absolute right-2 top-2 z-30 h-8 w-8 bg-black/55 text-white border border-white/20 hover:bg-black/75"
-                    onClick={togglePlayerFullscreen}
-                  >
-                    {isPlayerFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
-                  </Button>
-                  <div className="w-full" key={activeLesson.id}>
-                  <VideoPlayer
-                    videoUrl={lessonVideoUrl}
-                    source={lessonVideoSource}
-                    autoplay
-                    controls
-                    disableNativeFullscreen
-                    restrictControls
-                    preferredQualityMode={preferredQualityMode}
-                    aspectRatio="aspect-video"
-                    onProgress={({ currentTime, duration, progressPercent }) => {
-                      setCurrentTimeSec(currentTime);
-                      setDurationSec(duration);
+                  {isWebPlayBlocked ? (
+                    <button
+                      type="button"
+                      onClick={() => setInstallPromptOpen(true)}
+                      className="flex h-full w-full flex-col items-center justify-center gap-3 border border-amber-300 bg-amber-50 px-6 text-center"
+                    >
+                      <p className="text-base font-bold text-amber-800">WebPlay Disabled</p>
+                      <p className="max-w-lg text-sm text-amber-700">This video is app-only. It will not play on website. Install the app to continue.</p>
+                      <span className="rounded-lg bg-amber-600 px-4 py-2 text-xs font-semibold text-white">Try Play</span>
+                    </button>
+                  ) : (
+                    <>
+                      <Button
+                        type="button"
+                        size="icon"
+                        variant="secondary"
+                        className="absolute right-2 top-2 z-30 h-8 w-8 bg-black/55 text-white border border-white/20 hover:bg-black/75"
+                        onClick={togglePlayerFullscreen}
+                      >
+                        {isPlayerFullscreen ? <Minimize2 className="w-4 h-4" /> : <Maximize2 className="w-4 h-4" />}
+                      </Button>
+                      <div className="w-full" key={activeLesson.id}>
+                      <VideoPlayer
+                        videoUrl={lessonVideoUrl}
+                        source={lessonVideoSource}
+                        autoplay
+                        controls
+                        disableNativeFullscreen
+                        restrictControls
+                        preferredQualityMode={preferredQualityMode}
+                        aspectRatio="aspect-video"
+                        onProgress={({ currentTime, duration, progressPercent }) => {
+                          setCurrentTimeSec(currentTime);
+                          setDurationSec(duration);
 
-                      const previousObserved = lastObservedSecondRef.current;
-                      if (previousObserved !== null) {
-                        const rawDelta = Math.max(0, currentTime - previousObserved);
-                        const boundedDelta = Math.min(rawDelta, 2);
-                        if (boundedDelta > 0) {
-                          watchBufferSecondsRef.current += boundedDelta;
-                          setPendingWatchSeconds(Math.floor(watchBufferSecondsRef.current));
-                        }
-                      }
-                      lastObservedSecondRef.current = currentTime;
+                          const previousObserved = lastObservedSecondRef.current;
+                          if (previousObserved !== null) {
+                            const rawDelta = Math.max(0, currentTime - previousObserved);
+                            const boundedDelta = Math.min(rawDelta, 2);
+                            if (boundedDelta > 0) {
+                              watchBufferSecondsRef.current += boundedDelta;
+                              setPendingWatchSeconds(Math.floor(watchBufferSecondsRef.current));
+                            }
+                          }
+                          lastObservedSecondRef.current = currentTime;
 
-                      if (watchBufferSecondsRef.current >= 5) {
-                        void syncWatchProgress(false);
-                      }
+                          if (watchBufferSecondsRef.current >= 5) {
+                            void syncWatchProgress(false);
+                          }
 
-                      if (
-                        activeLesson?.id &&
-                        progressPercent >= 99.5
-                      ) {
-                        void markComplete();
-                      }
-                    }}
-                    onEnded={() => {
-                      if (!activeLesson?.id) return;
-                      void markComplete();
-                    }}
-                  />
-                  </div>
+                          if (
+                            activeLesson?.id &&
+                            progressPercent >= 99.5
+                          ) {
+                            void markComplete();
+                          }
+                        }}
+                        onEnded={() => {
+                          if (!activeLesson?.id) return;
+                          void markComplete();
+                        }}
+                      />
+                      </div>
+                    </>
+                  )}
 
                   {watermarkMobile && (
                     <div className="pointer-events-none absolute inset-0 select-none">
@@ -994,6 +1030,23 @@ const CourseLMS = () => {
           </div>
         </main>
       </div>
+
+      <Dialog open={installPromptOpen} onOpenChange={setInstallPromptOpen}>
+        <DialogContent className="max-w-md rounded-2xl border border-slate-200">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">Install App To Watch Video</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">This course playback is app-only. Install the app to continue watching videos.</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button type="button" className="rounded-xl" onClick={() => window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer")}>
+              Play Store
+            </Button>
+            <Button type="button" variant="outline" className="rounded-xl" onClick={() => window.open(APP_STORE_URL, "_blank", "noopener,noreferrer")}>
+              App Store
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };

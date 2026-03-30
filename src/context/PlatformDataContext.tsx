@@ -9,6 +9,7 @@ import {
 
 export interface ManagedCourse extends Course {
   isVisible: boolean;
+  webPlayEnabled?: boolean;
   demoVideoVisible?: boolean;
   demoVideoTitle?: string;
   demoVideoDescription?: string;
@@ -353,6 +354,7 @@ const normalizeCourse = (course: Partial<ManagedCourse>, index: number): Managed
   isCombo: Boolean(course.isCombo),
   isMaterial: Boolean(course.isMaterial),
   isVisible: course.isVisible !== false,
+  webPlayEnabled: course.webPlayEnabled === true,
   packageCourseIds: Array.isArray(course.packageCourseIds)
     ? course.packageCourseIds.map((id) => String(id).trim()).filter(Boolean)
     : [],

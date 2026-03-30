@@ -66,6 +66,7 @@ export interface Course {
   isCombo?: boolean;
   isMaterial?: boolean;
   isVisible?: boolean;
+  webPlayEnabled?: boolean;
   packageCourseIds?: string[]; // IDs of bundled courses (for combo packages)
   masterConfig?: {
     categoryId?: number | null;

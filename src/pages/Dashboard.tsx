@@ -60,6 +60,11 @@ const Dashboard = () => {
   const [courseQualityPrefs, setCourseQualityPrefs] = useState<Record<string, VideoQualityPref>>({});
   const [courseAccessById, setCourseAccessById] = useState<Record<string, StudentCourseAccessSelf>>({});
   const [qualitySavingCourseId, setQualitySavingCourseId] = useState<string>("");
+  const [startInstallPromptOpen, setStartInstallPromptOpen] = useState(false);
+  const [startInstallCourseTitle, setStartInstallCourseTitle] = useState("");
+
+  const PLAY_STORE_URL = "https://play.google.com/store";
+  const APP_STORE_URL = "https://www.apple.com/app-store/";
 
   useEffect(() => {
     if (!user) return;
@@ -448,7 +453,14 @@ const Dashboard = () => {
                         <Button
                           size="sm"
                           className="bg-[#1e3a8a] hover:bg-[#1e3a8a]/90 text-white text-xs h-9 rounded-xl font-semibold shadow-md group/btn disabled:opacity-60 disabled:cursor-not-allowed"
-                          onClick={() => navigate(`/learn/${course.id}`)}
+                          onClick={() => {
+                            if ((course as { webPlayEnabled?: boolean }).webPlayEnabled !== true) {
+                              setStartInstallCourseTitle(course.title || "this course");
+                              setStartInstallPromptOpen(true);
+                              return;
+                            }
+                            navigate(`/learn/${course.id}`);
+                          }}
                           disabled={!isAccessAllowed}
                         >
                           <PlayCircle className="w-4 h-4 mr-1.5 group-hover/btn:scale-110 transition-transform" />
@@ -680,6 +692,26 @@ const Dashboard = () => {
               ))}
             </div>
           )}
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={startInstallPromptOpen} onOpenChange={setStartInstallPromptOpen}>
+        <DialogContent className="max-w-md rounded-2xl border border-slate-200">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">Install App To Continue</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">
+            WebPlay is OFF for {startInstallCourseTitle || "this course"}. Video will not play on website.
+            Install the app to continue.
+          </p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button type="button" className="rounded-xl" onClick={() => window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer")}>
+              Play Store
+            </Button>
+            <Button type="button" variant="outline" className="rounded-xl" onClick={() => window.open(APP_STORE_URL, "_blank", "noopener,noreferrer")}>
+              App Store
+            </Button>
+          </div>
         </DialogContent>
       </Dialog>
 

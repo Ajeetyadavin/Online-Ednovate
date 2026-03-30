@@ -1,5 +1,6 @@
 import { useParams, useNavigate, Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
@@ -184,6 +185,10 @@ const CourseDetails = () => {
     attempts: false,
   });
   const [showMobileConfigurator, setShowMobileConfigurator] = useState(false);
+  const [installPromptOpen, setInstallPromptOpen] = useState(false);
+
+  const PLAY_STORE_URL = "https://play.google.com/store";
+  const APP_STORE_URL = "https://www.apple.com/app-store/";
 
   const toggleDesktopOptionSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
     setOpenDesktopOptionSections((prev) => ({ ...prev, [section]: !prev[section] }));
@@ -195,6 +200,7 @@ const CourseDetails = () => {
 
   const matchedCourse = courses.find((c) => c.id === id);
   const course = matchedCourse ?? FALLBACK_COURSE;
+  const isWebPlayBlocked = course.webPlayEnabled !== true;
   const resolvedMasterConfig = useMemo(() => {
     const raw = (course as { masterConfig?: unknown }).masterConfig;
     if (raw && typeof raw === "object") return raw as NonNullable<ManagedCourse["masterConfig"]>;
@@ -857,13 +863,25 @@ const CourseDetails = () => {
             {/* Course Banner */}
             {courseDemo ? (
               <div>
-                <VideoPlayer
-                  videoUrl={courseDemo.videoUrl}
-                  source={courseDemo.sourceType}
-                  poster={courseDemo.thumbnailUrl || undefined}
-                  aspectRatio="aspect-video"
-                  controls={true}
-                />
+                {isWebPlayBlocked ? (
+                  <button
+                    type="button"
+                    onClick={() => setInstallPromptOpen(true)}
+                    className="w-full rounded-xl border border-amber-200 bg-amber-50 p-6 text-left shadow-sm transition-colors hover:bg-amber-100"
+                  >
+                    <p className="text-sm font-bold text-amber-800">WebPlay Disabled</p>
+                    <p className="mt-1 text-xs text-amber-700">This video is app-only. Install the app to continue playback.</p>
+                    <p className="mt-3 inline-flex rounded-lg bg-amber-600 px-3 py-1.5 text-[11px] font-semibold text-white">Try Play</p>
+                  </button>
+                ) : (
+                  <VideoPlayer
+                    videoUrl={courseDemo.videoUrl}
+                    source={courseDemo.sourceType}
+                    poster={courseDemo.thumbnailUrl || undefined}
+                    aspectRatio="aspect-video"
+                    controls={true}
+                  />
+                )}
                 {/* Demo Info Below Video */}
                 <div className="mt-3 mb-8 rounded-xl border border-border bg-card p-4 sm:p-5 shadow-sm">
                   <p className="inline-flex items-center rounded-full bg-accent text-accent-foreground text-[10px] font-bold px-3 py-1.5 uppercase tracking-wider mb-3">
@@ -1634,6 +1652,23 @@ const CourseDetails = () => {
         redirectPath="/checkout"
         onToggleMode={() => setSignupMode((prev) => !prev)}
       />
+
+      <Dialog open={installPromptOpen} onOpenChange={setInstallPromptOpen}>
+        <DialogContent className="max-w-md rounded-2xl border border-slate-200">
+          <DialogHeader>
+            <DialogTitle className="text-base font-bold text-slate-900">Install App To Continue</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-slate-600">This course video playback is app-only. Please install the app to watch videos.</p>
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            <Button type="button" className="rounded-xl" onClick={() => window.open(PLAY_STORE_URL, "_blank", "noopener,noreferrer")}>
+              Play Store
+            </Button>
+            <Button type="button" variant="outline" className="rounded-xl" onClick={() => window.open(APP_STORE_URL, "_blank", "noopener,noreferrer")}>
+              App Store
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
       
     </div>
   );

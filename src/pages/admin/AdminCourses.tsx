@@ -87,6 +87,7 @@ type CourseForm = {
   language: string; professor: string; lectures: number; hours: number; thumbnail?: string;
   demoVideoTitle?: string; demoVideoDescription?: string; demoVideoSource?: "youtube" | "direct" | "upload";
   demoVideoUrl?: string; demoVideoThumbnailUrl?: string; demoVideoVisible?: boolean;
+  webPlayEnabled?: boolean;
   isSubcategoryCustom?: boolean; viewPricingEnabled?: boolean; unlimitedViewsEnabled?: boolean;
   validityPricingEnabled?: boolean; viewOptionsText?: string; validityOptionsDaysText?: string;
   deliveryModePricingEnabled?: boolean; enableOnlineMode?: boolean; enableGoogleDriveMode?: boolean;
@@ -118,6 +119,7 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
   demoVideoTitle: c.demoVideoTitle, demoVideoDescription: c.demoVideoDescription,
   demoVideoSource: c.demoVideoSource, demoVideoUrl: decodeDemoVideoValue(c.demoVideoUrl),
   demoVideoThumbnailUrl: c.demoVideoThumbnailUrl, demoVideoVisible: c.demoVideoVisible,
+  webPlayEnabled: c.webPlayEnabled === true,
   isSubcategoryCustom: !c.subcategory?.startsWith("subcat-"),
   viewPricingEnabled: Boolean(c.viewPricingEnabled), unlimitedViewsEnabled: Boolean(c.unlimitedViewsEnabled),
   validityPricingEnabled: Boolean(c.validityPricingEnabled),
@@ -179,7 +181,7 @@ const BLANK_FORM: CourseForm = {
   subject: "", chapter: "", selectedChapters: [],
   language: "English", professor: "Ednovate Faculty", lectures: 0, hours: 0, thumbnail: "",
   demoVideoTitle: "", demoVideoDescription: "", demoVideoSource: "youtube", demoVideoUrl: "",
-  demoVideoThumbnailUrl: "", demoVideoVisible: false, isSubcategoryCustom: false,
+  demoVideoThumbnailUrl: "", demoVideoVisible: false, webPlayEnabled: false, isSubcategoryCustom: false,
   viewPricingEnabled: false, unlimitedViewsEnabled: false, validityPricingEnabled: false,
   viewOptionsText: "1,2", validityOptionsDaysText: "30,90,180", deliveryModePricingEnabled: false,
   enableOnlineMode: true, enableGoogleDriveMode: false, enablePenDriveMode: false, enableCustomMode: false,
@@ -303,6 +305,7 @@ export default function AdminCourses() {
   const [pkgPhysBookPrice, setPkgPhysBookPrice] = useState(0);
   // Demo video
   const [pkgDemoVideoVisible, setPkgDemoVideoVisible] = useState(false);
+  const [pkgWebPlayEnabled, setPkgWebPlayEnabled] = useState(false);
   const [pkgDemoVideoTitle, setPkgDemoVideoTitle] = useState("");
   const [pkgDemoVideoDescription, setPkgDemoVideoDescription] = useState("");
   const [pkgDemoVideoSource, setPkgDemoVideoSource] = useState<"youtube" | "direct" | "upload">("youtube");
@@ -1133,6 +1136,7 @@ export default function AdminCourses() {
       demoVideoTitle: form.demoVideoTitle?.trim() || "", demoVideoDescription: form.demoVideoDescription?.trim() || "",
       demoVideoSource: form.demoVideoSource || "youtube", demoVideoUrl: form.demoVideoUrl?.trim() || "",
       demoVideoThumbnailUrl: form.demoVideoThumbnailUrl?.trim() || "", demoVideoVisible: form.demoVideoVisible || false,
+      webPlayEnabled: form.webPlayEnabled === true,
       viewPricingEnabled: hasMasterCombinationPricing ? Boolean(form.combinationUseView) : false,
       unlimitedViewsEnabled: hasMasterCombinationPricing
         ? selectedMasterViewModes.some((item) => item.isLifetime === true)
@@ -1265,7 +1269,7 @@ export default function AdminCourses() {
     setPkgDriveMode(false); setPkgDrivePrice(0); setPkgPenMode(false); setPkgPenPrice(0);
     setPkgBookAddon(false); setPkgEnotesEnabled(false); setPkgEnotesPrice(0);
     setPkgPhysBookEnabled(false); setPkgPhysBookPrice(0);
-    setPkgDemoVideoVisible(false); setPkgDemoVideoTitle(""); setPkgDemoVideoDescription("");
+    setPkgDemoVideoVisible(false); setPkgWebPlayEnabled(false); setPkgDemoVideoTitle(""); setPkgDemoVideoDescription("");
     setPkgDemoVideoSource("youtube"); setPkgDemoVideoUrl(""); setPkgDemoVideoThumbnailUrl("");
     setPkgAboutCourseEnabled(false); setPkgAboutCourseText("");
     setPkgRatingsEnabled(true); setPkgReviewsEnabled(true); setPkgRatingValue(4.8); setPkgRatingCount(0); setPkgReviewsText("");
@@ -1336,6 +1340,7 @@ export default function AdminCourses() {
     setPkgPhysBookEnabled(Boolean(course.bookAddons?.find(a => a.id === "physical-book")?.enabled));
     setPkgPhysBookPrice(Number(course.bookAddons?.find(a => a.id === "physical-book")?.price || 0));
     setPkgDemoVideoVisible(Boolean(course.demoVideoVisible));
+    setPkgWebPlayEnabled(course.webPlayEnabled === true);
     setPkgDemoVideoTitle(String(course.demoVideoTitle || ""));
     setPkgDemoVideoDescription(String(course.demoVideoDescription || ""));
     setPkgDemoVideoSource((course.demoVideoSource === "upload" || course.demoVideoSource === "direct") ? course.demoVideoSource : "youtube");
@@ -1550,6 +1555,7 @@ export default function AdminCourses() {
         showMetaPerHour: pkgShowMetaPerHour,
         showMetaLanguage: pkgShowMetaLanguage,
         demoVideoVisible: pkgDemoVideoVisible,
+        webPlayEnabled: pkgWebPlayEnabled,
         demoVideoTitle: String(pkgDemoVideoTitle || "").trim(),
         demoVideoDescription: String(pkgDemoVideoDescription || "").trim(),
         demoVideoSource: pkgDemoVideoSource,
@@ -2145,6 +2151,10 @@ export default function AdminCourses() {
                       <div className="rounded-xl border border-slate-200 p-4 space-y-3">
                         <p className="text-xs font-bold text-slate-800">Demo Lecture Settings</p>
                         {checkboxRow("Show Demo Lecture on Course Page", pkgDemoVideoVisible, setPkgDemoVideoVisible)}
+                        {checkboxRow("WebPlay (ON/OFF Toggle)", pkgWebPlayEnabled, setPkgWebPlayEnabled)}
+                        {!pkgWebPlayEnabled && (
+                          <p className="text-[11px] text-amber-700">When OFF, video will not play on website. An app install popup will be shown.</p>
+                        )}
                         {pkgDemoVideoVisible && (
                           <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
                             <div className="space-y-1.5">
@@ -2692,6 +2702,18 @@ export default function AdminCourses() {
                               <div>
                                 <p className="text-sm font-semibold text-slate-800">Show Demo Lecture on Course Page</p>
                                 <p className="text-xs text-slate-500">Allow students to preview a free lecture before purchasing</p>
+                              </div>
+                            </label>
+                            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 hover:bg-amber-50 transition-colors">
+                              <input
+                                type="checkbox"
+                                className="h-4 w-4 rounded border-slate-300 accent-amber-600"
+                                checked={form.webPlayEnabled === true}
+                                onChange={(e) => sf({ webPlayEnabled: e.target.checked })}
+                              />
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">WebPlay (ON/OFF Toggle)</p>
+                                <p className="text-xs text-slate-500">When OFF, video will not play on website. An app install popup will be shown.</p>
                               </div>
                             </label>
                             {form.demoVideoVisible && (
