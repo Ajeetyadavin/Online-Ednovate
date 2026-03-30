@@ -875,6 +875,10 @@ const sanitizePlatformSettings = (payload) => {
   const data = payload && typeof payload === "object" ? payload : {};
   const bunny = data.bunnyStreamApi && typeof data.bunnyStreamApi === "object" ? data.bunnyStreamApi : {};
   const siteSettings = data.siteSettings && typeof data.siteSettings === "object" ? data.siteSettings : {};
+  const normalizedSiteSettings = {
+    ...siteSettings,
+    logo: String(siteSettings.logo || "/ednovate-logo.svg").trim() || "/ednovate-logo.svg",
+  };
   const homepage = data.homepage && typeof data.homepage === "object" ? data.homepage : {};
   const smtp = data.smtp && typeof data.smtp === "object" ? data.smtp : {};
   const emailAutomation = data.emailAutomation && typeof data.emailAutomation === "object" ? data.emailAutomation : {};
@@ -949,7 +953,7 @@ const sanitizePlatformSettings = (payload) => {
         ),
       },
     },
-    siteSettings,
+    siteSettings: normalizedSiteSettings,
     homepage: {
       exploreCategoryIds: Array.isArray(homepage.exploreCategoryIds)
         ? homepage.exploreCategoryIds.map((item) => String(item).trim()).filter(Boolean)
@@ -6546,11 +6550,79 @@ app.post("/api/uploads/image", requireAdminPermission("course-content", "create"
   try {
     const fileName = sanitizeFileName(request.body?.fileName || `image-${Date.now()}.png`);
     const folder = sanitizeFileName(request.body?.folder || "images");
+    const mimeType = String(request.body?.mimeType || "application/octet-stream").trim() || "application/octet-stream";
     const binary = decodeBase64File(request.body?.base64Data);
     if (!binary) {
       response.status(400).json({ message: "base64Data is required" });
       return;
     }
+
+    const imageUploadBackend = String(process.env.IMAGE_UPLOAD_BACKEND || "database").trim().toLowerCase();
+
+    if (imageUploadBackend === "database") {
+      const assetId = randomUUID();
+      await pool.query(
+        `
+        INSERT INTO uploaded_assets (id, folder, file_name, mime_type, binary_data, size_bytes)
+        VALUES ($1, $2, $3, $4, $5, $6)
+        `,
+        [assetId, folder, fileName, mimeType, binary, binary.length],
+      );
+
+      response.json({
+        url: `/api/uploads/storage/${assetId}/${encodeURIComponent(fileName)}`,
+        assetId,
+        source: "database-storage",
+      });
+      return;
+    }
+
+    const zone = String(process.env.BUNNY_STORAGE_ZONE || "").trim();
+    const accessKey = String(process.env.BUNNY_STORAGE_API_KEY || "").trim();
+    const region = String(process.env.BUNNY_STORAGE_REGION || "").trim();
+    const publicBaseEnv = String(process.env.BUNNY_PUBLIC_BASE_URL || "").trim();
+    const pullZoneHost = String(process.env.BUNNY_STORAGE_PULL_ZONE || "")
+      .trim()
+      .replace(/^https?:\/\//i, "")
+      .replace(/\/$/, "");
+
+    if (imageUploadBackend === "bunny" && zone && accessKey) {
+      const remotePath = `images/${folder}/${Date.now()}-${fileName}`;
+      const host = region ? `${region}.storage.bunnycdn.com` : "storage.bunnycdn.com";
+      const uploadUrl = `https://${host}/${zone}/${remotePath}`;
+
+      const bunnyRes = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: {
+          AccessKey: accessKey,
+          "Content-Type": mimeType,
+        },
+        body: binary,
+      });
+
+      if (!bunnyRes.ok) {
+        const raw = await bunnyRes.text();
+        response.status(502).json({ message: "Bunny image upload failed", details: raw.slice(0, 500) });
+        return;
+      }
+
+      const publicBase = publicBaseEnv
+        ? publicBaseEnv.replace(/\/$/, "")
+        : (pullZoneHost ? `https://${pullZoneHost}` : "");
+
+      const url = publicBase
+        ? `${publicBase}/${remotePath}`
+        : uploadUrl;
+
+      response.json({
+        url,
+        remotePath,
+        source: "bunny-storage",
+        via: publicBase ? "public-base" : "storage-url",
+      });
+      return;
+    }
+
     const targetDir = path.join(uploadsDir, folder);
     await mkdir(targetDir, { recursive: true });
     const finalName = `${Date.now()}-${fileName}`;
@@ -6559,9 +6631,88 @@ app.post("/api/uploads/image", requireAdminPermission("course-content", "create"
     response.json({
       url: `/api/uploads/${folder}/${finalName}`,
       legacyUrl: `/uploads/${folder}/${finalName}`,
+      source: "local-disk",
     });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Image upload failed" });
+  }
+});
+
+app.get("/api/uploads/storage/:assetId/:fileName", async (request, response) => {
+  try {
+    const assetId = String(request.params?.assetId || "").trim();
+    if (!assetId) {
+      response.status(400).json({ message: "assetId is required" });
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT file_name, mime_type, binary_data, size_bytes
+      FROM uploaded_assets
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [assetId],
+    );
+
+    if (result.rowCount === 0) {
+      response.status(404).json({ message: "Asset not found" });
+      return;
+    }
+
+    const row = result.rows[0];
+    const fileName = String(row.file_name || "file");
+    const mimeType = String(row.mime_type || "application/octet-stream");
+    const binaryData = row.binary_data;
+    const sizeBytes = Number(row.size_bytes || 0);
+
+    response.setHeader("Content-Type", mimeType);
+    response.setHeader("Content-Disposition", `inline; filename=\"${fileName.replace(/\"/g, "")}\"`);
+    response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    if (sizeBytes > 0) response.setHeader("Content-Length", String(sizeBytes));
+    response.send(binaryData);
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to read asset" });
+  }
+});
+
+app.get("/api/uploads/storage/:assetId", async (request, response) => {
+  try {
+    const assetId = String(request.params?.assetId || "").trim();
+    if (!assetId) {
+      response.status(400).json({ message: "assetId is required" });
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      SELECT file_name, mime_type, binary_data, size_bytes
+      FROM uploaded_assets
+      WHERE id = $1
+      LIMIT 1
+      `,
+      [assetId],
+    );
+
+    if (result.rowCount === 0) {
+      response.status(404).json({ message: "Asset not found" });
+      return;
+    }
+
+    const row = result.rows[0];
+    const fileName = String(row.file_name || "file");
+    const mimeType = String(row.mime_type || "application/octet-stream");
+    const binaryData = row.binary_data;
+    const sizeBytes = Number(row.size_bytes || 0);
+
+    response.setHeader("Content-Type", mimeType);
+    response.setHeader("Content-Disposition", `inline; filename=\"${fileName.replace(/\"/g, "")}\"`);
+    response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    if (sizeBytes > 0) response.setHeader("Content-Length", String(sizeBytes));
+    response.send(binaryData);
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to read asset" });
   }
 });
 

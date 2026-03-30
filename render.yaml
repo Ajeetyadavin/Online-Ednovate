@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: online-ednovate-api
+    runtime: node
+    plan: starter
+    rootDir: .
+    buildCommand: npm ci
+    startCommand: npm run server
+    autoDeploy: true
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: IMAGE_UPLOAD_BACKEND
+        value: database
+      - key: DATABASE_URL
+        sync: false
+      - key: CORS_ORIGIN
+        sync: false

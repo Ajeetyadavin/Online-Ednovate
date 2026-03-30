@@ -731,6 +731,7 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
   return {
     ...base,
     ...stored,
+    logo: String(stored.logo || base.logo),
     maintenanceMode: stored.maintenanceMode === true,
     security: {
       antiInspectEnabled: stored.security?.antiInspectEnabled === true,

@@ -118,6 +118,21 @@ export async function ensureSchema() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS uploaded_assets (
+      id TEXT PRIMARY KEY,
+      folder TEXT NOT NULL,
+      file_name TEXT NOT NULL,
+      mime_type TEXT NOT NULL DEFAULT 'application/octet-stream',
+      binary_data BYTEA NOT NULL,
+      size_bytes INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_uploaded_assets_created_at ON uploaded_assets(created_at DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_uploaded_assets_folder ON uploaded_assets(folder)");
+
+  await pool.query(`
     INSERT INTO platform_settings (id, data)
     VALUES (1, '{}'::jsonb)
     ON CONFLICT (id) DO NOTHING;

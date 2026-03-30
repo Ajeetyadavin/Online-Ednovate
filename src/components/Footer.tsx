@@ -4,8 +4,24 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 
+const normalizeLogoUrl = (url?: string) => {
+  const value = String(url || "").trim();
+  if (!value) return "/ednovate-logo.svg";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  if (value.startsWith("/uploads/")) return value.replace(/^\/uploads\//, "/api/uploads/");
+  if (value.startsWith("/api/uploads/storage?")) {
+    const query = value.split("?")[1] || "";
+    const p = new URLSearchParams(query).get("path");
+    if (!p) return value;
+    const localPath = p.replace(/^images\//, "");
+    return `/api/uploads/${localPath}`;
+  }
+  return value;
+};
+
 const Footer = () => {
   const { settings } = useSiteSettings();
+  const logoUrl = normalizeLogoUrl(settings.logo);
   return (
     <footer id="footer" className="relative mt-6 md:mt-8">
       <div className="bg-primary text-primary-foreground relative overflow-hidden">
@@ -20,7 +36,16 @@ const Footer = () => {
             {/* Brand */}
             <div className="col-span-2 sm:col-span-2 lg:col-span-2">
               <div className="mb-5">
-                <img src={settings.logo} alt="Ednovate" className="h-12 w-auto drop-shadow-md" />
+                <img
+                  src={logoUrl}
+                  alt="Ednovate"
+                  className="h-12 w-auto drop-shadow-md"
+                  onError={(event) => {
+                    const target = event.currentTarget;
+                    if (target.src.endsWith("/ednovate-logo.svg")) return;
+                    target.src = "/ednovate-logo.svg";
+                  }}
+                />
               </div>
               <p className="text-sm text-white leading-relaxed max-w-sm mb-6">
                 India&apos;s trusted online learning platform for CA, CS, CMA and professional courses. Structured programs, expert mentorship, and outcomes that matter.

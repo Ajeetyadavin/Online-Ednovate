@@ -176,6 +176,23 @@ export default function AdminHomepage() {
     catch (error) { alert(error instanceof Error ? error.message : "Image upload failed"); }
   };
 
+  const handleLogoFileInput = async (file?: File | null) => {
+    if (!file) return;
+    try {
+      const url = await uploadImageFile(file, "branding");
+      setSiteDraft((prev) => {
+        const nextDraft = { ...prev, logo: url };
+        updateSettings(nextDraft);
+        settingsSaveQueueRef.current = settingsSaveQueueRef.current
+          .then(() => persistSiteSettings(nextDraft, false))
+          .catch(() => undefined);
+        return nextDraft;
+      });
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Logo upload failed");
+    }
+  };
+
   const handleAddBanner = async () => {
     if (!newBanner.title.trim() || !newBanner.imageUrl.trim()) { alert("Banner title and image are required"); return; }
     const next = [...banners, { id: `banner_${Date.now()}`, title: newBanner.title, imageUrl: newBanner.imageUrl, isVisible: true, sortOrder: banners.length + 1 }];
@@ -427,6 +444,35 @@ export default function AdminHomepage() {
               <div className="space-y-1.5"><FL>Body Font</FL><Input className={fCls} value={siteDraft.fonts.body} onChange={(e) => setSiteDraft((p) => ({ ...p, fonts: { ...p.fonts, body: e.target.value } }))} /></div>
               <div className="space-y-1.5"><FL>Global Font Size (px)</FL><Input type="number" min={12} max={24} className={fCls} value={siteDraft.fonts.baseSizePx} onChange={(e) => setSiteDraft((p) => ({ ...p, fonts: { ...p.fonts, baseSizePx: Number(e.target.value || 16) } }))} /></div>
               <div className="flex items-end"><Button type="button" variant="outline" size="sm" className="w-full rounded-xl text-xs" onClick={() => setSiteDraft((p) => ({ ...p, fonts: { ...p.fonts, baseSizePx: 16 } }))}>Reset Font Size</Button></div>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 space-y-3">
+              <p className="text-xs font-bold text-slate-700">Brand Logo</p>
+              <div className="grid gap-3 sm:grid-cols-[1fr_auto] sm:items-end">
+                <div className="space-y-1.5">
+                  <FL>Logo URL</FL>
+                  <Input
+                    className={fCls}
+                    placeholder="https://cdn.example.com/logo.svg"
+                    value={siteDraft.logo}
+                    onChange={(e) => setSiteDraft((p) => ({ ...p, logo: e.target.value }))}
+                  />
+                </div>
+                <label className="flex h-9 cursor-pointer items-center justify-center gap-2 rounded-xl border border-slate-200 bg-white px-4 text-xs font-semibold text-slate-600 hover:border-primary/40 transition-colors">
+                  <Upload className="h-3.5 w-3.5" /> {isUploading ? "Uploading..." : "Upload Logo"}
+                  <input type="file" accept="image/*" className="hidden" onChange={(e) => handleLogoFileInput(e.target.files?.[0])} />
+                </label>
+              </div>
+              <div className="flex items-center gap-3">
+                <div className="h-10 w-28 rounded-lg border border-slate-200 bg-white flex items-center justify-center overflow-hidden">
+                  {siteDraft.logo ? (
+                    <img src={siteDraft.logo} alt="Logo preview" className="h-8 w-auto max-w-[100px] object-contain" />
+                  ) : (
+                    <span className="text-[10px] text-slate-400">No logo</span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500">Used in header branding across the website.</p>
+              </div>
             </div>
           </div>
 

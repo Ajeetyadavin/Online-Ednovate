@@ -423,9 +423,3 @@ export const testimonials = [
   },
 ];
 
-export const bannerSlides = [
-  { id: 1, image: "/banners/banner1.jpg" },
-  { id: 2, image: "/banners/banner2.jpg" },
-  { id: 3, image: "/banners/banner3.jpg" },
-  { id: 4, image: "/banners/banner4.jpg" },
-];

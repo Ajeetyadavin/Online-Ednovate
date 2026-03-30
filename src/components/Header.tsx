@@ -9,6 +9,21 @@ import CartDrawer from "./CartDrawer";
 import { useAuth } from "@/context/AuthContext";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 
+const normalizeLogoUrl = (url?: string) => {
+  const value = String(url || "").trim();
+  if (!value) return "/ednovate-logo.svg";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  if (value.startsWith("/uploads/")) return value.replace(/^\/uploads\//, "/api/uploads/");
+  if (value.startsWith("/api/uploads/storage?")) {
+    const query = value.split("?")[1] || "";
+    const p = new URLSearchParams(query).get("path");
+    if (!p) return value;
+    const localPath = p.replace(/^images\//, "");
+    return `/api/uploads/${localPath}`;
+  }
+  return value;
+};
+
 const Header = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -20,6 +35,7 @@ const Header = () => {
   const { isLoggedIn, userName, logout } = useAuth();
   const { settings } = useSiteSettings();
   const headerSettings = settings.header;
+  const logoUrl = normalizeLogoUrl(settings.logo);
   const isCollectionHref = (href: string) => /^\/collections\/[a-z0-9-]+$/i.test(String(href || ""));
   const extractCollectionSlug = (href: string) => {
     const match = String(href || "").match(/^\/collections\/([a-z0-9-]+)$/i);
@@ -156,7 +172,16 @@ const Header = () => {
       >
         <div className="container mx-auto px-4 flex items-center justify-between h-[60px] sm:h-[66px] gap-2">
           <Link to="/" className="flex items-center group shrink-0">
-            <img src={settings.logo} alt="Ednovate - Online Learning" className="h-7 sm:h-8 w-auto max-w-[140px] sm:max-w-none" />
+            <img
+              src={logoUrl}
+              alt="Ednovate - Online Learning"
+              className="h-7 sm:h-8 w-auto max-w-[140px] sm:max-w-none"
+              onError={(event) => {
+                const target = event.currentTarget;
+                if (target.src.endsWith("/ednovate-logo.svg")) return;
+                target.src = "/ednovate-logo.svg";
+              }}
+            />
             {headerSettings.showBrandText && (
               <div className="hidden sm:block ml-2 leading-tight">
                 <p className="text-sm font-bold" style={{ color: headerSettings.navTextColor || "#000000" }}>
