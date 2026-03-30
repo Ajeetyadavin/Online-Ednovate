@@ -35,18 +35,20 @@ const FAQ = () => {
   const { settings } = useSiteSettings();
   const faqTitle = settings.homepageContent?.faq?.title || "Frequently Asked Questions";
   const faqSubtitle = settings.homepageContent?.faq?.subtitle || "Answers to your most common questions";
+  const faqBackgroundColor = settings.homepageContent?.faq?.backgroundColor || "#F8FAFC";
+  const faqTextColor = settings.homepageContent?.faq?.textColor || "#0F172A";
   const faqsFromSettings = settings.homepageContent?.faq?.items || [];
   const displayFaqs = faqsFromSettings.length > 0
     ? faqsFromSettings.map((item) => ({ q: item.question, a: item.answer }))
     : faqs;
 
   return (
-    <section className="py-8 md:py-10 bg-muted/30">
+    <section className="py-8 md:py-10" style={{ backgroundColor: faqBackgroundColor, color: faqTextColor }}>
       <div className="container mx-auto px-4">
         <div ref={ref} className={`text-center mb-8 reveal-up ${isVisible ? "visible" : ""}`}>
-          <span className="text-primary text-sm font-extrabold uppercase tracking-widest">FAQs</span>
+          <span className="text-sm font-extrabold uppercase tracking-widest" style={{ color: faqTextColor }}>FAQs</span>
           <h2 className="section-title mt-2">{faqTitle}</h2>
-          <p className="section-subtitle">{faqSubtitle}</p>
+          <p className="section-subtitle" style={{ color: faqTextColor, opacity: 0.85 }}>{faqSubtitle}</p>
         </div>
 
         <div className={`max-w-2xl mx-auto reveal-up ${isVisible ? "visible" : ""}`} style={{ transitionDelay: "200ms" }}>
@@ -57,10 +59,10 @@ const FAQ = () => {
                 value={`faq-${i}`}
                 className="bg-card border border-border rounded-xl px-5 data-[state=open]:border-primary/20 data-[state=open]:shadow-sm transition-all duration-300"
               >
-                <AccordionTrigger className="text-base font-extrabold text-foreground hover:no-underline py-4 [&[data-state=open]>svg]:text-primary">
+                <AccordionTrigger className="text-base font-extrabold hover:no-underline py-4" style={{ color: faqTextColor }}>
                   {faq.q}
                 </AccordionTrigger>
-                <AccordionContent className="text-sm text-muted-foreground leading-relaxed pb-4">
+                <AccordionContent className="text-sm leading-relaxed pb-4" style={{ color: faqTextColor, opacity: 0.85 }}>
                   {faq.a}
                 </AccordionContent>
               </AccordionItem>

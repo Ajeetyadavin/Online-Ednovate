@@ -20,6 +20,29 @@ const FL = ({ children }: { children: React.ReactNode }) => (
 const fCls = "h-9 rounded-xl border-slate-200 text-xs placeholder:text-slate-400 focus-visible:ring-primary/40";
 const textAreaCls = "w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/40";
 
+const ColorField = ({
+  label,
+  value,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  onChange: (value: string) => void;
+}) => (
+  <div className="space-y-1.5">
+    <FL>{label}</FL>
+    <div className="flex items-center gap-2">
+      <input
+        type="color"
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        className="h-9 w-11 cursor-pointer rounded-xl border border-slate-200 bg-white p-1"
+      />
+      <Input className={fCls} value={value} onChange={(e) => onChange(e.target.value)} />
+    </div>
+  </div>
+);
+
 const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
   { id: "banners", label: "Banners", icon: Image },
   { id: "categories", label: "Categories", icon: LayoutDashboard },
@@ -418,6 +441,35 @@ export default function AdminHomepage() {
                 </label>
               ))}
             </div>
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
+              <FL>Section Gap (px)</FL>
+              <div className="grid gap-2 sm:grid-cols-[1fr_96px] sm:items-center">
+                <input
+                  type="range"
+                  min={-64}
+                  max={120}
+                  step={2}
+                  value={siteDraft.layout.sectionGapPx}
+                  onChange={(e) => {
+                    const nextGap = Math.min(120, Math.max(-64, Number(e.target.value || 0)));
+                    setSiteDraft((p) => ({ ...p, layout: { ...p.layout, sectionGapPx: nextGap } }));
+                  }}
+                  className="w-full"
+                />
+                <Input
+                  className={fCls}
+                  type="number"
+                  min={-64}
+                  max={120}
+                  value={siteDraft.layout.sectionGapPx}
+                  onChange={(e) => {
+                    const nextGap = Math.min(120, Math.max(-64, Number(e.target.value || 0)));
+                    setSiteDraft((p) => ({ ...p, layout: { ...p.layout, sectionGapPx: nextGap } }));
+                  }}
+                />
+              </div>
+              <p className="text-[11px] text-slate-500">Use negative values for tighter layout and positive values for more breathing space.</p>
+            </div>
           </div>
 
           {/* Top Bar */}
@@ -447,6 +499,10 @@ export default function AdminHomepage() {
               <div className="space-y-1.5"><FL>Section Title</FL><Input className={fCls} placeholder="FAQ Section Title" value={siteDraft.homepageContent.faq.title} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faq: { ...p.homepageContent.faq, title: e.target.value } } }))} /></div>
               <div className="space-y-1.5"><FL>Section Subtitle</FL><Input className={fCls} placeholder="FAQ Section Subtitle" value={siteDraft.homepageContent.faq.subtitle} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faq: { ...p.homepageContent.faq, subtitle: e.target.value } } }))} /></div>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ColorField label="Background Color" value={siteDraft.homepageContent.faq.backgroundColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faq: { ...p.homepageContent.faq, backgroundColor: value } } }))} />
+              <ColorField label="Text Color" value={siteDraft.homepageContent.faq.textColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faq: { ...p.homepageContent.faq, textColor: value } } }))} />
+            </div>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {siteDraft.homepageContent.faq.items.map((item, index) => (
                 <div key={`faq-${index}`} className="grid grid-cols-[1fr_1fr_auto] gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -461,6 +517,11 @@ export default function AdminHomepage() {
           {/* Stats */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
             <div className="flex items-center justify-between"><p className="text-sm font-bold text-slate-800">Stats Counter</p><Button type="button" size="sm" variant="outline" className="rounded-xl text-xs" onClick={addStatItem}>+ Add Stat</Button></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ColorField label="Background Color" value={siteDraft.homepageContent.stats.backgroundColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, stats: { ...p.homepageContent.stats, backgroundColor: value } } }))} />
+              <ColorField label="Text Color" value={siteDraft.homepageContent.stats.textColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, stats: { ...p.homepageContent.stats, textColor: value } } }))} />
+            </div>
+            <ColorField label="Icon Color" value={siteDraft.homepageContent.stats.iconColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, stats: { ...p.homepageContent.stats, iconColor: value } } }))} />
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {siteDraft.homepageContent.stats.items.map((item, index) => (
                 <div key={`stat-${index}`} className="grid grid-cols-[2fr_1fr_1fr_auto] gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -479,6 +540,10 @@ export default function AdminHomepage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5"><FL>Section Title</FL><Input className={fCls} placeholder="How It Works" value={siteDraft.homepageContent.howItWorks.title} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, howItWorks: { ...p.homepageContent.howItWorks, title: e.target.value } } }))} /></div>
               <div className="space-y-1.5"><FL>Section Subtitle</FL><Input className={fCls} placeholder="4 simple steps..." value={siteDraft.homepageContent.howItWorks.subtitle} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, howItWorks: { ...p.homepageContent.howItWorks, subtitle: e.target.value } } }))} /></div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ColorField label="Background Color" value={siteDraft.homepageContent.howItWorks.backgroundColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, howItWorks: { ...p.homepageContent.howItWorks, backgroundColor: value } } }))} />
+              <ColorField label="Text Color" value={siteDraft.homepageContent.howItWorks.textColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, howItWorks: { ...p.homepageContent.howItWorks, textColor: value } } }))} />
             </div>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {siteDraft.homepageContent.howItWorks.steps.map((step, index) => (
@@ -499,6 +564,10 @@ export default function AdminHomepage() {
               <div className="space-y-1.5"><FL>Section Title</FL><Input className={fCls} placeholder="Why Ednovate Title" value={siteDraft.homepageContent.whyChooseUs.title} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, whyChooseUs: { ...p.homepageContent.whyChooseUs, title: e.target.value } } }))} /></div>
               <div className="space-y-1.5"><FL>Section Subtitle</FL><Input className={fCls} placeholder="Why Ednovate Subtitle" value={siteDraft.homepageContent.whyChooseUs.subtitle} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, whyChooseUs: { ...p.homepageContent.whyChooseUs, subtitle: e.target.value } } }))} /></div>
             </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ColorField label="Background Color" value={siteDraft.homepageContent.whyChooseUs.backgroundColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, whyChooseUs: { ...p.homepageContent.whyChooseUs, backgroundColor: value } } }))} />
+              <ColorField label="Text Color" value={siteDraft.homepageContent.whyChooseUs.textColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, whyChooseUs: { ...p.homepageContent.whyChooseUs, textColor: value } } }))} />
+            </div>
             <div className="space-y-2 max-h-64 overflow-y-auto">
               {siteDraft.homepageContent.whyChooseUs.items.map((item, index) => (
                 <div key={`why-${index}`} className="grid grid-cols-[1fr_2fr_1fr_auto] gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3">
@@ -517,6 +586,10 @@ export default function AdminHomepage() {
             <div className="grid gap-3 sm:grid-cols-2">
               <div className="space-y-1.5"><FL>Section Title</FL><Input className={fCls} placeholder="Meet Our Expert Instructors" value={siteDraft.homepageContent.faculty.title} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faculty: { ...p.homepageContent.faculty, title: e.target.value } } }))} /></div>
               <div className="space-y-1.5"><FL>Section Subtitle</FL><Input className={fCls} placeholder="Learn from industry professionals..." value={siteDraft.homepageContent.faculty.subtitle} onChange={(e) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faculty: { ...p.homepageContent.faculty, subtitle: e.target.value } } }))} /></div>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <ColorField label="Background Color" value={siteDraft.homepageContent.faculty.backgroundColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faculty: { ...p.homepageContent.faculty, backgroundColor: value } } }))} />
+              <ColorField label="Text Color" value={siteDraft.homepageContent.faculty.textColor} onChange={(value) => setSiteDraft((p) => ({ ...p, homepageContent: { ...p.homepageContent, faculty: { ...p.homepageContent.faculty, textColor: value } } }))} />
             </div>
             <p className="text-[11px] text-slate-500">Faculty members are managed in the <strong>Faculty</strong> admin module. Only active faculty with photos will display here.</p>
           </div>

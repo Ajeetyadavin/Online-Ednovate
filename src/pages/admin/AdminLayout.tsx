@@ -1,5 +1,5 @@
 import { useAdminAuth } from "@/context/AdminAuthContext";
-import { Navigate, Outlet, NavLink, useLocation } from "react-router-dom";
+import { Navigate, Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard,
@@ -24,6 +24,7 @@ import {
   UserCheck,
   SlidersHorizontal,
   Braces,
+  ChevronDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,9 +68,11 @@ const iconMap = {
 
 const AdminLayout = () => {
   const { admin, isAuthenticated, isLoading, logout, hasPermission } = useAdminAuth();
+  const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarConfig, setSidebarConfig] = useState(buildDefaultAdminSidebarConfig());
+  const [homepageExpanded, setHomepageExpanded] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -106,6 +109,12 @@ const AdminLayout = () => {
 
   const navItems = useMemo(() => getConfiguredAdminSidebarItems(sidebarConfig), [sidebarConfig]);
 
+  useEffect(() => {
+    if (["/admin/homepage", "/admin/header", "/admin/announcements"].some((path) => location.pathname.startsWith(path))) {
+      setHomepageExpanded(true);
+    }
+  }, [location.pathname]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -122,6 +131,12 @@ const AdminLayout = () => {
   if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
 
   const allowedNavItems = navItems.filter((item) => item.enabled && item.visible && hasPermission(item.moduleKey, "read"));
+  const homepageParentItem = allowedNavItems.find((item) => item.id === "homepage") || null;
+  const homepageChildItems = allowedNavItems.filter((item) => item.id === "header" || item.id === "announcements");
+  const showHomepageGroup = Boolean(homepageParentItem) || homepageChildItems.length > 0;
+  const isHomepageGroupActive = ["/admin/homepage", "/admin/header", "/admin/announcements"].some((path) =>
+    location.pathname.startsWith(path),
+  );
   const currentModule =
     ADMIN_SIDEBAR_DEFINITIONS.find((item) => location.pathname.startsWith(item.to))?.moduleKey || "dashboard";
   const currentNavItem = navItems.find((item) => location.pathname.startsWith(item.to));
@@ -154,6 +169,60 @@ const AdminLayout = () => {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-2">
           {allowedNavItems.map((item) => {
+            if (item.id === "header" || item.id === "announcements") {
+              return null;
+            }
+
+            if (item.id === "homepage" && homepageParentItem) {
+              return (
+                <div key={item.to} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHomepageExpanded((prev) => !prev);
+                      navigate(homepageParentItem.to);
+                    }}
+                    className={`flex w-full items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium ${
+                      isHomepageGroupActive
+                        ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
+                    }`}
+                  >
+                    <Settings className="w-5 h-5 flex-shrink-0" />
+                    {sidebarOpen && (
+                      <>
+                        <span className="truncate flex-1 text-left">{homepageParentItem.label}</span>
+                        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${homepageExpanded ? "rotate-180" : ""}`} />
+                      </>
+                    )}
+                  </button>
+
+                  {sidebarOpen && homepageExpanded && homepageChildItems.length > 0 && (
+                    <div className="ml-6 space-y-1 border-l border-orange-100 pl-3">
+                      {homepageChildItems.map((childItem) => {
+                        const isActive = location.pathname === childItem.to;
+                        const Icon = iconMap[childItem.iconName] || LayoutDashboard;
+                        return (
+                          <NavLink
+                            key={childItem.to}
+                            to={childItem.to}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium ${
+                              isActive
+                                ? "bg-orange-50 text-orange-700"
+                                : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4 flex-shrink-0" />
+                            <span className="truncate">{childItem.label}</span>
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             const isActive = location.pathname === item.to;
             const Icon = iconMap[item.iconName] || LayoutDashboard;
             return (

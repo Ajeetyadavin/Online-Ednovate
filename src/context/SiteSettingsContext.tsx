@@ -113,6 +113,22 @@ export interface HomepageWhyChooseItem {
   description: string;
 }
 
+export const HOMEPAGE_SECTION_ANCHORS = [
+  "before-hero",
+  "heroBanner",
+  "announcementBar",
+  "statsCounter",
+  "howItWorks",
+  "popularCourses",
+  "whyChooseUs",
+  "testimonials",
+  "faculty",
+  "faq",
+  "ctaBand",
+] as const;
+
+export type HomepageSectionAnchor = (typeof HOMEPAGE_SECTION_ANCHORS)[number];
+
 export interface HomepageSection {
   id: string;
   type: "hero" | "text" | "courses" | "features" | "banner" | "cta" | "custom";
@@ -125,6 +141,7 @@ export interface HomepageSection {
   fontSize?: string;
   fontFamily?: string;
   order: number;
+  insertAfter?: HomepageSectionAnchor;
   visible: boolean;
   customSettings?: Record<string, unknown>;
 }
@@ -160,6 +177,9 @@ export interface SiteSettings {
     faculty: boolean;
     faq: boolean;
     ctaBand: boolean;
+  };
+  layout: {
+    sectionGapPx: number;
   };
   header: {
     topBarVisible: boolean;
@@ -212,24 +232,35 @@ export interface SiteSettings {
     faq: {
       title: string;
       subtitle: string;
+      backgroundColor: string;
+      textColor: string;
       items: HomepageFaqItem[];
     };
     stats: {
+      backgroundColor: string;
+      textColor: string;
+      iconColor: string;
       items: HomepageStatItem[];
     };
     howItWorks: {
       title: string;
       subtitle: string;
+      backgroundColor: string;
+      textColor: string;
       steps: HomepageHowItWorksStep[];
     };
     whyChooseUs: {
       title: string;
       subtitle: string;
+      backgroundColor: string;
+      textColor: string;
       items: HomepageWhyChooseItem[];
     };
     faculty: {
       title: string;
       subtitle: string;
+      backgroundColor: string;
+      textColor: string;
     };
   };
   exploreCategoryIds: string[];
@@ -267,6 +298,9 @@ const createDefaultSettings = (): SiteSettings => ({
     faculty: true,
     faq: true,
     ctaBand: true,
+  },
+  layout: {
+    sectionGapPx: 0,
   },
   header: {
     topBarVisible: true,
@@ -480,6 +514,8 @@ const createDefaultSettings = (): SiteSettings => ({
     faq: {
       title: "Frequently Asked Questions",
       subtitle: "Answers to your most common questions",
+      backgroundColor: "#F8FAFC",
+      textColor: "#0F172A",
       items: [
         {
           question: "How long can I access the courses?",
@@ -500,6 +536,9 @@ const createDefaultSettings = (): SiteSettings => ({
       ],
     },
     stats: {
+      backgroundColor: "#264897",
+      textColor: "#FFFFFF",
+      iconColor: "#E04040",
       items: [
         { label: "Courses Purchased", value: 15000, suffix: "+" },
         { label: "Students Enrolled", value: 50000, suffix: "+" },
@@ -510,6 +549,8 @@ const createDefaultSettings = (): SiteSettings => ({
     howItWorks: {
       title: "How It Works",
       subtitle: "Start your learning journey in 4 simple steps",
+      backgroundColor: "#FFFFFF",
+      textColor: "#0F172A",
       steps: [
         { title: "Browse Courses", desc: "Explore our wide range of CA, CS & CMA courses", icon: "Search" },
         { title: "Enroll Instantly", desc: "Quick checkout with secure payment options", icon: "ShoppingCart" },
@@ -520,6 +561,8 @@ const createDefaultSettings = (): SiteSettings => ({
     whyChooseUs: {
       title: "Everything You Need to Succeed",
       subtitle: "A complete learning ecosystem built for serious students",
+      backgroundColor: "#F8FAFC",
+      textColor: "#0F172A",
       items: [
         { icon: "BookOpen", title: "All Subjects Under One Roof", description: "Complete course coverage for CA, CS, CMA and more" },
         { icon: "Monitor", title: "HD Recorded Lectures", description: "Crystal clear video quality for the best learning experience" },
@@ -529,6 +572,8 @@ const createDefaultSettings = (): SiteSettings => ({
     faculty: {
       title: "Meet Our Expert Instructors",
       subtitle: "Learn from industry professionals with years of experience and passion for education",
+      backgroundColor: "#F8FAFC",
+      textColor: "#0F172A",
     },
   },
   exploreCategoryIds: [],
@@ -707,6 +752,14 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
       ...base.sections,
       ...(stored.sections || {}),
     },
+    layout: {
+      ...base.layout,
+      ...(stored.layout || {}),
+      sectionGapPx:
+        typeof stored.layout?.sectionGapPx === "number" && Number.isFinite(stored.layout.sectionGapPx)
+          ? Math.min(120, Math.max(-64, stored.layout.sectionGapPx))
+          : base.layout.sectionGapPx,
+    },
     header: {
       ...base.header,
       ...(stored.header || {}),
@@ -772,6 +825,8 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
       faq: {
         title: String(stored.homepageContent?.faq?.title || base.homepageContent.faq.title),
         subtitle: String(stored.homepageContent?.faq?.subtitle || base.homepageContent.faq.subtitle),
+        backgroundColor: String(stored.homepageContent?.faq?.backgroundColor || base.homepageContent.faq.backgroundColor),
+        textColor: String(stored.homepageContent?.faq?.textColor || base.homepageContent.faq.textColor),
         items: Array.isArray(stored.homepageContent?.faq?.items)
           ? stored.homepageContent!.faq!.items
               .map((item) => ({
@@ -782,6 +837,9 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
           : base.homepageContent.faq.items,
       },
       stats: {
+        backgroundColor: String(stored.homepageContent?.stats?.backgroundColor || base.homepageContent.stats.backgroundColor),
+        textColor: String(stored.homepageContent?.stats?.textColor || base.homepageContent.stats.textColor),
+        iconColor: String(stored.homepageContent?.stats?.iconColor || base.homepageContent.stats.iconColor),
         items: Array.isArray(stored.homepageContent?.stats?.items)
           ? stored.homepageContent!.stats!.items
               .map((item) => ({
@@ -795,6 +853,8 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
       howItWorks: {
         title: String(stored.homepageContent?.howItWorks?.title || base.homepageContent.howItWorks.title),
         subtitle: String(stored.homepageContent?.howItWorks?.subtitle || base.homepageContent.howItWorks.subtitle),
+        backgroundColor: String(stored.homepageContent?.howItWorks?.backgroundColor || base.homepageContent.howItWorks.backgroundColor),
+        textColor: String(stored.homepageContent?.howItWorks?.textColor || base.homepageContent.howItWorks.textColor),
         steps: Array.isArray(stored.homepageContent?.howItWorks?.steps)
           ? stored.homepageContent!.howItWorks!.steps
               .map((step) => ({
@@ -808,6 +868,8 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
       whyChooseUs: {
         title: String(stored.homepageContent?.whyChooseUs?.title || base.homepageContent.whyChooseUs.title),
         subtitle: String(stored.homepageContent?.whyChooseUs?.subtitle || base.homepageContent.whyChooseUs.subtitle),
+        backgroundColor: String(stored.homepageContent?.whyChooseUs?.backgroundColor || base.homepageContent.whyChooseUs.backgroundColor),
+        textColor: String(stored.homepageContent?.whyChooseUs?.textColor || base.homepageContent.whyChooseUs.textColor),
         items: Array.isArray(stored.homepageContent?.whyChooseUs?.items)
           ? stored.homepageContent!.whyChooseUs!.items
               .map((item) => ({
@@ -821,6 +883,8 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
       faculty: {
         title: String(stored.homepageContent?.faculty?.title || base.homepageContent.faculty.title),
         subtitle: String(stored.homepageContent?.faculty?.subtitle || base.homepageContent.faculty.subtitle),
+        backgroundColor: String(stored.homepageContent?.faculty?.backgroundColor || base.homepageContent.faculty.backgroundColor),
+        textColor: String(stored.homepageContent?.faculty?.textColor || base.homepageContent.faculty.textColor),
       },
     },
     exploreCategoryIds: Array.isArray(stored.exploreCategoryIds)
@@ -841,6 +905,9 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
             fontSize: String(s?.fontSize || "16"),
             fontFamily: String(s?.fontFamily || "sans-serif"),
             order: Number(s?.order || 0),
+            insertAfter: HOMEPAGE_SECTION_ANCHORS.includes(String(s?.insertAfter) as HomepageSectionAnchor)
+              ? (String(s?.insertAfter) as HomepageSectionAnchor)
+              : "faq",
             visible: s?.visible !== false,
             customSettings: (s?.customSettings && typeof s.customSettings === "object") ? s.customSettings : {},
           } as HomepageSection;

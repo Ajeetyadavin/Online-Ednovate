@@ -14,17 +14,19 @@ const WhyChooseUs = () => {
   const configured = settings.homepageContent?.whyChooseUs;
   const displayTitle = configured?.title || "Everything You Need to Succeed";
   const displaySubtitle = configured?.subtitle || "A complete learning ecosystem built for serious students";
+  const backgroundColor = configured?.backgroundColor || "#F8FAFC";
+  const textColor = configured?.textColor || "#0F172A";
   const displayItems = configured?.items?.length ? configured.items : whyChooseUs;
 
   return (
-    <section id="why-choose" className="py-8 md:py-10 bg-muted/50">
+    <section id="why-choose" className="py-8 md:py-10" style={{ backgroundColor }}>
       <div className="container mx-auto px-4">
         <div ref={titleRef} className={`text-center mb-8 reveal-up ${titleVisible ? "visible" : ""}`}>
-          <span className="text-primary text-sm font-extrabold uppercase tracking-widest">Why Ednovate</span>
+          <span className="text-sm font-extrabold uppercase tracking-widest" style={{ color: textColor }}>Why Ednovate</span>
           <h2 className="section-title mt-2">
             {displayTitle}
           </h2>
-          <p className="section-subtitle">
+          <p className="section-subtitle" style={{ color: textColor, opacity: 0.85 }}>
             {displaySubtitle}
           </p>
         </div>
@@ -41,8 +43,8 @@ const WhyChooseUs = () => {
                     <Icon className="w-5 h-5 text-primary" />
                   </div>
                   <div className="min-w-0">
-                    <h3 className="font-black text-base text-foreground mb-1">{item.title}</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">{item.description}</p>
+                    <h3 className="font-black text-base mb-1" style={{ color: textColor }}>{item.title}</h3>
+                    <p className="text-sm leading-relaxed" style={{ color: textColor, opacity: 0.85 }}>{item.description}</p>
                   </div>
                 </div>
               </div>

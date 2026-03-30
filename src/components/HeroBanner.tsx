@@ -41,10 +41,10 @@ const HeroBanner = () => {
 
   return (
     <section className="relative overflow-hidden group bg-gradient-to-b from-muted/35 to-background">
-      <div className="w-full py-1 md:py-2">
-        <div className="relative overflow-hidden border-y border-border/60 shadow-[0_24px_55px_-35px_hsl(var(--primary)/0.55)]">
+      <div className="w-full pt-0 pb-1 md:pb-2">
+        <div className="relative overflow-hidden border-y border-border/60 shadow-[0_18px_40px_-34px_hsl(var(--primary)/0.18)]">
           <Link to="/packages" className="block">
-            <div className="relative aspect-[16/6.3] sm:aspect-[16/5.5] md:aspect-[16/4.7] xl:aspect-[16/4.4]">
+            <div className="relative aspect-[16/6.3] sm:aspect-[16/5.9] md:aspect-[16/6.1] xl:aspect-[16/6.4] 2xl:aspect-[16/6.8]">
               {visibleBanners.map((slide, i) => (
                 <div
                   key={slide.id}
@@ -55,11 +55,9 @@ const HeroBanner = () => {
                   <img
                     src={slide.imageUrl}
                     alt={slide.title}
-                    className="w-full h-full object-cover"
+                    className="w-full h-full object-contain object-center bg-white"
                     loading={i === 0 ? "eager" : "lazy"}
                   />
-                  <div className="absolute inset-0 bg-gradient-to-t from-black/55 via-black/20 to-transparent" />
-                  <div className="absolute inset-0 bg-gradient-to-r from-black/30 via-transparent to-black/35" />
                 </div>
               ))}
 

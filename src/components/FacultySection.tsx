@@ -6,6 +6,8 @@ import { useSiteSettings } from "@/context/SiteSettingsContext";
 
 const FacultySection = () => {
   const { settings } = useSiteSettings();
+  const backgroundColor = settings.homepageContent.faculty.backgroundColor || "#F8FAFC";
+  const textColor = settings.homepageContent.faculty.textColor || "#0F172A";
   const [faculty, setFaculty] = useState<FacultyProfile[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -42,7 +44,7 @@ const FacultySection = () => {
   if (faculty.length === 0) return null;
 
   return (
-    <section className="relative py-16 md:py-20 overflow-hidden bg-gradient-to-br from-slate-50 via-white to-primary/5" aria-label="Faculty section">
+    <section className="relative py-16 md:py-20 overflow-hidden" style={{ background: `linear-gradient(135deg, ${backgroundColor}, #ffffff)`, color: textColor }} aria-label="Faculty section">
       {/* Decorative blobs */}
       <div className="pointer-events-none absolute -top-20 -right-20 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-20 -left-20 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
@@ -55,15 +57,14 @@ const FacultySection = () => {
             {/* label pill */}
             <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 mb-4">
               <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-widest text-primary">Our Faculty</span>
+              <span className="text-xs font-bold uppercase tracking-widest" style={{ color: textColor }}>Our Faculty</span>
             </div>
 
-            <h2 className="text-3xl md:text-4xl font-extrabold text-slate-900 leading-snug mb-4">
-              {settings.homepageContent.faculty.title.split(" ").slice(0, -1).join(" ")}<br />
-              <span className="text-primary">{settings.homepageContent.faculty.title.split(" ").pop()}</span>
+            <h2 className="text-3xl md:text-4xl font-extrabold leading-snug mb-4" style={{ color: textColor }}>
+              {settings.homepageContent.faculty.title}
             </h2>
 
-            <p className="text-sm text-slate-500 leading-relaxed mb-6">
+            <p className="text-sm leading-relaxed mb-6" style={{ color: textColor, opacity: 0.85 }}>
               {settings.homepageContent.faculty.subtitle}
             </p>
           </div>
@@ -121,7 +122,7 @@ const FacultySection = () => {
 
             {/* Bottom CTA */}
             <div className="mt-10 border-t border-slate-100 pt-7">
-              <p className="text-xs text-slate-400">
+              <p className="text-xs" style={{ color: textColor, opacity: 0.75 }}>
                 Click on any instructor's photo to explore their full profile &amp; courses.
               </p>
             </div>

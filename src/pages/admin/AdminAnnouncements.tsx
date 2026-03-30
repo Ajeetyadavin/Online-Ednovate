@@ -94,6 +94,20 @@ export default function AdminAnnouncements() {
     }
   };
 
+  const handleDeleteAnnouncement = async (announcementId: string) => {
+    const target = announcements.find((announcement) => announcement.id === announcementId);
+    if (!target) return;
+    if (!window.confirm(`Delete announcement \"${target.title}\"?`)) return;
+
+    const updated = announcements.filter((announcement) => announcement.id !== announcementId);
+    try {
+      await persistAnnouncements(updated);
+      setAnnouncements(updated);
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to delete announcement");
+    }
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
@@ -220,6 +234,7 @@ export default function AdminAnnouncements() {
                       variant="ghost"
                       size="sm"
                       className="text-red-600 hover:text-red-900"
+                      onClick={() => void handleDeleteAnnouncement(announcement.id)}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>

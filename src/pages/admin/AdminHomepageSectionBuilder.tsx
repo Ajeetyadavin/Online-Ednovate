@@ -1,18 +1,35 @@
 import { useState, useCallback } from "react";
-import { useSiteSettings, type HomepageSection } from "@/context/SiteSettingsContext";
-import { adminApi } from "@/services/adminApi";
+import { HOMEPAGE_SECTION_ANCHORS, useSiteSettings, type HomepageSection, type HomepageSectionAnchor } from "@/context/SiteSettingsContext";
+import { usePlatformData } from "@/context/PlatformDataContext";
+import { adminApi, fileToBase64 } from "@/services/adminApi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Eye, EyeOff, Trash2, Edit2, Plus, ArrowUp, ArrowDown, Save } from "lucide-react";
+import { Eye, EyeOff, Trash2, Edit2, Plus, ArrowUp, ArrowDown, Save, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2 } from "lucide-react";
 
+const HOMEPAGE_SECTION_ANCHOR_LABELS: Record<HomepageSectionAnchor, string> = {
+  "before-hero": "Before Hero Banner",
+  heroBanner: "After Hero Banner",
+  announcementBar: "After Announcement Bar",
+  statsCounter: "After Stats Counter",
+  howItWorks: "After How It Works",
+  popularCourses: "After Popular Courses",
+  whyChooseUs: "After Why Choose Us",
+  testimonials: "After Testimonials",
+  faculty: "After Faculty Section",
+  faq: "After FAQ",
+  ctaBand: "After CTA Band",
+};
+
 export default function AdminHomepageSectionBuilder() {
   const { settings, updateSettings } = useSiteSettings();
+  const { courses } = usePlatformData();
   const [isSaving, setIsSaving] = useState(false);
+  const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
   const [formData, setFormData] = useState<HomepageSection>({
@@ -27,10 +44,18 @@ export default function AdminHomepageSectionBuilder() {
     fontSize: "16",
     fontFamily: "sans-serif",
     order: 0,
+    insertAfter: "faq",
     visible: true,
   });
 
   const sortedSections = [...(settings.customHomepageSections || [])].sort((a, b) => a.order - b.order);
+  const visibleCourses = courses.filter((course) => course.isVisible);
+
+  const selectedCourseIds = Array.isArray(formData.customSettings?.selectedCourseIds)
+    ? (formData.customSettings?.selectedCourseIds as string[])
+    : [];
+
+  const maxCourses = Number(formData.customSettings?.maxCourses || 8);
 
   const persistSections = useCallback(async (nextSections: HomepageSection[]) => {
     setIsSaving(true);
@@ -74,6 +99,7 @@ export default function AdminHomepageSectionBuilder() {
       fontSize: "16",
       fontFamily: "sans-serif",
       order: sortedSections.length,
+      insertAfter: "faq",
       visible: true,
     });
     setEditingId(null);
@@ -93,6 +119,37 @@ export default function AdminHomepageSectionBuilder() {
     if (!confirm("Delete this section?")) return;
     const sections = (settings.customHomepageSections || []).filter((s) => s.id !== id);
     void persistSections(sections);
+  };
+
+  const handleBannerImageUpload = async (file?: File | null) => {
+    if (!file) return;
+    setIsUploadingImage(true);
+    try {
+      const base64Data = await fileToBase64(file);
+      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "homepage-banners");
+      setFormData((prev) => ({ ...prev, imageUrl: uploaded.url }));
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Image upload failed");
+    } finally {
+      setIsUploadingImage(false);
+    }
+  };
+
+  const toggleSelectedCourse = (courseId: string, checked: boolean) => {
+    const current = Array.isArray(formData.customSettings?.selectedCourseIds)
+      ? (formData.customSettings?.selectedCourseIds as string[])
+      : [];
+    const nextSelected = checked
+      ? Array.from(new Set([...current, courseId]))
+      : current.filter((id) => id !== courseId);
+
+    setFormData((prev) => ({
+      ...prev,
+      customSettings: {
+        ...(prev.customSettings || {}),
+        selectedCourseIds: nextSelected,
+      },
+    }));
   };
 
   const toggleVisibility = (id: string) => {
@@ -148,6 +205,7 @@ export default function AdminHomepageSectionBuilder() {
                         <h3 className="font-semibold">{section.title || "Untitled"}</h3>
                       </div>
                       <p className="text-xs text-gray-600">Order: {section.order}</p>
+                      <p className="text-xs text-gray-500">Placement: {HOMEPAGE_SECTION_ANCHOR_LABELS[section.insertAfter || "faq"]}</p>
                     </div>
                     <div className="flex items-center gap-1">
                       <Button
@@ -247,6 +305,19 @@ export default function AdminHomepageSectionBuilder() {
             </div>
 
             <div>
+              <label className="text-sm font-medium text-gray-700 block mb-1">Place Section</label>
+              <select
+                value={formData.insertAfter || "faq"}
+                onChange={(e) => setFormData({ ...formData, insertAfter: e.target.value as HomepageSectionAnchor })}
+                className="w-full border border-gray-300 rounded px-3 py-2 text-sm"
+              >
+                {HOMEPAGE_SECTION_ANCHORS.map((anchor) => (
+                  <option key={anchor} value={anchor}>{HOMEPAGE_SECTION_ANCHOR_LABELS[anchor]}</option>
+                ))}
+              </select>
+            </div>
+
+            <div>
               <label className="text-sm font-medium text-gray-700 block mb-1">Content</label>
               <Textarea
                 value={formData.content || ""}
@@ -264,6 +335,68 @@ export default function AdminHomepageSectionBuilder() {
                 placeholder="https://example.com/image.jpg"
               />
             </div>
+
+            {(formData.type === "banner" || formData.type === "hero") && (
+              <div className="rounded border border-gray-200 p-3 space-y-2">
+                <p className="text-sm font-medium text-gray-700">Upload Banner Image</p>
+                <label className="inline-flex items-center gap-2 text-sm border border-gray-300 rounded px-3 py-2 cursor-pointer hover:bg-gray-50">
+                  <Upload className="w-4 h-4" />
+                  {isUploadingImage ? "Uploading..." : "Choose Image"}
+                  <input
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    disabled={isUploadingImage}
+                    onChange={(e) => void handleBannerImageUpload(e.target.files?.[0])}
+                  />
+                </label>
+                <p className="text-xs text-gray-500">Recommended: wide banner image for best hero-like look.</p>
+              </div>
+            )}
+
+            {formData.type === "courses" && (
+              <div className="rounded border border-gray-200 p-3 space-y-3">
+                <p className="text-sm font-medium text-gray-700">Select Courses For This Grid</p>
+                <div>
+                  <label className="text-xs font-medium text-gray-600 block mb-1">Max Courses To Show</label>
+                  <Input
+                    type="number"
+                    min="1"
+                    max="24"
+                    value={String(maxCourses)}
+                    onChange={(e) => {
+                      const nextMax = Math.min(24, Math.max(1, Number(e.target.value || 8)));
+                      setFormData((prev) => ({
+                        ...prev,
+                        customSettings: {
+                          ...(prev.customSettings || {}),
+                          maxCourses: nextMax,
+                        },
+                      }));
+                    }}
+                  />
+                </div>
+                <div className="max-h-48 overflow-y-auto space-y-2 border border-gray-100 rounded p-2">
+                  {visibleCourses.length === 0 && (
+                    <p className="text-xs text-gray-500">No visible courses found.</p>
+                  )}
+                  {visibleCourses.map((course) => {
+                    const checked = selectedCourseIds.includes(course.id);
+                    return (
+                      <label key={course.id} className="flex items-center gap-2 text-sm text-gray-700">
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={(e) => toggleSelectedCourse(course.id, e.target.checked)}
+                        />
+                        <span>{course.title}</span>
+                      </label>
+                    );
+                  })}
+                </div>
+                <p className="text-xs text-gray-500">If no course is selected, system will use category-based explore courses.</p>
+              </div>
+            )}
 
             <div className="grid grid-cols-2 gap-3">
               <div>
