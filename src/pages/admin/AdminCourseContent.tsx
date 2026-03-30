@@ -776,7 +776,7 @@ export default function AdminCourseContent() {
             <BookOpen className="h-5 w-5 text-primary" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Course Content</h1>
+            <h1 className="text-xl font-bold text-slate-900">Video</h1>
             <p className="text-xs text-slate-500">Manage chapters, lessons & videos</p>
           </div>
 

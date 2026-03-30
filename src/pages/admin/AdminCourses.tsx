@@ -2687,7 +2687,7 @@ export default function AdminCourses() {
                         </div>
                         <div className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50/60 px-5 py-4">
                           <FileText className="h-5 w-5 text-blue-500 shrink-0" />
-                          <p className="text-xs text-blue-700">To manage <strong>curriculum chapters and lessons</strong>, use the <strong>Course Content</strong> button from the course list after saving this form.</p>
+                          <p className="text-xs text-blue-700">To manage <strong>curriculum chapters and lessons</strong>, use the <strong>Video</strong> button from the course list after saving this form.</p>
                         </div>
 
                         {/* Demo Lecture */}

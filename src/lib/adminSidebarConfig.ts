@@ -43,12 +43,12 @@ export const ADMIN_SIDEBAR_STORAGE_KEY = "ednovate_admin_sidebar_v1";
 export const ADMIN_SIDEBAR_DEFINITIONS: AdminSidebarDefinition[] = [
   { id: "dashboard", to: "/admin/dashboard", defaultLabel: "Dashboard", moduleKey: "dashboard", iconName: "dashboard" },
   { id: "courses", to: "/admin/courses", defaultLabel: "Courses", moduleKey: "courses", iconName: "courses" },
-  { id: "course-content", to: "/admin/course-content", defaultLabel: "Course Content", moduleKey: "course-content", iconName: "courseContent" },
+  { id: "course-content", to: "/admin/course-content", defaultLabel: "Video", moduleKey: "course-content", iconName: "courseContent" },
   { id: "bunny-video", to: "/admin/bunny-video", defaultLabel: "Bunny Video", moduleKey: "settings", iconName: "bunnyVideo" },
   { id: "masters", to: "/admin/masters", defaultLabel: "Master", moduleKey: "masters", iconName: "masters" },
   { id: "coupons", to: "/admin/coupons", defaultLabel: "Coupons", moduleKey: "coupons", iconName: "coupons" },
   { id: "faculty", to: "/admin/faculty", defaultLabel: "Faculty", moduleKey: "faculty", iconName: "faculty" },
-  { id: "homepage", to: "/admin/homepage", defaultLabel: "Homepage Content", moduleKey: "homepage", iconName: "homepage" },
+  { id: "homepage", to: "/admin/homepage", defaultLabel: "Homepage", moduleKey: "homepage", iconName: "homepage" },
   { id: "header", to: "/admin/header", defaultLabel: "Header Module", moduleKey: "homepage", iconName: "header" },
   { id: "users", to: "/admin/users", defaultLabel: "Students", moduleKey: "users", iconName: "users" },
   { id: "student-access", to: "/admin/student-access", defaultLabel: "Student Access", moduleKey: "users", iconName: "studentAccess" },
@@ -104,9 +104,20 @@ export const normalizeAdminSidebarConfig = (raw: unknown): AdminSidebarItemConfi
     if (!incoming) return base;
 
     const isProtectedSettings = base.id === "settings";
+    const incomingLabel = incoming.label || "";
+    const migratedLabel = (() => {
+      if (base.id === "course-content" && incomingLabel === "Course Content") {
+        return "Video";
+      }
+      if (base.id === "homepage" && incomingLabel === "Homepage Content") {
+        return "Homepage";
+      }
+      return incomingLabel;
+    })();
+
     return {
       ...base,
-      label: incoming.label || base.label,
+      label: migratedLabel || base.label,
       enabled: isProtectedSettings ? true : incoming.enabled,
       visible: isProtectedSettings ? true : incoming.visible,
       order: Number.isFinite(incoming.order) ? incoming.order : index,
