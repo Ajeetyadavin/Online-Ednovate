@@ -1,5 +1,6 @@
 import { useAdminAuth } from "@/context/AdminAuthContext";
 import { Navigate, Outlet, NavLink, useLocation } from "react-router-dom";
+import { useEffect, useMemo, useState } from "react";
 import {
   LayoutDashboard,
   BookOpen,
@@ -24,7 +25,6 @@ import {
   SlidersHorizontal,
   Braces,
 } from "lucide-react";
-import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -33,40 +33,78 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { adminApi } from "@/services/adminApi";
+import {
+  ADMIN_SIDEBAR_DEFINITIONS,
+  ADMIN_SIDEBAR_STORAGE_KEY,
+  buildDefaultAdminSidebarConfig,
+  getConfiguredAdminSidebarItems,
+  normalizeAdminSidebarConfig,
+} from "@/lib/adminSidebarConfig";
 
-const navItems = [
-  { to: "/admin/dashboard", icon: LayoutDashboard, label: "Dashboard", moduleKey: "dashboard" as const },
-  { to: "/admin/courses", icon: BookOpen, label: "Courses", moduleKey: "courses" as const },
-  { to: "/admin/course-content", icon: BookOpen, label: "Course Content", moduleKey: "course-content" as const },
-  { to: "/admin/bunny-video", icon: Video, label: "Bunny Video", moduleKey: "settings" as const },
-  { to: "/admin/masters", icon: SlidersHorizontal, label: "Master Module", moduleKey: "masters" as const },
-  { to: "/admin/coupons", icon: Tags, label: "Coupons", moduleKey: "coupons" as const },
-  { to: "/admin/faculty", icon: GraduationCap, label: "Faculty", moduleKey: "faculty" as const },
-  { to: "/admin/homepage", icon: Settings, label: "Homepage Content", moduleKey: "homepage" as const },
-  { to: "/admin/header", icon: AppWindow, label: "Header Module", moduleKey: "homepage" as const },
-  { to: "/admin/users", icon: Users, label: "Students", moduleKey: "users" as const },
-  { to: "/admin/student-access", icon: Gauge, label: "Student Access", moduleKey: "users" as const },
-  { to: "/admin/orders", icon: ShoppingCart, label: "Orders", moduleKey: "orders" as const },
-  { to: "/admin/leads", icon: UserCheck, label: "Leads", moduleKey: "leads" as const },
-  { to: "/admin/announcements", icon: Bell, label: "Announcements", moduleKey: "announcements" as const },
-  { to: "/admin/technical-support", icon: Headset, label: "Technical Support", moduleKey: "technical-support" as const },
-  { to: "/admin/marketing", icon: Megaphone, label: "Marketing", moduleKey: "marketing" as const },
-  { to: "/admin/settings", icon: Settings, label: "Settings", moduleKey: "settings" as const },
-  { to: "/admin/subadmins", icon: Shield, label: "Sub Admins", moduleKey: "subadmins" as const },
-  { to: "/admin/logs", icon: ScrollText, label: "Activity Logs", moduleKey: "logs" as const },
-  { to: "/admin/apis", icon: Braces, label: "API Module", moduleKey: "settings" as const },
-];
-
-const getModuleForPath = (pathname: string) => {
-  const match = navItems.find((item) => pathname.startsWith(item.to));
-  return match?.moduleKey || "dashboard";
+const iconMap = {
+  dashboard: LayoutDashboard,
+  courses: BookOpen,
+  courseContent: BookOpen,
+  bunnyVideo: Video,
+  masters: SlidersHorizontal,
+  coupons: Tags,
+  faculty: GraduationCap,
+  homepage: Settings,
+  header: AppWindow,
+  users: Users,
+  studentAccess: Gauge,
+  orders: ShoppingCart,
+  leads: UserCheck,
+  announcements: Bell,
+  technicalSupport: Headset,
+  marketing: Megaphone,
+  settings: Settings,
+  subadmins: Shield,
+  logs: ScrollText,
+  apis: Braces,
 };
 
 const AdminLayout = () => {
   const { admin, isAuthenticated, isLoading, logout, hasPermission } = useAdminAuth();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [sidebarConfig, setSidebarConfig] = useState(buildDefaultAdminSidebarConfig());
   const location = useLocation();
+
+  useEffect(() => {
+    try {
+      const stored = localStorage.getItem(ADMIN_SIDEBAR_STORAGE_KEY);
+      if (stored) {
+        setSidebarConfig(normalizeAdminSidebarConfig(JSON.parse(stored)));
+      }
+    } catch {
+      setSidebarConfig(buildDefaultAdminSidebarConfig());
+    }
+
+    let cancelled = false;
+    const loadFromServer = async () => {
+      try {
+        const response = await adminApi.getPlatformSettings();
+        const site = (response?.settings?.siteSettings || {}) as Record<string, unknown>;
+        const adminSidebarRaw = site.adminSidebar;
+        if (cancelled) return;
+        const normalized = normalizeAdminSidebarConfig(adminSidebarRaw);
+        setSidebarConfig(normalized);
+        localStorage.setItem(ADMIN_SIDEBAR_STORAGE_KEY, JSON.stringify(normalized));
+      } catch {
+        // Keep local config on fetch failures.
+      }
+    };
+
+    void loadFromServer();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const navItems = useMemo(() => getConfiguredAdminSidebarItems(sidebarConfig), [sidebarConfig]);
 
   if (isLoading) {
     return (
@@ -83,9 +121,12 @@ const AdminLayout = () => {
 
   if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
 
-  const allowedNavItems = navItems.filter((item) => hasPermission(item.moduleKey, "read"));
-  const currentModule = getModuleForPath(location.pathname);
-  const canViewCurrentModule = hasPermission(currentModule, "read");
+  const allowedNavItems = navItems.filter((item) => item.enabled && item.visible && hasPermission(item.moduleKey, "read"));
+  const currentModule =
+    ADMIN_SIDEBAR_DEFINITIONS.find((item) => location.pathname.startsWith(item.to))?.moduleKey || "dashboard";
+  const currentNavItem = navItems.find((item) => location.pathname.startsWith(item.to));
+  const isCurrentFeatureEnabled = currentNavItem ? currentNavItem.enabled !== false : true;
+  const canViewCurrentModule = hasPermission(currentModule, "read") && isCurrentFeatureEnabled;
 
   return (
     <div className="flex h-screen bg-white">
@@ -114,6 +155,7 @@ const AdminLayout = () => {
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-2">
           {allowedNavItems.map((item) => {
             const isActive = location.pathname === item.to;
+            const Icon = iconMap[item.iconName] || LayoutDashboard;
             return (
               <NavLink
                 key={item.to}
@@ -124,7 +166,7 @@ const AdminLayout = () => {
                     : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
                 }`}
               >
-                <item.icon className="w-5 h-5 flex-shrink-0" />
+                <Icon className="w-5 h-5 flex-shrink-0" />
                 {sidebarOpen && <span className="truncate">{item.label}</span>}
               </NavLink>
             );
@@ -215,7 +257,9 @@ const AdminLayout = () => {
               <div className="max-w-xl rounded-xl border border-red-200 bg-red-50 p-6">
                 <h2 className="text-lg font-bold text-red-700">Access Restricted</h2>
                 <p className="text-sm text-red-600 mt-2">
-                  Aapke account me is module ka view permission enabled nahi hai. Super Admin se access grant karvaye.
+                  {isCurrentFeatureEnabled
+                    ? "Aapke account me is module ka view permission enabled nahi hai. Super Admin se access grant karvaye."
+                    : "Yeh feature Admin Settings se OFF kiya gaya hai. Use dobara ON karne ke baad access milega."}
                 </p>
               </div>
             )}

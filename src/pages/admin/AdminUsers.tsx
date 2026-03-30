@@ -4,6 +4,9 @@ import { useAuth } from "@/context/AuthContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import {
   adminApi,
+  type CourseMasterAttemptOption,
+  type CourseMasterDeliveryMode,
+  type CourseMasterViewMode,
   type StudentRecord,
   type StudentCourseAccess,
   type StudentLoginLog,
@@ -23,6 +26,8 @@ import {
   MessageSquare, RefreshCcw, GraduationCap, ToggleLeft, ToggleRight,
   ChevronRight, Phone, Calendar, Download, ChevronDown, ChevronUp,
 } from "lucide-react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 /* ─── Helpers ──────────────────────────────────────────────────── */
 const formatDateTime = (value?: string | null) => {
@@ -73,12 +78,30 @@ const avatarColor = (name: string) => {
 };
 
 type DetailTab = "overview" | "courses" | "activity" | "message";
+type AssignableCourseOption = {
+  id: string;
+  title: string;
+  isCombo?: boolean;
+  viewOptions?: number[];
+  deliveryModes?: Array<{ id?: string; label?: string; name?: string }>;
+  masterConfig?: {
+    combinations?: Array<{
+      viewModeId?: string | null;
+      attemptOptionId?: string | null;
+      deliveryModeId?: string | null;
+    }>;
+  };
+};
 
 /* ─── Component ─────────────────────────────────────────────────── */
 export default function AdminUsers() {
   const navigate = useNavigate();
   const { loginAsUser } = useAuth();
   const { courses } = usePlatformData();
+  const [assignCourseOptions, setAssignCourseOptions] = useState<AssignableCourseOption[]>([]);
+  const [masterViewModes, setMasterViewModes] = useState<CourseMasterViewMode[]>([]);
+  const [masterAttemptOptions, setMasterAttemptOptions] = useState<CourseMasterAttemptOption[]>([]);
+  const [masterDeliveryModes, setMasterDeliveryModes] = useState<CourseMasterDeliveryMode[]>([]);
 
   const [searchTerm, setSearchTerm] = useState("");
   const [students, setStudents] = useState<StudentRecord[]>([]);
@@ -104,12 +127,34 @@ export default function AdminUsers() {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
   const [isExporting, setIsExporting] = useState(false);
+  const [videoActivityQuery, setVideoActivityQuery] = useState("");
+  const [videoActivityCourseId, setVideoActivityCourseId] = useState("all");
+  const [videoActivityProgress, setVideoActivityProgress] = useState<"all" | "completed" | "in_progress" | "not_started">("all");
+  const [videoActivityFromDate, setVideoActivityFromDate] = useState("");
+  const [videoActivityToDate, setVideoActivityToDate] = useState("");
+  const [showVideoActivityFilters, setShowVideoActivityFilters] = useState(false);
 
   const [courseForm, setCourseForm] = useState({ courseId: "", purchaseDate: "", durationDays: 180, totalViews: 2, usedViews: 0, notes: "", isEnabled: true });
   const [extendForm, setExtendForm] = useState({ courseId: "", extraDays: 30, extraViews: 1 });
   const [passwordForm, setPasswordForm] = useState({ password: "" });
   const [messageForm, setMessageForm] = useState({ channel: "in_app", subject: "", message: "" });
   const [curriculumMetaByCourse, setCurriculumMetaByCourse] = useState<Record<string, { lectures: number; totalSeconds: number }>>({});
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [assigningStudent, setAssigningStudent] = useState<StudentRecord | null>(null);
+  const [isAssigningCourse, setIsAssigningCourse] = useState(false);
+  const [quickAssignForm, setQuickAssignForm] = useState({
+    courseId: "",
+    selectedViewModeId: "",
+    selectedAttemptOptionId: "",
+    selectedModeId: "",
+    purchaseDate: new Date().toISOString().slice(0, 10),
+    validityDays: 180,
+    attempts: 2,
+    watchHours: 0,
+    watchMinutes: 0,
+    notes: "",
+    isEnabled: true,
+  });
 
   const loadCurriculumMeta = useCallback(async () => {
     try {
@@ -160,6 +205,50 @@ export default function AdminUsers() {
   useEffect(() => { if (selectedStudentId) { loadStudentDetails(selectedStudentId); setActiveTab("overview"); } }, [selectedStudentId]);
   useEffect(() => { void loadCurriculumMeta(); }, [courses.length, loadCurriculumMeta]);
   useEffect(() => {
+    let cancelled = false;
+    const loadAssignCourses = async () => {
+      try {
+        const [response, masters] = await Promise.all([adminApi.getCourses(), adminApi.getCourseMasters()]);
+        if (cancelled) return;
+        const list = Array.isArray(response?.courses)
+          ? response.courses.map((course) => {
+              const row = (course && typeof course === "object") ? (course as Record<string, unknown>) : {};
+              return {
+              id: String(course.id || "").trim(),
+              title: String(course.title || "Untitled Course").trim(),
+              isCombo: Boolean(course.isCombo),
+              viewOptions: Array.isArray(row.viewOptions)
+                ? row.viewOptions.map((value) => Number(value)).filter((value) => Number.isFinite(value) && value >= 1)
+                : [],
+              masterConfig: row.masterConfig && typeof row.masterConfig === "object"
+                ? (row.masterConfig as AssignableCourseOption["masterConfig"])
+                : undefined,
+              deliveryModes: Array.isArray(row.deliveryModes)
+                ? (row.deliveryModes as Array<{ id?: string; label?: string; name?: string }>)
+                : [],
+            };
+          }).filter((course) => course.id)
+          : [];
+        setAssignCourseOptions(list);
+        setMasterViewModes(Array.isArray(masters?.viewModes) ? masters.viewModes.filter((item) => item.isActive !== false) : []);
+        setMasterAttemptOptions(Array.isArray(masters?.attemptOptions) ? masters.attemptOptions.filter((item) => item.isActive !== false) : []);
+        setMasterDeliveryModes(Array.isArray(masters?.deliveryModes) ? masters.deliveryModes.filter((item) => item.isActive !== false) : []);
+      } catch {
+        if (cancelled) return;
+        setAssignCourseOptions([]);
+        setMasterViewModes([]);
+        setMasterAttemptOptions([]);
+        setMasterDeliveryModes([]);
+      }
+    };
+
+    void loadAssignCourses();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
     const handler = () => void loadCurriculumMeta();
     window.addEventListener("curriculum-updated", handler as EventListener);
     return () => window.removeEventListener("curriculum-updated", handler as EventListener);
@@ -172,10 +261,180 @@ export default function AdminUsers() {
 
   const totalWatchedSeconds = useMemo(() => videoActivity.reduce((sum, item) => sum + Number(item.viewedSeconds || 0), 0), [videoActivity]);
 
+  const courseTitleById = useMemo(() => {
+    const map = new Map<string, string>();
+    courses.forEach((course) => {
+      const id = String(course.id || "").trim();
+      if (!id) return;
+      map.set(id, String(course.title || "Untitled Course"));
+    });
+    return map;
+  }, [courses]);
+
+  const videoActivityCourseOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    videoActivity.forEach((item) => {
+      const id = String(item.courseId || "").trim();
+      if (!id) return;
+      options.set(id, courseTitleById.get(id) || id);
+    });
+    return Array.from(options.entries())
+      .map(([id, title]) => ({ id, title }))
+      .sort((a, b) => a.title.localeCompare(b.title));
+  }, [videoActivity, courseTitleById]);
+
+  const filteredVideoActivity = useMemo(() => {
+    const query = videoActivityQuery.trim().toLowerCase();
+    const fromTs = videoActivityFromDate ? new Date(`${videoActivityFromDate}T00:00:00`).getTime() : null;
+    const toTs = videoActivityToDate ? new Date(`${videoActivityToDate}T23:59:59`).getTime() : null;
+
+    return videoActivity.filter((item) => {
+      if (videoActivityCourseId !== "all" && String(item.courseId || "").trim() !== videoActivityCourseId) {
+        return false;
+      }
+
+      const progress = Number(item.progressPercent || 0);
+      if (videoActivityProgress === "completed" && progress < 100) return false;
+      if (videoActivityProgress === "in_progress" && (progress <= 0 || progress >= 100)) return false;
+      if (videoActivityProgress === "not_started" && progress > 0) return false;
+
+      if (fromTs !== null || toTs !== null) {
+        const lastViewedTs = new Date(item.lastViewedAt || "").getTime();
+        if (!Number.isFinite(lastViewedTs)) return false;
+        if (fromTs !== null && lastViewedTs < fromTs) return false;
+        if (toTs !== null && lastViewedTs > toTs) return false;
+      }
+
+      if (!query) return true;
+      const courseLabel = courseTitleById.get(String(item.courseId || "").trim()) || String(item.courseId || "");
+      const haystack = [courseLabel, item.courseId, item.chapterTitle, item.lessonTitle]
+        .map((part) => String(part || "").toLowerCase())
+        .join(" ");
+      return haystack.includes(query);
+    });
+  }, [videoActivity, videoActivityQuery, videoActivityCourseId, videoActivityProgress, videoActivityFromDate, videoActivityToDate, courseTitleById]);
+
   const selectedCourseMeta = useMemo(() => {
     const meta = curriculumMetaByCourse[courseForm.courseId];
     return { lectures: meta?.lectures || 0, durationText: formatSecondsToClock(meta?.totalSeconds || 0) };
   }, [curriculumMetaByCourse, courseForm.courseId]);
+
+  const assignableCourses = useMemo(() => {
+    const source = assignCourseOptions.length > 0
+      ? assignCourseOptions
+      : courses.map((course) => ({
+          id: String(course.id || "").trim(),
+          title: String(course.title || "Untitled Course").trim(),
+          isCombo: Boolean(course.isCombo),
+          viewOptions: Array.isArray((course as unknown as { viewOptions?: number[] }).viewOptions)
+            ? (course as unknown as { viewOptions?: number[] }).viewOptions
+            : [],
+          masterConfig: (course as unknown as { masterConfig?: AssignableCourseOption["masterConfig"] }).masterConfig,
+          deliveryModes: Array.isArray((course as unknown as { deliveryModes?: Array<{ id?: string; label?: string; name?: string }> }).deliveryModes)
+            ? (course as unknown as { deliveryModes?: Array<{ id?: string; label?: string; name?: string }> }).deliveryModes
+            : [],
+        }));
+    return source.filter((course) => course.id && !course.isCombo);
+  }, [assignCourseOptions, courses]);
+
+  const selectedAssignCourse = useMemo(
+    () => assignableCourses.find((item) => item.id === quickAssignForm.courseId) || null,
+    [assignableCourses, quickAssignForm.courseId],
+  );
+
+  const viewSelectOptions = useMemo(() => {
+    if (!selectedAssignCourse) return [] as Array<{ value: string; label: string; views: number | null; isUnlimited?: boolean }>;
+    const combos = Array.isArray(selectedAssignCourse.masterConfig?.combinations)
+      ? selectedAssignCourse.masterConfig?.combinations || []
+      : [];
+    const masterIds = Array.from(new Set(combos.map((item) => String(item.viewModeId || "").trim()).filter(Boolean)));
+    if (masterIds.length > 0) {
+      return masterIds.map((id) => {
+        const mode = masterViewModes.find((item) => item.id === id);
+        const views = mode?.maxViews ?? null;
+        const isUnlimited = mode?.isLifetime === true || views === null;
+        return {
+          value: id,
+          label: mode?.name || id,
+          views,
+          isUnlimited,
+        };
+      });
+    }
+
+    const fallbackViews = Array.isArray(selectedAssignCourse.viewOptions) && selectedAssignCourse.viewOptions.length > 0
+      ? selectedAssignCourse.viewOptions
+      : [1, 2, 3];
+    return fallbackViews.map((count) => ({
+      value: `views:${count}`,
+      label: `${count} View${count > 1 ? "s" : ""}`,
+      views: count,
+      isUnlimited: false,
+    }));
+  }, [selectedAssignCourse, masterViewModes]);
+
+  const attemptSelectOptions = useMemo(() => {
+    if (!selectedAssignCourse) return [] as Array<{ value: string; label: string }>;
+    const combos = Array.isArray(selectedAssignCourse.masterConfig?.combinations)
+      ? selectedAssignCourse.masterConfig?.combinations || []
+      : [];
+    const masterIds = Array.from(new Set(combos.map((item) => String(item.attemptOptionId || "").trim()).filter(Boolean)));
+    if (masterIds.length > 0) {
+      return masterIds.map((id) => {
+        const option = masterAttemptOptions.find((item) => item.id === id);
+        return {
+          value: id,
+          label: option?.label || id,
+        };
+      });
+    }
+    return [
+      { value: "attempt:1", label: "Attempt 1" },
+      { value: "attempt:2", label: "Attempt 2" },
+      { value: "attempt:3", label: "Attempt 3" },
+    ];
+  }, [selectedAssignCourse, masterAttemptOptions]);
+
+  const modeSelectOptions = useMemo(() => {
+    if (!selectedAssignCourse) return [] as Array<{ value: string; label: string }>;
+    const combos = Array.isArray(selectedAssignCourse.masterConfig?.combinations)
+      ? selectedAssignCourse.masterConfig?.combinations || []
+      : [];
+    const masterIds = Array.from(new Set(combos.map((item) => String(item.deliveryModeId || "").trim()).filter(Boolean)));
+    if (masterIds.length > 0) {
+      return masterIds.map((id) => {
+        const mode = masterDeliveryModes.find((item) => item.id === id);
+        return {
+          value: id,
+          label: mode?.name || id,
+        };
+      });
+    }
+
+    const fallback = Array.isArray(selectedAssignCourse.deliveryModes) && selectedAssignCourse.deliveryModes.length > 0
+      ? selectedAssignCourse.deliveryModes
+      : [{ id: "online", label: "Online" }];
+
+    return fallback.map((item, index) => {
+      const rawId = String(item?.id || "").trim();
+      const value = rawId || `mode:${index + 1}`;
+      const label = String(item?.label || item?.name || rawId || `Mode ${index + 1}`).trim();
+      return { value, label };
+    });
+  }, [selectedAssignCourse, masterDeliveryModes]);
+
+  useEffect(() => {
+    if (!quickAssignForm.courseId) return;
+    if (viewSelectOptions.length > 0 && !viewSelectOptions.some((item) => item.value === quickAssignForm.selectedViewModeId)) {
+      setQuickAssignForm((prev) => ({ ...prev, selectedViewModeId: viewSelectOptions[0].value }));
+    }
+    if (attemptSelectOptions.length > 0 && !attemptSelectOptions.some((item) => item.value === quickAssignForm.selectedAttemptOptionId)) {
+      setQuickAssignForm((prev) => ({ ...prev, selectedAttemptOptionId: attemptSelectOptions[0].value }));
+    }
+    if (modeSelectOptions.length > 0 && !modeSelectOptions.some((item) => item.value === quickAssignForm.selectedModeId)) {
+      setQuickAssignForm((prev) => ({ ...prev, selectedModeId: modeSelectOptions[0].value }));
+    }
+  }, [quickAssignForm.courseId, quickAssignForm.selectedViewModeId, quickAssignForm.selectedAttemptOptionId, quickAssignForm.selectedModeId, viewSelectOptions, attemptSelectOptions, modeSelectOptions]);
 
   const handleUpdateStudent = async () => {
     if (!editingStudent) return;
@@ -280,6 +539,97 @@ export default function AdminUsers() {
     }
   };
 
+  const exportVideoActivityCsv = () => {
+    if (!selectedStudent) return;
+    if (filteredVideoActivity.length === 0) {
+      alert("No filtered video activity to export");
+      return;
+    }
+
+    const escapeCsv = (value: unknown) => `"${String(value ?? "").replace(/"/g, '""')}"`;
+    const headers = [
+      "Last Viewed",
+      "Course",
+      "Course Id",
+      "Chapter",
+      "Video",
+      "Progress (%)",
+      "Watched (seconds)",
+    ];
+
+    const rows = filteredVideoActivity.map((item) => {
+      const courseId = String(item.courseId || "").trim();
+      const courseTitle = courseTitleById.get(courseId) || courseId || "—";
+      return [
+        formatDateTime(item.lastViewedAt),
+        courseTitle,
+        courseId,
+        item.chapterTitle || "—",
+        item.lessonTitle || "—",
+        Number(item.progressPercent || 0).toFixed(0),
+        Number(item.viewedSeconds || 0),
+      ];
+    });
+
+    const csvContent = [headers, ...rows]
+      .map((row) => row.map((cell) => escapeCsv(cell)).join(","))
+      .join("\n");
+
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    const stamp = new Date().toISOString().slice(0, 10);
+    link.href = url;
+    link.download = `video-activity-${selectedStudent.id}-${stamp}.csv`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const exportVideoActivityPdf = () => {
+    if (!selectedStudent) return;
+    if (filteredVideoActivity.length === 0) {
+      alert("No filtered video activity to export");
+      return;
+    }
+
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    const generatedAt = new Date();
+
+    doc.setFontSize(14);
+    doc.text("Student Video Watch Activity", 40, 36);
+    doc.setFontSize(10);
+    doc.text(`Student: ${selectedStudent.name} (${selectedStudent.email})`, 40, 54);
+    doc.text(`Generated: ${formatDateTime(generatedAt.toISOString())}`, 40, 68);
+    doc.text(
+      `Filters: course=${videoActivityCourseId === "all" ? "all" : (courseTitleById.get(videoActivityCourseId) || videoActivityCourseId)}, progress=${videoActivityProgress}, from=${videoActivityFromDate || "any"}, to=${videoActivityToDate || "any"}, search=${videoActivityQuery || "none"}`,
+      40,
+      82,
+    );
+
+    autoTable(doc, {
+      startY: 96,
+      styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
+      headStyles: { fillColor: [14, 165, 233] },
+      head: [["Last Viewed", "Course", "Chapter", "Video", "Progress", "Watched (s)"]],
+      body: filteredVideoActivity.map((item) => {
+        const courseId = String(item.courseId || "").trim();
+        return [
+          formatDateTime(item.lastViewedAt),
+          courseTitleById.get(courseId) || courseId || "—",
+          item.chapterTitle || "—",
+          item.lessonTitle || "—",
+          `${Number(item.progressPercent || 0).toFixed(0)}%`,
+          String(Number(item.viewedSeconds || 0)),
+        ];
+      }),
+    });
+
+    const stamp = generatedAt.toISOString().replace(/[:.]/g, "-");
+    doc.save(`video-activity-${selectedStudent.id}-${stamp}.pdf`);
+  };
+
   const handleSaveCourseAccess = async () => {
     if (!selectedStudentId || !courseForm.courseId) return;
     const selectedCourse = courses.find((c) => c.id === courseForm.courseId);
@@ -344,6 +694,85 @@ export default function AdminUsers() {
       await loadStudentDetails(selectedStudentId);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Failed to delete notification");
+    }
+  };
+
+  const openQuickAssignDialog = (student: StudentRecord) => {
+    setAssigningStudent(student);
+    setQuickAssignForm({
+      courseId: "",
+      selectedViewModeId: "",
+      selectedAttemptOptionId: "",
+      selectedModeId: "",
+      purchaseDate: new Date().toISOString().slice(0, 10),
+      validityDays: 180,
+      attempts: 2,
+      watchHours: 0,
+      watchMinutes: 0,
+      notes: "",
+      isEnabled: true,
+    });
+    setAssignDialogOpen(true);
+  };
+
+  const handleQuickAssignCourse = async () => {
+    if (!assigningStudent?.id || !quickAssignForm.courseId) {
+      alert("Please select a course");
+      return;
+    }
+
+    const course = assignableCourses.find((item) => item.id === quickAssignForm.courseId);
+    if (!course) {
+      alert("Selected course not found");
+      return;
+    }
+
+    const selectedView = viewSelectOptions.find((item) => item.value === quickAssignForm.selectedViewModeId) || null;
+    const selectedAttempt = attemptSelectOptions.find((item) => item.value === quickAssignForm.selectedAttemptOptionId) || null;
+    const selectedMode = modeSelectOptions.find((item) => item.value === quickAssignForm.selectedModeId) || null;
+    const parsedAttemptFromLabel = selectedAttempt ? Number((selectedAttempt.label.match(/(\d+)/) || [])[1] || 0) : 0;
+    const resolvedAttempts = Math.max(
+      1,
+      selectedView?.views || parsedAttemptFromLabel || Number(quickAssignForm.attempts || 1),
+    );
+
+    const noteParts = [quickAssignForm.notes.trim()].filter(Boolean);
+    if (selectedView) noteParts.push(`View: ${selectedView.label}`);
+    if (selectedAttempt) noteParts.push(`Attempt: ${selectedAttempt.label}`);
+    if (selectedMode) noteParts.push(`Mode: ${selectedMode.label}`);
+
+    const manualWatchHours = Math.max(0, Number(quickAssignForm.watchHours || 0))
+      + (Math.max(0, Number(quickAssignForm.watchMinutes || 0)) / 60);
+
+    setIsAssigningCourse(true);
+    try {
+      await adminApi.saveStudentCourseAccess(assigningStudent.id, {
+        courseId: course.id,
+        courseTitle: course.title,
+        purchaseDate: quickAssignForm.purchaseDate,
+        durationDays: Math.max(1, Number(quickAssignForm.validityDays || 1)),
+        totalViews: resolvedAttempts,
+        isUnlimitedViews: selectedView?.isUnlimited === true,
+        usedViews: 0,
+        notes: noteParts.join(" | "),
+        isEnabled: quickAssignForm.isEnabled,
+      });
+
+      if (manualWatchHours > 0) {
+        await adminApi.extendStudentCourseAccess(assigningStudent.id, course.id, 0, 0, manualWatchHours);
+      }
+
+      if (selectedStudentId === assigningStudent.id) {
+        await loadStudentDetails(assigningStudent.id);
+      }
+
+      setAssignDialogOpen(false);
+      setAssigningStudent(null);
+      alert("Course assigned successfully");
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to assign course");
+    } finally {
+      setIsAssigningCourse(false);
     }
   };
 
@@ -544,6 +973,17 @@ export default function AdminUsers() {
                         {/* Quick Login */}
                         <Button size="sm" variant="ghost" className="h-7 w-7 p-0 text-slate-500 hover:text-blue-600" onClick={() => handleQuickLogin(student.id)} disabled={loginTarget === student.id}>
                           {loginTarget === student.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogIn className="h-3.5 w-3.5" />}
+                        </Button>
+
+                        {/* Quick Assign Course */}
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="h-7 w-7 p-0 text-slate-500 hover:text-emerald-600"
+                          onClick={() => openQuickAssignDialog(student)}
+                          title="Assign Course"
+                        >
+                          <GraduationCap className="h-3.5 w-3.5" />
                         </Button>
 
                         {/* Delete */}
@@ -804,18 +1244,112 @@ export default function AdminUsers() {
 
                   {/* Video Activity */}
                   <div>
-                    <p className="mb-2 text-xs font-bold text-slate-800">Video Watch Activity ({videoActivity.length})</p>
+                    <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+                      <p className="text-xs font-bold text-slate-800">Video Watch Activity ({filteredVideoActivity.length})</p>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 rounded-xl border-slate-200 px-3 text-[11px]"
+                          onClick={() => setShowVideoActivityFilters((prev) => !prev)}
+                        >
+                          Filters {showVideoActivityFilters ? <ChevronUp className="ml-1 h-3.5 w-3.5" /> : <ChevronDown className="ml-1 h-3.5 w-3.5" />}
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 rounded-xl border-slate-200 px-3 text-[11px]"
+                          onClick={exportVideoActivityCsv}
+                          disabled={filteredVideoActivity.length === 0}
+                        >
+                          <Download className="mr-1 h-3.5 w-3.5" /> CSV
+                        </Button>
+                        <Button
+                          type="button"
+                          size="sm"
+                          variant="outline"
+                          className="h-8 rounded-xl border-slate-200 px-3 text-[11px]"
+                          onClick={exportVideoActivityPdf}
+                          disabled={filteredVideoActivity.length === 0}
+                        >
+                          <Download className="mr-1 h-3.5 w-3.5" /> PDF
+                        </Button>
+                      </div>
+                    </div>
+
+                    {showVideoActivityFilters ? (
+                      <div className="mb-3 grid grid-cols-1 gap-2 rounded-xl border border-slate-200 bg-slate-50/70 p-3 md:grid-cols-5">
+                        <Input
+                          value={videoActivityQuery}
+                          onChange={(e) => setVideoActivityQuery(e.target.value)}
+                          className="h-8 rounded-lg border-slate-200 bg-white text-xs"
+                          placeholder="Search course/chapter/video"
+                        />
+                        <select
+                          value={videoActivityCourseId}
+                          onChange={(e) => setVideoActivityCourseId(e.target.value)}
+                          className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        >
+                          <option value="all">All Courses</option>
+                          {videoActivityCourseOptions.map((option) => (
+                            <option key={option.id} value={option.id}>{option.title}</option>
+                          ))}
+                        </select>
+                        <select
+                          value={videoActivityProgress}
+                          onChange={(e) => setVideoActivityProgress(e.target.value as "all" | "completed" | "in_progress" | "not_started")}
+                          className="h-8 rounded-lg border border-slate-200 bg-white px-2 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                        >
+                          <option value="all">All Progress</option>
+                          <option value="completed">Completed (100%)</option>
+                          <option value="in_progress">In Progress (1-99%)</option>
+                          <option value="not_started">Not Started (0%)</option>
+                        </select>
+                        <Input
+                          type="date"
+                          value={videoActivityFromDate}
+                          onChange={(e) => setVideoActivityFromDate(e.target.value)}
+                          className="h-8 rounded-lg border-slate-200 bg-white text-xs"
+                        />
+                        <div className="flex items-center gap-2">
+                          <Input
+                            type="date"
+                            value={videoActivityToDate}
+                            onChange={(e) => setVideoActivityToDate(e.target.value)}
+                            className="h-8 rounded-lg border-slate-200 bg-white text-xs"
+                          />
+                          <Button
+                            type="button"
+                            size="sm"
+                            variant="ghost"
+                            className="h-8 rounded-lg px-2 text-[11px]"
+                            onClick={() => {
+                              setVideoActivityQuery("");
+                              setVideoActivityCourseId("all");
+                              setVideoActivityProgress("all");
+                              setVideoActivityFromDate("");
+                              setVideoActivityToDate("");
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    ) : null}
+
                     <div className="overflow-hidden rounded-xl border border-slate-200">
                       <table className="w-full text-xs">
                         <thead><tr className="border-b border-slate-100 bg-slate-50"><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Last Viewed</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Course / Chapter</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Video</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Progress</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Watched</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
-                          {videoActivity.length === 0 ? (
+                          {filteredVideoActivity.length === 0 ? (
                             <tr><td colSpan={5} className="py-8 text-center text-slate-400">No video activity</td></tr>
-                          ) : videoActivity.slice(0, 100).map((item) => (
+                          ) : filteredVideoActivity.slice(0, 200).map((item) => (
                             <tr key={item.id} className="hover:bg-slate-50">
                               <td className="px-4 py-2 text-slate-500">{formatDateTime(item.lastViewedAt)}</td>
                               <td className="px-4 py-2">
-                                <p className="text-slate-600 truncate max-w-[120px]">{item.courseId || "—"}</p>
+                                <p className="text-slate-600 truncate max-w-[120px]">{courseTitleById.get(String(item.courseId || "").trim()) || item.courseId || "—"}</p>
                                 <p className="text-slate-400 truncate max-w-[120px]">{item.chapterTitle || "—"}</p>
                               </td>
                               <td className="max-w-[150px] truncate px-4 py-2 text-slate-600">{item.lessonTitle || "—"}</td>
@@ -901,6 +1435,126 @@ export default function AdminUsers() {
                 </div>
               ) : null
             )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Quick Assign Course Dialog ─────────────────────────── */}
+      <Dialog
+        open={assignDialogOpen}
+        onOpenChange={(open) => {
+          setAssignDialogOpen(open);
+          if (!open && !isAssigningCourse) setAssigningStudent(null);
+        }}
+      >
+        <DialogContent className="max-w-lg rounded-2xl border border-slate-100 p-0 shadow-2xl">
+          <DialogHeader className="border-b border-slate-100 px-6 py-4">
+            <DialogTitle className="text-base font-bold text-slate-900">
+              Assign Course
+              {assigningStudent ? <span className="ml-2 text-xs font-medium text-slate-500">to {assigningStudent.name}</span> : null}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4 px-6 py-5">
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Course</label>
+              <select
+                value={quickAssignForm.courseId}
+                onChange={(e) => setQuickAssignForm((prev) => ({ ...prev, courseId: e.target.value, selectedViewModeId: "", selectedAttemptOptionId: "", selectedModeId: "" }))}
+                className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/40"
+              >
+                <option value="">{assignableCourses.length === 0 ? "No courses available" : "Select course…"}</option>
+                {assignableCourses.map((course) => (
+                  <option key={course.id} value={course.id}>{course.title}</option>
+                ))}
+              </select>
+            </div>
+
+            {quickAssignForm.courseId ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Select Views</label>
+                  <select
+                    value={quickAssignForm.selectedViewModeId}
+                    onChange={(e) => setQuickAssignForm((prev) => ({ ...prev, selectedViewModeId: e.target.value }))}
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">Select Views</option>
+                    {viewSelectOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Select Attempt</label>
+                  <select
+                    value={quickAssignForm.selectedAttemptOptionId}
+                    onChange={(e) => setQuickAssignForm((prev) => ({ ...prev, selectedAttemptOptionId: e.target.value }))}
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">Select Attempt</option>
+                    {attemptSelectOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Select Mode</label>
+                  <select
+                    value={quickAssignForm.selectedModeId}
+                    onChange={(e) => setQuickAssignForm((prev) => ({ ...prev, selectedModeId: e.target.value }))}
+                    className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700 focus:outline-none focus:ring-2 focus:ring-primary/40"
+                  >
+                    <option value="">Select Mode</option>
+                    {modeSelectOptions.map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : null}
+
+            <div className="space-y-1">
+              <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Note</label>
+              <Textarea
+                className="rounded-xl border-slate-200 text-xs"
+                rows={3}
+                placeholder="Optional note for this assignment"
+                value={quickAssignForm.notes}
+                onChange={(e) => setQuickAssignForm((prev) => ({ ...prev, notes: e.target.value }))}
+              />
+            </div>
+
+            <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+              <Switch
+                checked={quickAssignForm.isEnabled}
+                onCheckedChange={(checked) => setQuickAssignForm((prev) => ({ ...prev, isEnabled: checked }))}
+              />
+              <span className="text-xs font-medium text-slate-700">Enable access immediately</span>
+            </div>
+          </div>
+
+          <div className="flex justify-end gap-2 border-t border-slate-100 bg-slate-50/70 px-6 py-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="rounded-xl border-slate-200 text-xs"
+              onClick={() => {
+                setAssignDialogOpen(false);
+                if (!isAssigningCourse) setAssigningStudent(null);
+              }}
+              disabled={isAssigningCourse}
+            >
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              className="rounded-xl px-4 text-xs font-semibold"
+              onClick={handleQuickAssignCourse}
+              disabled={isAssigningCourse || !quickAssignForm.courseId || !assigningStudent}
+            >
+              {isAssigningCourse ? <><Loader2 className="mr-1 h-3.5 w-3.5 animate-spin" />Assigning…</> : "Assign Course"}
+            </Button>
           </div>
         </DialogContent>
       </Dialog>

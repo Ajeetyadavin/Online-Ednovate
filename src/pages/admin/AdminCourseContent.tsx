@@ -9,7 +9,7 @@ import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, Command
 import { cn } from "@/lib/utils";
 import {
   Plus, Trash2, Edit2, Save, Video, FileText, CheckCircle2, Lock, Upload, Loader2,
-  Check, ChevronsUpDown, BookOpen, ChevronRight, AlertCircle, X, Eye, GripVertical, FolderPlus, RefreshCw,
+  Check, ChevronsUpDown, BookOpen, ChevronRight, AlertCircle, X, Eye, GripVertical, FolderPlus, RefreshCw, FolderOpen,
 } from "lucide-react";
 import { decodeVideoUrl, encodeVideoUrl, extractYouTubeVideoId, type LessonVideoSource } from "@/lib/video-utils";
 import { adminApi, type BunnyLibraryVideo } from "@/services/adminApi";
@@ -120,12 +120,17 @@ const sCls = "h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-x
 
 /* ─── Main ─────────────────────────────────────────────────────── */
 export default function AdminCourseContent() {
-  const { courses, getCurriculumForCourse, setCurriculumForCourse } = usePlatformData();
+  const { courses, categories, getCurriculumForCourse, setCurriculumForCourse } = usePlatformData();
   const nonPackageCourses = useMemo(() => courses.filter((course) => !course.isCombo), [courses]);
 
   const [selectedCourseId, setSelectedCourseId] = useState("");
   const [selectedChapterId, setSelectedChapterId] = useState<string | null>(null);
   const [coursePickerOpen, setCoursePickerOpen] = useState(false);
+  const [coursePickerQuery, setCoursePickerQuery] = useState("");
+  const [courseFilterId, setCourseFilterId] = useState("all");
+  const [levelFilterId, setLevelFilterId] = useState("all");
+  const [subjectFilter, setSubjectFilter] = useState("all");
+  const [professorFilter, setProfessorFilter] = useState("all");
 
   const [chapterDialogOpen, setChapterDialogOpen] = useState(false);
   const [lessonDialogOpen, setLessonDialogOpen] = useState(false);
@@ -151,6 +156,10 @@ export default function AdminCourseContent() {
   const [isLoadingCollectionVideos, setIsLoadingCollectionVideos] = useState(false);
   const [isRefreshingCollection, setIsRefreshingCollection] = useState(false);
   const [isSavingCollectionName, setIsSavingCollectionName] = useState(false);
+  const [isSwitchingCollection, setIsSwitchingCollection] = useState(false);
+  const [showCollectionSwitcher, setShowCollectionSwitcher] = useState(false);
+  const [availableCollections, setAvailableCollections] = useState<Array<{ id: string; name: string }>>([]);
+  const [switchCollectionId, setSwitchCollectionId] = useState("");
   const [uploadingCollectionVideo, setUploadingCollectionVideo] = useState(false);
   const [collectionUploadProgress, setCollectionUploadProgress] = useState(0);
   const [renamingVideoId, setRenamingVideoId] = useState("");
@@ -199,6 +208,52 @@ export default function AdminCourseContent() {
   };
 
   const selectedCourse = useMemo(() => nonPackageCourses.find((c) => c.id === selectedCourseId), [selectedCourseId, nonPackageCourses]);
+  const categoriesById = useMemo(() => Object.fromEntries((categories || []).map((item) => [item.id, item])), [categories]);
+  const courseFilterOptions = useMemo(() => {
+    const used = new Set(nonPackageCourses.map((course) => String(course.category || "")).filter(Boolean));
+    return (categories || [])
+      .filter((item) => item.parentId === null)
+      .filter((item) => used.has(item.id));
+  }, [categories, nonPackageCourses]);
+  const levelFilterOptions = useMemo(() => {
+    const pool = nonPackageCourses.filter((course) => courseFilterId === "all" || String(course.category || "") === courseFilterId);
+    const used = new Set(pool.map((course) => String(course.subcategory || "")).filter(Boolean));
+    return (categories || []).filter((item) => used.has(item.id));
+  }, [categories, nonPackageCourses, courseFilterId]);
+  const subjectFilterOptions = useMemo(() => {
+    const pool = nonPackageCourses.filter((course) => {
+      if (courseFilterId !== "all" && String(course.category || "") !== courseFilterId) return false;
+      if (levelFilterId !== "all" && String(course.subcategory || "") !== levelFilterId) return false;
+      return true;
+    });
+    return Array.from(new Set(pool.map((course) => String(course.subject || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [nonPackageCourses, courseFilterId, levelFilterId]);
+  const professorFilterOptions = useMemo(() => {
+    const pool = nonPackageCourses.filter((course) => {
+      if (courseFilterId !== "all" && String(course.category || "") !== courseFilterId) return false;
+      if (levelFilterId !== "all" && String(course.subcategory || "") !== levelFilterId) return false;
+      if (subjectFilter !== "all" && String(course.subject || "").trim() !== subjectFilter) return false;
+      return true;
+    });
+    return Array.from(new Set(pool.map((course) => String(course.professor || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [nonPackageCourses, courseFilterId, levelFilterId, subjectFilter]);
+  const filteredCoursePickerOptions = useMemo(() => {
+    const query = coursePickerQuery.trim().toLowerCase();
+    return nonPackageCourses.filter((course) => {
+      if (courseFilterId !== "all" && String(course.category || "") !== courseFilterId) return false;
+      if (levelFilterId !== "all" && String(course.subcategory || "") !== levelFilterId) return false;
+      if (subjectFilter !== "all" && String(course.subject || "").trim() !== subjectFilter) return false;
+      if (professorFilter !== "all" && String(course.professor || "").trim() !== professorFilter) return false;
+      if (!query) return true;
+      const categoryName = String(categoriesById[String(course.category || "")]?.name || course.category || "").toLowerCase();
+      const levelName = String(categoriesById[String(course.subcategory || "")]?.name || course.subcategory || "").toLowerCase();
+      return String(course.title || "").toLowerCase().includes(query)
+        || String(course.professor || "").toLowerCase().includes(query)
+        || String(course.subject || "").toLowerCase().includes(query)
+        || categoryName.includes(query)
+        || levelName.includes(query);
+    });
+  }, [nonPackageCourses, courseFilterId, levelFilterId, subjectFilter, professorFilter, coursePickerQuery, categoriesById]);
   const curriculum = useMemo(() => selectedCourse ? getCurriculumForCourse(selectedCourse.id, selectedCourse.title) : [], [selectedCourseId, selectedCourse, getCurriculumForCourse]);
   const selectedChapter = useMemo(() => curriculum.find((ch) => ch.id === selectedChapterId) || curriculum[0] || null, [selectedChapterId, curriculum]);
   const sharedCourseCollection = useMemo(() => {
@@ -219,6 +274,26 @@ export default function AdminCourseContent() {
   }, [selectedCourseId, nonPackageCourses]);
 
   useEffect(() => {
+    if (courseFilterId === "all") return;
+    if (!courseFilterOptions.some((item) => item.id === courseFilterId)) setCourseFilterId("all");
+  }, [courseFilterId, courseFilterOptions]);
+
+  useEffect(() => {
+    if (levelFilterId === "all") return;
+    if (!levelFilterOptions.some((item) => item.id === levelFilterId)) setLevelFilterId("all");
+  }, [levelFilterId, levelFilterOptions]);
+
+  useEffect(() => {
+    if (subjectFilter === "all") return;
+    if (!subjectFilterOptions.includes(subjectFilter)) setSubjectFilter("all");
+  }, [subjectFilter, subjectFilterOptions]);
+
+  useEffect(() => {
+    if (professorFilter === "all") return;
+    if (!professorFilterOptions.includes(professorFilter)) setProfessorFilter("all");
+  }, [professorFilter, professorFilterOptions]);
+
+  useEffect(() => {
     if (curriculum.length > 0 && !selectedChapterId) setSelectedChapterId(curriculum[0].id);
     else if (curriculum.length === 0) setSelectedChapterId(null);
   }, [selectedCourseId, curriculum, selectedChapterId]);
@@ -230,6 +305,7 @@ export default function AdminCourseContent() {
       setCollectionVideos([]);
       setCollectionVideoDrafts({});
       setCollectionUploadProgress(0);
+      setShowCollectionSwitcher(false);
     }
   }, [collectionDialogOpen]);
   useEffect(() => {
@@ -262,6 +338,15 @@ export default function AdminCourseContent() {
     setCollectionVideoDrafts(Object.fromEntries(videos.map((video) => [video.id, video.title])));
   };
 
+  const loadAvailableCollections = async () => {
+    const result = await adminApi.getBunnyLibrary({ limit: 1 });
+    const next = Array.isArray(result.collections)
+      ? result.collections.map((item) => ({ id: String(item.id || "").trim(), name: String(item.name || "").trim() })).filter((item) => item.id)
+      : [];
+    setAvailableCollections(next);
+    setSwitchCollectionId(String(sharedCourseCollection.id || "").trim());
+  };
+
   const loadSelectedChapterCollectionVideos = async (options?: { silent?: boolean; nextCollectionName?: string; collectionId?: string }) => {
     const collectionId = String(options?.collectionId || sharedCourseCollection.id || selectedChapter?.bunnyCollectionId || "").trim();
     if (!collectionId) return;
@@ -290,9 +375,41 @@ export default function AdminCourseContent() {
     setCollectionDialogOpen(true);
     setCollectionNameDraft(String(sharedCourseCollection.name || selectedCourse?.title || "").trim());
     try {
+      await loadAvailableCollections();
       await loadSelectedChapterCollectionVideos();
     } catch (error) {
       setSaveError(error instanceof Error ? error.message : "Failed to load collection videos");
+    }
+  };
+
+  const handleSwitchCollection = async () => {
+    const nextCollectionId = String(switchCollectionId || "").trim();
+    if (!nextCollectionId) {
+      setSaveError("Select a collection to switch");
+      return;
+    }
+
+    try {
+      setIsSwitchingCollection(true);
+      const verify = await adminApi.getBunnyLibrary({ collectionId: nextCollectionId, limit: 1 });
+      const resolvedName = String(
+        verify.collections?.find((item) => String(item.id || "").trim() === nextCollectionId)?.name
+        || collectionNameDraft
+        || availableCollections.find((item) => item.id === nextCollectionId)?.name
+        || nextCollectionId,
+      ).trim();
+      await updateCourseCollectionMeta({
+        bunnyCollectionId: nextCollectionId,
+        bunnyCollectionName: resolvedName,
+      });
+      setCollectionNameDraft(resolvedName);
+      setShowCollectionSwitcher(false);
+      await loadSelectedChapterCollectionVideos({ collectionId: nextCollectionId, nextCollectionName: resolvedName });
+      toast.success("Collection switched for this course");
+    } catch (error) {
+      setSaveError(error instanceof Error ? error.message : "Failed to switch collection");
+    } finally {
+      setIsSwitchingCollection(false);
     }
   };
 
@@ -614,42 +731,159 @@ export default function AdminCourseContent() {
   /* totals */
   const totalLessons = curriculum.reduce((s, ch) => s + ch.lessons.length, 0);
   const totalVideoLessons = curriculum.reduce((s, ch) => s + ch.lessons.filter((l) => l.type === "video").length, 0);
+  const chapterVideoIds = useMemo(
+    () => new Set(
+      (selectedChapter?.lessons || [])
+        .filter((lesson) => lesson.type === "video")
+        .map((lesson) => decodeVideoUrl(String(lesson.videoUrl || "")).trim())
+        .filter(Boolean),
+    ),
+    [selectedChapter],
+  );
+  const alreadyAddedInChapterCount = useMemo(
+    () => collectionVideos.filter((video) => chapterVideoIds.has(String(video.id || "").trim())).length,
+    [collectionVideos, chapterVideoIds],
+  );
+  const otherChapterVideoMap = useMemo(() => {
+    const map = new Map<string, string[]>();
+    curriculum.forEach((chapter) => {
+      if (chapter.id === selectedChapter?.id) return;
+      const chapterName = String(chapter.title || "Untitled Chapter").trim();
+      chapter.lessons
+        .filter((lesson) => lesson.type === "video")
+        .forEach((lesson) => {
+          const videoId = decodeVideoUrl(String(lesson.videoUrl || "")).trim();
+          if (!videoId) return;
+          const existing = map.get(videoId) || [];
+          if (!existing.includes(chapterName)) {
+            map.set(videoId, [...existing, chapterName]);
+          }
+        });
+    });
+    return map;
+  }, [curriculum, selectedChapter?.id]);
+  const alreadyAddedInOtherChapterCount = useMemo(
+    () => collectionVideos.filter((video) => otherChapterVideoMap.has(String(video.id || "").trim())).length,
+    [collectionVideos, otherChapterVideoMap],
+  );
 
   return (
     <div className="space-y-4 font-['Inter']">
       {/* ─── Header ─────────────────────────────────────────── */}
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex items-center gap-2.5">
+      <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-blue-50/40 p-4 shadow-sm">
+        <div className="flex flex-wrap items-center gap-3">
           <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
             <BookOpen className="h-5 w-5 text-primary" />
           </div>
           <div>
             <h1 className="text-xl font-bold text-slate-900">Course Content</h1>
-            <p className="text-xs text-slate-400">Manage chapters, lessons & videos</p>
+            <p className="text-xs text-slate-500">Manage chapters, lessons & videos</p>
+          </div>
+
+          <div className="ml-auto flex flex-wrap items-center gap-2">
+            <span className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700">
+              {filteredCoursePickerOptions.length} course(s) found
+            </span>
+            {(courseFilterId !== "all" || levelFilterId !== "all" || subjectFilter !== "all" || professorFilter !== "all") ? (
+              <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">Filters applied</span>
+            ) : (
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">No filters</span>
+            )}
           </div>
         </div>
 
+        <div className="mt-4 grid gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 sm:grid-cols-2 lg:grid-cols-5">
+          <select
+            className={sCls}
+            value={courseFilterId}
+            onChange={(event) => {
+              setCourseFilterId(event.target.value);
+              setLevelFilterId("all");
+              setSubjectFilter("all");
+              setProfessorFilter("all");
+            }}
+          >
+            <option value="all">All Courses</option>
+            {courseFilterOptions.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </select>
+
+          <select
+            className={sCls}
+            value={levelFilterId}
+            onChange={(event) => {
+              setLevelFilterId(event.target.value);
+              setSubjectFilter("all");
+              setProfessorFilter("all");
+            }}
+          >
+            <option value="all">All Levels</option>
+            {levelFilterOptions.map((item) => (
+              <option key={item.id} value={item.id}>{item.name}</option>
+            ))}
+          </select>
+
+          <select className={sCls} value={subjectFilter} onChange={(event) => { setSubjectFilter(event.target.value); setProfessorFilter("all"); }}>
+            <option value="all">All Subjects</option>
+            {subjectFilterOptions.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+
+          <select className={sCls} value={professorFilter} onChange={(event) => setProfessorFilter(event.target.value)}>
+            <option value="all">All Professors</option>
+            {professorFilterOptions.map((item) => (
+              <option key={item} value={item}>{item}</option>
+            ))}
+          </select>
+
+          <Button
+            type="button"
+            variant="outline"
+            className="h-9 rounded-xl border-slate-200 text-xs font-semibold"
+            onClick={() => {
+              setCourseFilterId("all");
+              setLevelFilterId("all");
+              setSubjectFilter("all");
+              setProfessorFilter("all");
+              setCoursePickerQuery("");
+            }}
+          >
+            Clear Filters
+          </Button>
+        </div>
+
         {/* Course picker */}
-        <div className="ml-auto">
+        <div className="mt-3 flex w-full items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
+          <div className="hidden min-w-28 rounded-xl bg-slate-100 px-3 py-2 text-center text-[11px] font-semibold text-slate-600 sm:block">
+            Course Select
+          </div>
+
           <Popover open={coursePickerOpen} onOpenChange={setCoursePickerOpen}>
             <PopoverTrigger asChild>
               <Button type="button" variant="outline" role="combobox" aria-expanded={coursePickerOpen}
-                className="h-9 w-96 justify-between rounded-xl border-slate-200 text-xs font-medium">
+                className="h-10 w-full justify-between rounded-xl border-slate-200 text-left text-xs font-medium sm:w-[34rem]">
                 <span className={`truncate ${!selectedCourse ? "text-slate-400" : "font-semibold"}`}>{selectedCourse?.title || "Search and select a course to manage content..."}</span>
                 <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
               </Button>
             </PopoverTrigger>
             <PopoverContent className="w-[--radix-popover-trigger-width] rounded-xl border-slate-200 p-0 shadow-xl" align="start">
               <Command>
-                <CommandInput placeholder="Search course..." className="h-9 text-xs" />
+                <CommandInput placeholder="Search course / subject / professor..." className="h-9 text-xs" value={coursePickerQuery} onValueChange={setCoursePickerQuery} />
                 <CommandList>
-                  <CommandEmpty className="py-6 text-center text-xs text-slate-400">No course found.</CommandEmpty>
+                  <CommandEmpty className="py-6 text-center text-xs text-slate-400">No course found for selected filters.</CommandEmpty>
                   <CommandGroup>
-                    {nonPackageCourses.map((course) => (
-                      <CommandItem key={course.id} value={`${course.title} ${course.id}`} onSelect={() => { setSelectedCourseId(course.id); setSelectedChapterId(null); setCoursePickerOpen(false); }}
+                    {filteredCoursePickerOptions.map((course) => (
+                      <CommandItem key={course.id} value={`${course.title} ${course.id} ${course.subject || ""} ${course.professor || ""}`} onSelect={() => { setSelectedCourseId(course.id); setSelectedChapterId(null); setCoursePickerOpen(false); }}
                         className="text-xs">
                         <Check className={cn("mr-2 h-3.5 w-3.5", selectedCourseId === course.id ? "opacity-100 text-primary" : "opacity-0")} />
-                        {course.title}
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate font-semibold text-slate-800">{course.title}</p>
+                          <p className="truncate text-[11px] text-slate-500">
+                            {(categoriesById[String(course.category || "")]?.name || course.category || "General")} • {(categoriesById[String(course.subcategory || "")]?.name || course.subcategory || "Level")} • {course.subject || "No Subject"} • {course.professor || "No Professor"}
+                          </p>
+                        </div>
                       </CommandItem>
                     ))}
                   </CommandGroup>
@@ -693,11 +927,14 @@ export default function AdminCourseContent() {
           )}
 
           {/* ─── 3-panel layout ────────────────────────────── */}
-          <div className="flex gap-4 min-h-[600px]">
+          <div className="grid min-h-[640px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
             {/* ── PANEL 1: Chapters ── */}
-            <div className="flex w-64 shrink-0 flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex shrink-0 items-center border-b border-slate-100 bg-slate-50/60 px-4 py-3">
-                <span className="text-xs font-bold text-slate-700">Chapters</span>
+            <div className="flex min-h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+              <div className="flex shrink-0 items-center border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50/60 px-4 py-3">
+                <div>
+                  <span className="text-xs font-bold text-slate-800">Chapters</span>
+                  <p className="text-[10px] text-slate-500">Drag and drop to reorder</p>
+                </div>
                 <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">{curriculum.length}</span>
                 <button type="button" onClick={handleOpenAddChapter} disabled={!selectedCourse || isSaving}
                   className="ml-auto flex h-6 w-6 items-center justify-center rounded-lg bg-primary text-white transition-opacity hover:opacity-80 disabled:opacity-40">
@@ -713,7 +950,7 @@ export default function AdminCourseContent() {
                     <p className="mt-1 text-[10px] text-slate-300">Click + to create the first chapter</p>
                   </div>
                 ) : (
-                  <div className="space-y-1">
+                  <div className="space-y-1.5">
                     {curriculum.map((ch, idx) => {
                       const isActive = selectedChapterId === ch.id || (!selectedChapterId && idx === 0);
                       return (
@@ -723,7 +960,7 @@ export default function AdminCourseContent() {
                           onDragEnter={() => { dragOverChapterIdx.current = idx; }}
                           onDragOver={(e) => e.preventDefault()}
                           onDragEnd={handleChapterDrop}
-                          className={`group flex w-full items-center rounded-xl transition-all ${isActive ? "bg-primary text-white shadow-sm" : "text-slate-700 hover:bg-slate-100"} ${dragChapterActive ? "cursor-grabbing" : "cursor-grab"}`}>
+                          className={`group flex w-full items-center rounded-xl border transition-all ${isActive ? "border-primary/20 bg-primary text-white shadow-sm" : "border-slate-100 text-slate-700 hover:border-slate-200 hover:bg-slate-50"} ${dragChapterActive ? "cursor-grabbing" : "cursor-grab"}`}>
                           {/* Drag handle */}
                           <span className={`flex h-full items-center px-1.5 py-2.5 opacity-30 group-hover:opacity-70 ${isActive ? "text-white" : "text-slate-400"}`}>
                             <GripVertical className="h-3.5 w-3.5" />
@@ -754,7 +991,7 @@ export default function AdminCourseContent() {
               ) : (
                 <>
                   {/* Lesson panel header */}
-                  <div className="shrink-0 flex items-center gap-2 border-b border-slate-100 bg-slate-50/60 px-5 py-3">
+                  <div className="shrink-0 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-indigo-50/40 px-5 py-3">
                     <div className="min-w-0">
                       <p className="truncate text-sm font-bold text-slate-800">{selectedChapter.title}</p>
                       {selectedChapter.description && <p className="truncate text-xs text-slate-400">{selectedChapter.description}</p>}
@@ -764,7 +1001,7 @@ export default function AdminCourseContent() {
                         </p>
                       ) : null}
                     </div>
-                    <div className="ml-auto flex items-center gap-2 shrink-0">
+                    <div className="ml-auto flex flex-wrap items-center gap-2 shrink-0">
                       {sharedCourseCollection.id ? (
                         <>
                           <Button type="button" variant="outline" size="sm" className="h-8 gap-1.5 rounded-xl border-emerald-200 px-3 text-xs font-semibold text-emerald-700 hover:bg-emerald-50" onClick={() => void openCollectionManager()} disabled={isSaving || isLoadingCollectionVideos || isSavingCollectionName}>
@@ -803,7 +1040,7 @@ export default function AdminCourseContent() {
                         <Button size="sm" className="gap-1.5 rounded-xl text-xs" onClick={handleOpenAddLesson}><Plus className="h-3.5 w-3.5" />Add First Lesson</Button>
                       </div>
                     ) : (
-                      <div className="divide-y divide-slate-100">
+                      <div className="space-y-2 bg-slate-50/50 p-3">
                         {selectedChapter.lessons.map((lesson, idx) => {
                           const Icon = TYPE_ICON[lesson.type] || Video;
                           return (
@@ -813,7 +1050,7 @@ export default function AdminCourseContent() {
                               onDragEnter={() => { dragOverLessonIdx.current = idx; }}
                               onDragOver={(e) => e.preventDefault()}
                               onDragEnd={handleLessonDrop}
-                              className={`flex items-center gap-3 px-5 py-3.5 transition-colors hover:bg-slate-50/70 ${dragLessonActive ? "cursor-grabbing" : "cursor-grab"}`}>
+                              className={`flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm transition-all hover:border-slate-300 hover:shadow ${dragLessonActive ? "cursor-grabbing" : "cursor-grab"}`}>
                               {/* Drag handle */}
                               <GripVertical className="h-4 w-4 shrink-0 text-slate-300 hover:text-slate-500" />
                               {/* Number + Icon */}
@@ -834,7 +1071,7 @@ export default function AdminCourseContent() {
                                 </div>
                               </div>
                               {/* Actions */}
-                              <div className="flex shrink-0 items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                              <div className="flex shrink-0 items-center gap-1 rounded-lg bg-slate-50 p-1" onClick={(e) => e.stopPropagation()}>
                                 <button type="button" onClick={() => handleOpenEditLesson(lesson)} title="Edit"
                                   className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-primary/10 hover:text-primary">
                                   <Edit2 className="h-3.5 w-3.5" />
@@ -913,7 +1150,44 @@ export default function AdminCourseContent() {
               <div className="flex flex-col gap-3 lg:flex-row lg:items-end">
                 <div className="flex-1 space-y-1.5">
                   <FL>Collection Name</FL>
-                  <Input className={fCls} value={collectionNameDraft} onChange={(event) => setCollectionNameDraft(event.target.value)} placeholder="Collection name" />
+                  <div className="flex items-center gap-2">
+                    <Input className={fCls} value={collectionNameDraft} onChange={(event) => setCollectionNameDraft(event.target.value)} placeholder="Collection name" />
+                    <button
+                      type="button"
+                      title="Switch Collection"
+                      className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl border border-slate-200 text-slate-500 transition-colors hover:border-blue-300 hover:bg-blue-50 hover:text-blue-600"
+                      onClick={() => setShowCollectionSwitcher((prev) => !prev)}
+                      disabled={isSavingCollectionName || isSwitchingCollection}
+                    >
+                      <FolderOpen className="h-4 w-4" />
+                    </button>
+                  </div>
+                  {showCollectionSwitcher ? (
+                    <div className="mt-2 flex items-center gap-2">
+                      <Input
+                        className={fCls}
+                        list="bunny-collection-switcher-list"
+                        value={switchCollectionId}
+                        placeholder="Paste / type Collection ID"
+                        onChange={(event) => setSwitchCollectionId(event.target.value)}
+                        disabled={isSwitchingCollection}
+                      />
+                      <datalist id="bunny-collection-switcher-list">
+                        {availableCollections.map((item) => (
+                          <option key={item.id} value={item.id}>{item.name || item.id}</option>
+                        ))}
+                      </datalist>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-9 shrink-0 rounded-xl px-3 text-xs font-semibold"
+                        onClick={() => void handleSwitchCollection()}
+                        disabled={isSwitchingCollection || !switchCollectionId}
+                      >
+                        {isSwitchingCollection ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}Apply
+                      </Button>
+                    </div>
+                  ) : null}
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
                   <Button type="button" variant="outline" size="sm" className="h-9 gap-1.5 rounded-xl border-slate-200 px-3 text-xs" onClick={() => void loadSelectedChapterCollectionVideos({ silent: true })} disabled={isRefreshingCollection || isLoadingCollectionVideos}>
@@ -1014,6 +1288,8 @@ export default function AdminCourseContent() {
               {sharedCourseCollection.name ? (
                 <span className="ml-3">Collection: <span className="font-semibold text-emerald-700">{sharedCourseCollection.name}</span></span>
               ) : null}
+              <span className="ml-3">Already added in this chapter: <span className="font-semibold text-blue-700">{alreadyAddedInChapterCount}</span></span>
+              <span className="ml-3">Already in other chapters: <span className="font-semibold text-amber-700">{alreadyAddedInOtherChapterCount}</span></span>
             </div>
             <div className="flex-1 overflow-y-auto px-6 py-4">
               {isLoadingCollectionVideos ? (
@@ -1030,15 +1306,19 @@ export default function AdminCourseContent() {
                 <div className="space-y-2">
                   {collectionVideos.map((video) => {
                     const checked = selectedCollectionVideoIds.has(video.id);
+                    const alreadyInChapter = chapterVideoIds.has(String(video.id || "").trim());
+                    const alreadyInOtherChapters = otherChapterVideoMap.get(String(video.id || "").trim()) || [];
                     return (
-                      <label key={video.id} className={`flex cursor-pointer items-start gap-3 rounded-2xl border px-4 py-3 transition ${checked ? "border-primary bg-primary/5" : "border-slate-200 bg-white hover:border-slate-300"}`}>
-                        <input type="checkbox" className="mt-1 h-4 w-4 accent-primary" checked={checked} onChange={(event) => toggleCollectionVideoSelection(video.id, event.target.checked)} />
+                      <label key={video.id} className={`flex items-start gap-3 rounded-2xl border px-4 py-3 transition ${alreadyInChapter ? "border-blue-200 bg-blue-50/40" : checked ? "border-primary bg-primary/5" : alreadyInOtherChapters.length > 0 ? "border-amber-200 bg-amber-50/30" : "border-slate-200 bg-white hover:border-slate-300"}`}>
+                        <input type="checkbox" disabled={alreadyInChapter} className="mt-1 h-4 w-4 accent-primary disabled:cursor-not-allowed disabled:opacity-50" checked={checked} onChange={(event) => toggleCollectionVideoSelection(video.id, event.target.checked)} />
                         <div className="min-w-0 flex-1">
                           <p className="truncate text-sm font-semibold text-slate-900">{video.title}</p>
                           <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
                             <span>{formatSecondsToHms(Number(video.lengthSeconds || 0))}</span>
                             <span>{video.status || "unknown"}</span>
                             <span className="truncate">ID: {video.id}</span>
+                            {alreadyInChapter ? <span className="rounded-full bg-blue-100 px-2 py-0.5 font-semibold text-blue-700">Already added in this chapter</span> : null}
+                            {alreadyInOtherChapters.length > 0 ? <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">Also in: {alreadyInOtherChapters.join(", ")}</span> : null}
                           </div>
                         </div>
                       </label>

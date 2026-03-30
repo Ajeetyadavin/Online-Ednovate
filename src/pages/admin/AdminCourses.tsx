@@ -14,7 +14,7 @@ import { decodeVideoUrl } from "@/lib/video-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Plus, Search, Edit2, Trash2, Eye, EyeOff, ArrowUpDown, Copy, BookOpen, Clock, DollarSign, Tag, Video, Package, FileText, Star, Settings, Loader2, LayoutGrid, List, Layers, CheckCircle2, X } from "lucide-react";
+import { Plus, Search, Edit2, Trash2, Eye, EyeOff, ArrowUpDown, Copy, BookOpen, Clock, DollarSign, Tag, Video, Package, FileText, Star, Settings, Loader2, LayoutGrid, List, Layers, CheckCircle2, X, ChevronDown, ChevronUp } from "lucide-react";
 
 /* ─── helpers (unchanged) ─────────────────────────────────────── */
 const parseLessonDurationToSeconds = (value: unknown) => {
@@ -196,7 +196,7 @@ const BLANK_FORM: CourseForm = {
   combinationUseMode: false,
 };
 
-type DialogTab = "basic" | "demo" | "pricing" | "delivery" | "content";
+type DialogTab = "basic" | "pricing" | "content";
 type VideoUploadState = {
   scope: "course" | "package";
   fileName: string;
@@ -221,6 +221,10 @@ const checkboxRow = (label: string, checked: boolean, onChange: (v: boolean) => 
 export default function AdminCourses() {
   const { courses, categories, setCurriculumForCourse, toggleCourseVisibility, upsertCourse, deleteCourse } = usePlatformData();
   const [searchTerm, setSearchTerm] = useState("");
+  const [courseFilter, setCourseFilter] = useState("all");
+  const [levelFilter, setLevelFilter] = useState("all");
+  const [subjectFilter, setSubjectFilter] = useState("all");
+  const [showHeaderFilters, setShowHeaderFilters] = useState(false);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
   const [facultyOptions, setFacultyOptions] = useState<string[]>([]);
@@ -252,7 +256,7 @@ export default function AdminCourses() {
 
   // ── Package Builder state ──────────────────────────────────
   const [pkgOpen, setPkgOpen] = useState(false);
-  const [pkgTab, setPkgTab] = useState<"courses"|"details"|"demo"|"pricing"|"delivery"|"content">("courses");
+  const [pkgTab, setPkgTab] = useState<"courses"|"details"|"pricing"|"content">("courses");
   const [pkgEditingId, setPkgEditingId] = useState<string | null>(null);
   const [pkgTitle, setPkgTitle] = useState("");
   const [pkgThumbnail, setPkgThumbnail] = useState("");
@@ -266,6 +270,12 @@ export default function AdminCourses() {
   const [pkgCombinationUseView, setPkgCombinationUseView] = useState(true);
   const [pkgCombinationUseValidity, setPkgCombinationUseValidity] = useState(true);
   const [pkgCombinationUseMode, setPkgCombinationUseMode] = useState(false);
+  const [pkgCombinationUseAttempt, setPkgCombinationUseAttempt] = useState(false);
+  const [pkgComboSelectorOpen, setPkgComboSelectorOpen] = useState(false);
+  const [pkgSelectedViewModeIds, setPkgSelectedViewModeIds] = useState<string[]>([]);
+  const [pkgSelectedValidityIds, setPkgSelectedValidityIds] = useState<string[]>([]);
+  const [pkgSelectedAttemptIds, setPkgSelectedAttemptIds] = useState<string[]>([]);
+  const [pkgSelectedDeliveryModeIds, setPkgSelectedDeliveryModeIds] = useState<string[]>([]);
   const [pkgLanguage, setPkgLanguage] = useState("Hindi + English");
   const [pkgProfessor, setPkgProfessor] = useState("Multiple Faculty");
   const [pkgCourseIds, setPkgCourseIds] = useState<string[]>([]);
@@ -675,12 +685,61 @@ export default function AdminCourses() {
     window.dispatchEvent(new CustomEvent("curriculum-updated", { detail: { courseId, updatedAt: Date.now() } }));
   }, [courseCurricula, setCurriculumForCourse]);
 
+  const courseFilterOptions = useMemo(() => {
+    const used = new Set(courses.map((item) => String(item.category || "")).filter(Boolean));
+    return parentCategories
+      .filter((item) => used.has(item.id))
+      .map((item) => ({ id: item.id, name: item.name }));
+  }, [courses, parentCategories]);
+
+  const levelFilterOptions = useMemo(() => {
+    const pool = courses.filter((item) => courseFilter === "all" || item.category === courseFilter);
+    const uniqueLevelIds = Array.from(new Set(pool.map((item) => String(item.subcategory || "")).filter(Boolean)));
+    return uniqueLevelIds.map((id) => ({ id, name: categoriesById[id]?.name || id }));
+  }, [courses, categoriesById, courseFilter]);
+
+  const subjectFilterOptions = useMemo(() => {
+    const pool = courses.filter((item) => {
+      if (courseFilter !== "all" && item.category !== courseFilter) return false;
+      if (levelFilter !== "all" && String(item.subcategory || "") !== levelFilter) return false;
+      return true;
+    });
+    return Array.from(new Set(pool.map((item) => String(item.subject || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
+  }, [courses, courseFilter, levelFilter]);
+
+  useEffect(() => {
+    if (courseFilter === "all") return;
+    const valid = courseFilterOptions.some((item) => item.id === courseFilter);
+    if (!valid) setCourseFilter("all");
+  }, [courseFilter, courseFilterOptions]);
+
+  useEffect(() => {
+    if (levelFilter === "all") return;
+    const valid = levelFilterOptions.some((item) => item.id === levelFilter);
+    if (!valid) setLevelFilter("all");
+  }, [levelFilter, levelFilterOptions]);
+
+  useEffect(() => {
+    if (subjectFilter === "all") return;
+    const valid = subjectFilterOptions.includes(subjectFilter);
+    if (!valid) setSubjectFilter("all");
+  }, [subjectFilter, subjectFilterOptions]);
+
   const filteredCourses = useMemo(() =>
-    courses.filter((c) =>
-      c.title.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      (categoriesById[c.category]?.name || c.category).toLowerCase().includes(searchTerm.toLowerCase())
-    ).sort((a, b) => sortOrder === "asc" ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title)),
-  [courses, categoriesById, searchTerm, sortOrder]);
+    courses
+      .filter((c) => {
+        const text = searchTerm.toLowerCase();
+        const matchesSearch = c.title.toLowerCase().includes(text)
+          || (categoriesById[c.category]?.name || c.category).toLowerCase().includes(text)
+          || String(c.subject || "").toLowerCase().includes(text);
+        if (!matchesSearch) return false;
+        if (courseFilter !== "all" && c.category !== courseFilter) return false;
+        if (levelFilter !== "all" && String(c.subcategory || "") !== levelFilter) return false;
+        if (subjectFilter !== "all" && String(c.subject || "").trim() !== subjectFilter) return false;
+        return true;
+      })
+      .sort((a, b) => sortOrder === "asc" ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title)),
+  [courses, categoriesById, searchTerm, sortOrder, courseFilter, levelFilter, subjectFilter]);
 
   const suggestedFaculty = useMemo(() => {
     const query = form.professor.trim().toLowerCase();
@@ -770,6 +829,82 @@ export default function AdminCourses() {
       ),
     });
     setCourseComboSelectorOpen(false);
+  };
+
+  const openPackageCombinationSelector = () => {
+    if (!pkgCombinationUseView && !pkgCombinationUseValidity && !pkgCombinationUseAttempt && !pkgCombinationUseMode) {
+      alert("Select at least one basis (View, Validity, Attempt, or Mode)");
+      return;
+    }
+    if (pkgCombinationUseView && activeMasterViewModes.length === 0) {
+      alert("No View options found in Masters. Configure them first.");
+      return;
+    }
+    if (pkgCombinationUseValidity && activeMasterValidityOptions.length === 0) {
+      alert("No Validity options found in Masters. Configure them first.");
+      return;
+    }
+    if (pkgCombinationUseAttempt && activeMasterAttemptOptions.length === 0) {
+      alert("No Attempt options found in Masters. Configure them first.");
+      return;
+    }
+    if (pkgCombinationUseMode && activeMasterDeliveryModes.length === 0) {
+      alert("No Lecture Mode options found in Masters. Configure them first.");
+      return;
+    }
+
+    setPkgSelectedViewModeIds(
+      pkgCombinationUseView ? activeMasterViewModes.map((item) => item.id) : [],
+    );
+    setPkgSelectedValidityIds(
+      pkgCombinationUseValidity ? activeMasterValidityOptions.map((item) => item.id) : [],
+    );
+    setPkgSelectedAttemptIds(
+      pkgCombinationUseAttempt ? activeMasterAttemptOptions.map((item) => item.id) : [],
+    );
+    setPkgSelectedDeliveryModeIds(
+      pkgCombinationUseMode ? activeMasterDeliveryModes.map((item) => item.id) : [],
+    );
+    setPkgComboSelectorOpen(true);
+  };
+
+  const generatePackageCombinationsFromSelected = () => {
+    if (pkgCombinationUseView && pkgSelectedViewModeIds.length === 0) {
+      alert("Select at least one View option.");
+      return;
+    }
+    if (pkgCombinationUseValidity && pkgSelectedValidityIds.length === 0) {
+      alert("Select at least one Validity option.");
+      return;
+    }
+    if (pkgCombinationUseAttempt && pkgSelectedAttemptIds.length === 0) {
+      alert("Select at least one Attempt option.");
+      return;
+    }
+    if (pkgCombinationUseMode && pkgSelectedDeliveryModeIds.length === 0) {
+      alert("Select at least one Lecture Mode option.");
+      return;
+    }
+
+    setPkgMasterCombinationRows(
+      buildCombinationRows(
+        {
+          useView: pkgCombinationUseView,
+          useValidity: pkgCombinationUseValidity,
+          useAttempt: pkgCombinationUseAttempt,
+          useMode: pkgCombinationUseMode,
+          selectedViewModeIds: pkgSelectedViewModeIds,
+          selectedValidityOptionIds: pkgSelectedValidityIds,
+          selectedAttemptOptionIds: pkgSelectedAttemptIds,
+          selectedDeliveryModeIds: pkgSelectedDeliveryModeIds,
+        },
+        pkgMasterCombinationRows,
+        "pkg",
+        pkgPrice,
+        pkgOriginalPrice,
+      ),
+    );
+    setPkgComboSelectorOpen(false);
   };
 
   const openCreateDialog = () => {
@@ -1120,7 +1255,8 @@ export default function AdminCourses() {
     setPkgTitle(""); setPkgThumbnail(""); setPkgCategory(firstCat); setPkgSubcategory(firstSub);
     setPkgPrice(0); setPkgOriginalPrice(0); setPkgTaxPct(0);
     setPkgMasterCombinationRows([]);
-      setPkgCombinationUseView(true); setPkgCombinationUseValidity(true); setPkgCombinationUseMode(false);
+      setPkgCombinationUseView(true); setPkgCombinationUseValidity(true); setPkgCombinationUseMode(false); setPkgCombinationUseAttempt(false);
+    setPkgSelectedViewModeIds([]); setPkgSelectedValidityIds([]); setPkgSelectedAttemptIds([]); setPkgSelectedDeliveryModeIds([]);
     setPkgLanguage("Hindi + English"); setPkgProfessor("Multiple Faculty");
     setPkgCourseIds([]); setPkgSearch("");
     setPkgViewPricingEnabled(false); setPkgUnlimitedViews(false); setPkgViewOptionsText("1,2");
@@ -1170,6 +1306,15 @@ export default function AdminCourses() {
       course.masterConfig?.combinationBasis?.useValidity
         ?? Boolean(course.masterConfig?.combinations?.some((item) => item.validityOptionId)),
     );
+    setPkgCombinationUseAttempt(
+      course.masterConfig?.combinationBasis?.useAttempt
+        ?? Boolean(course.masterConfig?.combinations?.some((item) => item.attemptOptionId)),
+    );
+    setPkgCombinationUseMode(
+      course.masterConfig?.combinationBasis?.useMode
+        ?? Boolean(course.masterConfig?.combinations?.some((item) => item.deliveryModeId)),
+    );
+    setPkgSelectedViewModeIds([]); setPkgSelectedValidityIds([]); setPkgSelectedAttemptIds([]); setPkgSelectedDeliveryModeIds([]);
     setPkgLanguage(course.language || "Hindi + English"); setPkgProfessor(course.professor || "Multiple Faculty");
     setPkgCourseIds(Array.isArray(course.packageCourseIds) ? course.packageCourseIds : []);
     setPkgSearch("");
@@ -1452,7 +1597,7 @@ export default function AdminCourses() {
           combinationBasis: {
             useView: pkgCombinationUseView,
             useValidity: pkgCombinationUseValidity,
-            useAttempt: false,
+            useAttempt: pkgCombinationUseAttempt,
             useMode: pkgCombinationUseMode,
           },
         },
@@ -1467,9 +1612,7 @@ export default function AdminCourses() {
   /* ─── Dialog Tabs ────────────────────────────────────────────── */
   const dialogTabs: { key: DialogTab; label: string; icon: React.ElementType }[] = [
     { key: "basic",    label: "Basic",    icon: BookOpen },
-    { key: "demo",     label: "Demo",     icon: Video },
     { key: "pricing",  label: "Pricing",  icon: DollarSign },
-    { key: "delivery", label: "Delivery", icon: Package },
     { key: "content",  label: "Content",  icon: FileText },
   ];
 
@@ -1507,6 +1650,72 @@ export default function AdminCourses() {
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
             <Input className="h-9 w-52 rounded-xl border-slate-200 pl-9 text-xs" placeholder="Search courses…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="h-9 gap-1.5 rounded-xl border-slate-200 text-xs"
+            onClick={() => setShowHeaderFilters((prev) => !prev)}
+          >
+            Filters {showHeaderFilters ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
+          </Button>
+          {showHeaderFilters && (
+            <>
+              <select
+                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700"
+                value={courseFilter}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setCourseFilter(next);
+                  setLevelFilter("all");
+                  setSubjectFilter("all");
+                }}
+              >
+                <option value="all">All Courses</option>
+                {courseFilterOptions.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+              <select
+                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700"
+                value={levelFilter}
+                onChange={(e) => {
+                  setLevelFilter(e.target.value);
+                  setSubjectFilter("all");
+                }}
+              >
+                <option value="all">All Levels</option>
+                {levelFilterOptions.map((item) => (
+                  <option key={item.id} value={item.id}>{item.name}</option>
+                ))}
+              </select>
+              <select
+                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700"
+                value={subjectFilter}
+                onChange={(e) => setSubjectFilter(e.target.value)}
+              >
+                <option value="all">All Subjects</option>
+                {subjectFilterOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              {(courseFilter !== "all" || levelFilter !== "all" || subjectFilter !== "all") && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 rounded-xl border-slate-200 text-xs"
+                  onClick={() => {
+                    setCourseFilter("all");
+                    setLevelFilter("all");
+                    setSubjectFilter("all");
+                  }}
+                >
+                  Clear Filters
+                </Button>
+              )}
+            </>
+          )}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
             <DialogTrigger asChild>
               <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-lg shadow-primary/20" onClick={openCreateDialog}>
@@ -1540,9 +1749,7 @@ export default function AdminCourses() {
                   {([
                     { key: "courses" as const, label: "Courses", icon: BookOpen },
                     { key: "details" as const, label: "Details", icon: Tag },
-                    { key: "demo" as const, label: "Demo", icon: Video },
                     { key: "pricing" as const, label: "Pricing", icon: DollarSign },
-                    { key: "delivery" as const, label: "Delivery", icon: Package },
                     { key: "content" as const, label: "Content", icon: FileText },
                   ]).map((t) => (
                     <button key={t.key} type="button" onClick={() => setPkgTab(t.key)}
@@ -1609,19 +1816,75 @@ export default function AdminCourses() {
 
                   {/* ── DETAILS TAB ── */}
                   {pkgTab === "details" && (
-                    <div className="space-y-6">
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-1.5">
-                          <Label>Package Name *</Label>
-                          <Input className={fieldCls} placeholder="e.g., CA Final Complete Combo Pack" value={pkgTitle} onChange={(e) => setPkgTitle(e.target.value)} />
+                    <div className="space-y-5">
+                      {/* Package Identity Card */}
+                      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-2 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-slate-100 px-5 py-3">
+                          <div className="h-5 w-5 rounded-md bg-violet-600 flex items-center justify-center shrink-0"><Package className="h-3 w-3 text-white" /></div>
+                          <p className="text-xs font-bold text-violet-700 uppercase tracking-wider">Package Identity</p>
                         </div>
-                        <div className="space-y-1.5">
-                          <Label>Thumbnail</Label>
-                          <div className="flex gap-2 items-start">
-                            {pkgThumbnail && <img src={pkgThumbnail} alt="thumb" className="h-14 w-20 rounded-xl object-cover shrink-0" />}
-                            <div className="flex-1 space-y-1.5">
-                              <Input className={fieldCls} placeholder="https://… or upload below" value={pkgThumbnail} onChange={(e) => setPkgThumbnail(e.target.value)} />
-                              <label className="flex cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-primary/40 hover:text-primary transition-colors w-fit">
+                        <div className="p-5 space-y-4">
+                          <div className="space-y-1.5">
+                            <Label>Package Name *</Label>
+                            <Input className={fieldCls} placeholder="e.g., CA Final Complete Combo Pack" value={pkgTitle} onChange={(e) => setPkgTitle(e.target.value)} />
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label>Category</Label>
+                              <select className={selectCls} value={pkgCategory} onChange={(e) => { setPkgCategory(e.target.value); setPkgSubcategory(categories.find((c) => c.parentId === e.target.value)?.id || "general"); }}>
+                                {parentCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              </select>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Subcategory / Level</Label>
+                              <select className={selectCls} value={pkgSubcategory} onChange={(e) => setPkgSubcategory(e.target.value)}>
+                                {pkgSubcategoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+                              </select>
+                            </div>
+                          </div>
+                          <div className="grid grid-cols-2 gap-4">
+                            <div className="space-y-1.5">
+                              <Label>Language</Label>
+                              {masterLanguages.length > 0 ? (
+                                <select className={selectCls} value={pkgLanguage} onChange={(e) => setPkgLanguage(e.target.value)}>
+                                  <option value="">Select Language</option>
+                                  {masterLanguages.map((lang) => <option key={lang.id} value={lang.name}>{lang.name}</option>)}
+                                </select>
+                              ) : (
+                                <Input className={fieldCls} value={pkgLanguage} onChange={(e) => setPkgLanguage(e.target.value)} />
+                              )}
+                            </div>
+                            <div className="space-y-1.5"><Label>Faculty</Label><Input className={fieldCls} value={pkgProfessor} onChange={(e) => setPkgProfessor(e.target.value)} /></div>
+                          </div>
+                        </div>
+                      </div>
+                      {/* Thumbnail Card */}
+                      <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                        <div className="flex items-center gap-2 bg-gradient-to-r from-sky-50 to-blue-50 border-b border-slate-100 px-5 py-3">
+                          <div className="h-5 w-5 rounded-md bg-sky-600 flex items-center justify-center shrink-0"><Settings className="h-3 w-3 text-white" /></div>
+                          <p className="text-xs font-bold text-sky-700 uppercase tracking-wider">Package Thumbnail</p>
+                        </div>
+                        <div className="p-5">
+                          <div className="flex gap-4 items-start">
+                            {pkgThumbnail ? (
+                              <div className="relative shrink-0 group">
+                                <img src={pkgThumbnail} alt="thumbnail" className="h-24 w-36 rounded-xl object-cover shadow-md ring-2 ring-sky-200" />
+                                <button type="button" onClick={() => setPkgThumbnail("")} className="absolute -top-1.5 -right-1.5 h-5 w-5 rounded-full bg-red-500 text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity shadow">
+                                  <X className="h-3 w-3" />
+                                </button>
+                              </div>
+                            ) : (
+                              <div className="h-24 w-36 rounded-xl border-2 border-dashed border-slate-300 bg-slate-50 flex flex-col items-center justify-center shrink-0 gap-1">
+                                <Settings className="h-6 w-6 text-slate-300" />
+                                <p className="text-[9px] text-slate-400 font-medium">No thumbnail</p>
+                              </div>
+                            )}
+                            <div className="flex-1 space-y-3">
+                              <div className="space-y-1.5">
+                                <Label>Image URL</Label>
+                                <Input className={fieldCls} placeholder="https://…" value={pkgThumbnail} onChange={(e) => setPkgThumbnail(e.target.value)} />
+                              </div>
+                              <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-dashed border-sky-300 bg-sky-50 px-4 py-2.5 text-xs font-semibold text-sky-700 hover:bg-sky-100 hover:border-sky-400 transition-colors w-fit">
                                 {pkgThumbnailUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
                                 {pkgThumbnailUploading ? "Uploading..." : "Upload Image"}
                                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadPkgThumbnail(e.target.files?.[0])} />
@@ -1629,24 +1892,6 @@ export default function AdminCourses() {
                             </div>
                           </div>
                         </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-1.5">
-                          <Label>Category</Label>
-                          <select className={selectCls} value={pkgCategory} onChange={(e) => { setPkgCategory(e.target.value); setPkgSubcategory(categories.find((c) => c.parentId === e.target.value)?.id || "general"); }}>
-                            {parentCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
-                        </div>
-                        <div className="space-y-1.5">
-                          <Label>Subcategory</Label>
-                          <select className={selectCls} value={pkgSubcategory} onChange={(e) => setPkgSubcategory(e.target.value)}>
-                            {pkgSubcategoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-                          </select>
-                        </div>
-                      </div>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                        <div className="space-y-1.5"><Label>Language</Label><Input className={fieldCls} value={pkgLanguage} onChange={(e) => setPkgLanguage(e.target.value)} /></div>
-                        <div className="space-y-1.5"><Label>Professor</Label><Input className={fieldCls} value={pkgProfessor} onChange={(e) => setPkgProfessor(e.target.value)} /></div>
                       </div>
                     </div>
                   )}
@@ -1670,23 +1915,6 @@ export default function AdminCourses() {
                           </div>
                         )}
                       </div>
-                      {/* View-based pricing */}
-                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                        <p className="text-xs font-bold text-slate-800">View-based Pricing</p>
-                        {checkboxRow("Sell by number of views", pkgViewPricingEnabled, (v) => { setPkgViewPricingEnabled(v); if (v) setPkgUnlimitedViews(false); })}
-                        {pkgViewPricingEnabled && (
-                          <div className="pl-5 space-y-1.5"><Label>View options (comma-separated)</Label><Input className={fieldCls} placeholder="1,2,3" value={pkgViewOptionsText} onChange={(e) => setPkgViewOptionsText(e.target.value)} /></div>
-                        )}
-                        {checkboxRow("Grant unlimited views to buyers", pkgUnlimitedViews, (v) => { setPkgUnlimitedViews(v); if (v) setPkgViewPricingEnabled(false); })}
-                      </div>
-                      {/* Validity pricing */}
-                      <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                        <p className="text-xs font-bold text-slate-800">Validity Pricing</p>
-                        {checkboxRow("Sell by validity period", pkgValidityEnabled, setPkgValidityEnabled)}
-                        {pkgValidityEnabled && (
-                          <div className="pl-5 space-y-1.5"><Label>Validity options in days (comma-separated)</Label><Input className={fieldCls} placeholder="30,90,180" value={pkgValidityDaysText} onChange={(e) => setPkgValidityDaysText(e.target.value)} /></div>
-                        )}
-                      </div>
                       <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4 space-y-3">
                         <p className="text-xs font-bold text-orange-800">Package Price Combinations</p>
                         <p className="text-[11px] text-orange-700">Master se options aayenge. Yahan tick karke select karein kis base par bechna hai, phir possibilities generate karke price set karein.</p>
@@ -1708,11 +1936,20 @@ export default function AdminCourses() {
                               </div>
                             </label>
                             <label className={`flex cursor-pointer items-center gap-2.5 rounded-lg border p-2.5 transition-all ${pkgCombinationUseValidity ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'}`}>
-                              <input type="checkbox" checked={pkgCombinationUseValidity} onChange={(e) => setPkgCombinationUseValidity(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-primary" />
+                              <input type="checkbox" checked={pkgCombinationUseValidity} onChange={(e) => { setPkgCombinationUseValidity(e.target.checked); if (e.target.checked) setPkgCombinationUseAttempt(false); }} className="h-4 w-4 rounded border-slate-300 accent-primary" />
                               <div className="flex flex-col">
                                 <span className="text-xs font-semibold text-slate-700">Validity</span>
                                 <span className={`text-[10px] ${activeMasterValidityOptions.length > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                                   {activeMasterValidityOptions.length} option{activeMasterValidityOptions.length !== 1 ? 's' : ''} available
+                                </span>
+                              </div>
+                            </label>
+                            <label className={`flex cursor-pointer items-center gap-2.5 rounded-lg border p-2.5 transition-all ${pkgCombinationUseAttempt ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'}`}>
+                              <input type="checkbox" checked={pkgCombinationUseAttempt} onChange={(e) => { setPkgCombinationUseAttempt(e.target.checked); if (e.target.checked) setPkgCombinationUseValidity(false); }} className="h-4 w-4 rounded border-slate-300 accent-primary" />
+                              <div className="flex flex-col">
+                                <span className="text-xs font-semibold text-slate-700">Attempt</span>
+                                <span className={`text-[10px] ${activeMasterAttemptOptions.length > 0 ? 'text-emerald-600' : 'text-red-500'}`}>
+                                  {activeMasterAttemptOptions.length} option{activeMasterAttemptOptions.length !== 1 ? 's' : ''} available
                                 </span>
                               </div>
                             </label>
@@ -1731,38 +1968,7 @@ export default function AdminCourses() {
                               type="button"
                               variant="outline"
                               className="h-9"
-                              onClick={() => {
-                                if (!pkgCombinationUseView && !pkgCombinationUseValidity && !pkgCombinationUseMode) {
-                                  alert("At least one basis is required to generate combinations");
-                                  return;
-                                }
-                                if (pkgCombinationUseView && activeMasterViewModes.length === 0) {
-                                  alert("No active View options found in Master");
-                                  return;
-                                }
-                                if (pkgCombinationUseValidity && activeMasterValidityOptions.length === 0) {
-                                  alert("No active Validity options found in Master");
-                                  return;
-                                }
-                                if (pkgCombinationUseMode && activeMasterDeliveryModes.length === 0) {
-                                  alert("No active Lecture Mode options found in Master");
-                                  return;
-                                }
-                                setPkgMasterCombinationRows(
-                                  buildCombinationRows(
-                                    {
-                                      useView: pkgCombinationUseView,
-                                      useValidity: pkgCombinationUseValidity,
-                                      useAttempt: false,
-                                      useMode: pkgCombinationUseMode,
-                                    },
-                                    pkgMasterCombinationRows,
-                                    "pkg",
-                                    pkgPrice,
-                                    pkgOriginalPrice,
-                                  ),
-                                );
-                              }}
+                              onClick={() => openPackageCombinationSelector()}
                             >
                               Generate Possibilities
                             </Button>
@@ -1819,6 +2025,21 @@ export default function AdminCourses() {
                               >
                                 <option value="">{pkgCombinationUseValidity ? "Validity" : "Not used"}</option>
                                 {activeMasterValidityOptions.map((item) => (
+                                  <option key={item.id} value={item.id}>{item.label}</option>
+                                ))}
+                              </select>
+                              <select
+                                className={selectCls}
+                                value={combo.attemptOptionId || ""}
+                                disabled={!pkgCombinationUseAttempt}
+                                onChange={(event) => {
+                                  const nextRows = [...pkgMasterCombinationRows];
+                                  nextRows[index] = { ...combo, attemptOptionId: event.target.value || null };
+                                  setPkgMasterCombinationRows(nextRows);
+                                }}
+                              >
+                                <option value="">{pkgCombinationUseAttempt ? "Attempt" : "Not used"}</option>
+                                {activeMasterAttemptOptions.map((item) => (
                                   <option key={item.id} value={item.id}>{item.label}</option>
                                 ))}
                               </select>
@@ -1885,6 +2106,7 @@ export default function AdminCourses() {
                                 label: "",
                                 viewModeId: pkgCombinationUseView ? (activeMasterViewModes[0]?.id || null) : null,
                                 validityOptionId: pkgCombinationUseValidity ? (activeMasterValidityOptions[0]?.id || null) : null,
+                                attemptOptionId: pkgCombinationUseAttempt ? (activeMasterAttemptOptions[0]?.id || null) : null,
                                 deliveryModeId: pkgCombinationUseMode ? (activeMasterDeliveryModes[0]?.id || null) : null,
                                 price: 0,
                                 originalPrice: null,
@@ -1917,116 +2139,80 @@ export default function AdminCourses() {
                     </div>
                   )}
 
-                  {/* ── DEMO TAB ── */}
-                  {pkgTab === "demo" && (
-                    <div className="space-y-4">
-                      {checkboxRow("Show Demo Lecture on Course Page", pkgDemoVideoVisible, setPkgDemoVideoVisible)}
-                      {pkgDemoVideoVisible && (
-                        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
-                          <div className="space-y-1.5">
-                            <Label>Demo Lecture Title</Label>
-                            <Input className={fieldCls} placeholder="Introduction Lecture" value={pkgDemoVideoTitle} onChange={(e) => setPkgDemoVideoTitle(e.target.value)} />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label>Description</Label>
-                            <textarea className="h-20 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" value={pkgDemoVideoDescription} onChange={(e) => setPkgDemoVideoDescription(e.target.value)} placeholder="Brief description…" />
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label>Video Source</Label>
-                            <div className="flex gap-3">
-                              {(["youtube", "upload", "direct"] as const).map((src) => (
-                                <label key={src} className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-700">
-                                  <input
-                                    type="radio"
-                                    name="pkgVideoSource"
-                                    value={src}
-                                    checked={pkgDemoVideoSource === src}
-                                    onChange={() => setPkgDemoVideoSource(src)}
-                                    className="accent-primary"
-                                  />
-                                  {src === "youtube" ? "YouTube" : src === "upload" ? "CDN Upload" : "Direct URL"}
-                                </label>
-                              ))}
-                            </div>
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label>{pkgDemoVideoSource === "youtube" ? "YouTube Video ID" : "Video URL"}</Label>
-                            <Input
-                              className={fieldCls}
-                              placeholder={pkgDemoVideoSource === "youtube" ? "e.g., dQw4w9WgXcQ" : "https://…"}
-                              value={pkgDemoVideoUrl}
-                              onChange={(e) => setPkgDemoVideoUrl(e.target.value)}
-                            />
-                            {pkgDemoVideoSource !== "youtube" && (
-                              <div className="flex items-center gap-2">
-                                <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
-                                {pkgDemoVideoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
-                                {pkgDemoVideoUploading ? `Uploading ${pkgUploadPercent}%...` : "Upload Video File"}
-                                <input type="file" accept="video/*" className="hidden" onChange={(e) => handleUploadPkgDemoVideo(e.target.files?.[0])} />
-                                </label>
-                                {pkgDemoVideoUploading && (
-                                  <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>
-                                    Cancel
-                                  </Button>
-                                )}
-                              </div>
-                            )}
-                            {pkgDemoVideoSource === "youtube" && pkgDemoVideoUrl && (
-                              <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{pkgDemoVideoUrl}</p>
-                            )}
-                          </div>
-                          <div className="space-y-1.5">
-                            <Label>Video Thumbnail URL (Optional)</Label>
-                            <Input className={fieldCls} placeholder="https://…" value={pkgDemoVideoThumbnailUrl} onChange={(e) => setPkgDemoVideoThumbnailUrl(e.target.value)} />
-                            <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
-                              {pkgDemoThumbUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
-                              {pkgDemoThumbUploading ? "Uploading..." : "Upload Thumbnail"}
-                              <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadPkgDemoThumbnail(e.target.files?.[0])} />
-                            </label>
-                            {pkgDemoVideoThumbnailUrl && <img src={pkgDemoVideoThumbnailUrl} alt="thumb" className="mt-1 h-16 rounded-xl object-cover" />}
-                          </div>
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ── DELIVERY TAB ── */}
-                  {pkgTab === "delivery" && (
+                  {/* ── CONTENT TAB ── */}
+                  {pkgTab === "content" && (
                     <div className="space-y-4">
                       <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                        <p className="text-xs font-bold text-slate-800">Delivery Mode Pricing</p>
-                        {checkboxRow("Enable different prices per delivery mode", pkgDeliveryEnabled, setPkgDeliveryEnabled)}
-                        {pkgDeliveryEnabled && (
-                          <div className="pl-5 space-y-3 mt-2">
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex-1">{checkboxRow("Online / Pendrive (Streaming)", pkgOnlineMode, setPkgOnlineMode)}</div>
-                              {pkgOnlineMode && <Input className={`${fieldCls} w-28`} type="number" placeholder="₹ price" value={pkgOnlinePrice || ""} onChange={(e) => setPkgOnlinePrice(Number(e.target.value) || 0)} />}
+                        <p className="text-xs font-bold text-slate-800">Demo Lecture Settings</p>
+                        {checkboxRow("Show Demo Lecture on Course Page", pkgDemoVideoVisible, setPkgDemoVideoVisible)}
+                        {pkgDemoVideoVisible && (
+                          <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+                            <div className="space-y-1.5">
+                              <Label>Demo Lecture Title</Label>
+                              <Input className={fieldCls} placeholder="Introduction Lecture" value={pkgDemoVideoTitle} onChange={(e) => setPkgDemoVideoTitle(e.target.value)} />
                             </div>
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex-1">{checkboxRow("Google Drive", pkgDriveMode, setPkgDriveMode)}</div>
-                              {pkgDriveMode && <Input className={`${fieldCls} w-28`} type="number" placeholder="₹ price" value={pkgDrivePrice || ""} onChange={(e) => setPkgDrivePrice(Number(e.target.value) || 0)} />}
+                            <div className="space-y-1.5">
+                              <Label>Description</Label>
+                              <textarea className="h-20 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/40" value={pkgDemoVideoDescription} onChange={(e) => setPkgDemoVideoDescription(e.target.value)} placeholder="Brief description..." />
                             </div>
-                            <div className="flex items-center justify-between gap-3">
-                              <div className="flex-1">{checkboxRow("Pen Drive", pkgPenMode, setPkgPenMode)}</div>
-                              {pkgPenMode && <Input className={`${fieldCls} w-28`} type="number" placeholder="₹ price" value={pkgPenPrice || ""} onChange={(e) => setPkgPenPrice(Number(e.target.value) || 0)} />}
+                            <div className="space-y-1.5">
+                              <Label>Video Source</Label>
+                              <div className="flex gap-3">
+                                {(["youtube", "upload", "direct"] as const).map((src) => (
+                                  <label key={src} className="flex cursor-pointer items-center gap-1.5 text-xs font-medium text-slate-700">
+                                    <input
+                                      type="radio"
+                                      name="pkgVideoSource"
+                                      value={src}
+                                      checked={pkgDemoVideoSource === src}
+                                      onChange={() => setPkgDemoVideoSource(src)}
+                                      className="accent-primary"
+                                    />
+                                    {src === "youtube" ? "YouTube" : src === "upload" ? "CDN Upload" : "Direct URL"}
+                                  </label>
+                                ))}
+                              </div>
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>{pkgDemoVideoSource === "youtube" ? "YouTube Video ID" : "Video URL"}</Label>
+                              <Input
+                                className={fieldCls}
+                                placeholder={pkgDemoVideoSource === "youtube" ? "e.g., dQw4w9WgXcQ" : "https://..."}
+                                value={pkgDemoVideoUrl}
+                                onChange={(e) => setPkgDemoVideoUrl(e.target.value)}
+                              />
+                              {pkgDemoVideoSource !== "youtube" && (
+                                <div className="flex items-center gap-2">
+                                  <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
+                                  {pkgDemoVideoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+                                  {pkgDemoVideoUploading ? `Uploading ${pkgUploadPercent}%...` : "Upload Video File"}
+                                  <input type="file" accept="video/*" className="hidden" onChange={(e) => handleUploadPkgDemoVideo(e.target.files?.[0])} />
+                                  </label>
+                                  {pkgDemoVideoUploading && (
+                                    <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>
+                                      Cancel
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                              {pkgDemoVideoSource === "youtube" && pkgDemoVideoUrl && (
+                                <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{pkgDemoVideoUrl}</p>
+                              )}
+                            </div>
+                            <div className="space-y-1.5">
+                              <Label>Video Thumbnail URL (Optional)</Label>
+                              <Input className={fieldCls} placeholder="https://..." value={pkgDemoVideoThumbnailUrl} onChange={(e) => setPkgDemoVideoThumbnailUrl(e.target.value)} />
+                              <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 transition-colors hover:border-primary/40 hover:text-primary">
+                                {pkgDemoThumbUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
+                                {pkgDemoThumbUploading ? "Uploading..." : "Upload Thumbnail"}
+                                <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadPkgDemoThumbnail(e.target.files?.[0])} />
+                              </label>
+                              {pkgDemoVideoThumbnailUrl && <img src={pkgDemoVideoThumbnailUrl} alt="thumb" className="mt-1 h-16 rounded-xl object-cover" />}
                             </div>
                           </div>
                         )}
                       </div>
-                      <div className="rounded-xl bg-amber-50 border border-amber-200 p-4">
-                        <p className="text-xs font-semibold text-amber-800">When a student buys this package:</p>
-                        <ul className="mt-2 space-y-1 text-[11px] text-amber-700">
-                          <li>• All {pkgCourseIds.length || "bundled"} courses automatically unlock in their dashboard</li>
-                          <li>• The same validity period &amp; view count applies to all courses</li>
-                          <li>• Each bundled course appears as a separate card in My Courses</li>
-                        </ul>
-                      </div>
-                    </div>
-                  )}
 
-                  {/* ── CONTENT TAB ── */}
-                  {pkgTab === "content" && (
-                    <div className="space-y-4">
                       <div className="rounded-xl border border-slate-200 p-4 space-y-3">
                         <p className="text-xs font-bold text-slate-800">About Course Section</p>
                         {checkboxRow("Show About Course section on package page", pkgAboutCourseEnabled, setPkgAboutCourseEnabled)}
@@ -2329,81 +2515,6 @@ export default function AdminCourses() {
                       </div>
                     )}
 
-                    {/* ── DEMO TAB ── */}
-                    {dialogTab === "demo" && (
-                      <div className="space-y-5">
-                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                          <div className="flex items-center gap-2 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-slate-100 px-5 py-3">
-                            <div className="h-5 w-5 rounded-md bg-violet-600 flex items-center justify-center shrink-0"><Video className="h-3 w-3 text-white" /></div>
-                            <p className="text-xs font-bold text-violet-700 uppercase tracking-wider">Demo Lecture Settings</p>
-                          </div>
-                          <div className="p-5 space-y-4">
-                            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-violet-200 bg-violet-50/50 px-4 py-3 hover:bg-violet-50 transition-colors">
-                              <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-violet-600" checked={form.demoVideoVisible || false} onChange={(e) => sf({ demoVideoVisible: e.target.checked })} />
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">Show Demo Lecture on Course Page</p>
-                                <p className="text-xs text-slate-500">Allow students to preview a free lecture before purchasing</p>
-                              </div>
-                            </label>
-                            {form.demoVideoVisible && (
-                              <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/40 p-4">
-                                <div className="grid grid-cols-2 gap-4">
-                                  <div className="space-y-1.5">
-                                    <Label>Demo Lecture Title</Label>
-                                    <Input className={fieldCls} placeholder="Introduction Lecture" value={form.demoVideoTitle || ""} onChange={(e) => sf({ demoVideoTitle: e.target.value })} />
-                                  </div>
-                                  <div className="space-y-1.5">
-                                    <Label>Video Source</Label>
-                                    <div className="flex gap-2 pt-1">
-                                      {(["youtube", "upload", "direct"] as const).map((src) => (
-                                        <label key={src} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${form.demoVideoSource === src ? "border-violet-400 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
-                                          <input type="radio" name="videoSource" value={src} checked={form.demoVideoSource === src} onChange={() => sf({ demoVideoSource: src })} className="accent-violet-600 h-3 w-3" />
-                                          {src === "youtube" ? "YouTube" : src === "upload" ? "CDN" : "Direct"}
-                                        </label>
-                                      ))}
-                                    </div>
-                                  </div>
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label>Description</Label>
-                                  <textarea className="h-16 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/30" value={form.demoVideoDescription || ""} onChange={(e) => sf({ demoVideoDescription: e.target.value })} placeholder="Brief description…" />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label>{form.demoVideoSource === "youtube" ? "YouTube Video ID" : "Video URL"}</Label>
-                                  <Input className={fieldCls} placeholder={form.demoVideoSource === "youtube" ? "e.g., dQw4w9WgXcQ" : "https://…"} value={form.demoVideoUrl || ""} onChange={(e) => sf({ demoVideoUrl: e.target.value })} />
-                                  {form.demoVideoSource !== "youtube" && (
-                                    <div className="flex items-center gap-2">
-                                      <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-[11px] font-bold text-white shadow-md hover:bg-violet-700 transition-all">
-                                        {courseDemoVideoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
-                                        {courseDemoVideoUploading ? `Uploading ${courseUploadPercent}%...` : "Upload Video File"}
-                                        <input type="file" accept="video/*" className="hidden" onChange={(e) => handleUploadCourseDemoVideo(e.target.files?.[0])} />
-                                      </label>
-                                      {courseDemoVideoUploading && <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>Cancel</Button>}
-                                    </div>
-                                  )}
-                                  {form.demoVideoSource === "youtube" && form.demoVideoUrl && <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{form.demoVideoUrl}</p>}
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label>Thumbnail URL (Optional)</Label>
-                                  <div className="flex items-start gap-3">
-                                    {form.demoVideoThumbnailUrl && <img src={form.demoVideoThumbnailUrl} alt="" className="h-14 rounded-xl object-cover ring-2 ring-violet-100 shadow" />}
-                                    <div className="flex-1 space-y-1.5">
-                                      <Input className={fieldCls} placeholder="https://…" value={form.demoVideoThumbnailUrl || ""} onChange={(e) => sf({ demoVideoThumbnailUrl: e.target.value })} />
-                                      <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-600 transition-colors">
-                                        {courseDemoThumbUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
-                                        {courseDemoThumbUploading ? "Uploading..." : "Upload Thumbnail"}
-                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadCourseDemoThumbnail(e.target.files?.[0])} />
-                                      </label>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
                     {/* ── PRICING TAB ── */}
                     {dialogTab === "pricing" && (
                       <div className="space-y-5">
@@ -2520,92 +2631,6 @@ export default function AdminCourses() {
                           </div>
                         </div>
 
-                        {/* Sidebar + Ratings */}
-                        <div className="grid grid-cols-2 gap-4">
-                          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                            <div className="flex items-center gap-2 bg-gradient-to-r from-slate-50 to-gray-50 border-b border-slate-100 px-4 py-3">
-                              <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">📊 Sidebar Display</p>
-                            </div>
-                            <div className="p-4 space-y-2">
-                              <div className="space-y-1.5 mb-3">
-                                <Label>Enrollment Count</Label>
-                                <Input className={fieldCls} type="number" min={0} value={form.enrollmentCount || 0} onChange={(e) => sf({ enrollmentCount: Number(e.target.value) || 0 })} />
-                              </div>
-                              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                                {[["showEnrollmentCount","Enrolled"],["showMetaLectures","Lectures"],["showMetaHours","Hours"],["showMetaValidity","Validity"],["showMetaResources","Resources"],["showMetaViews","Views"],["showMetaPerHour","₹/hr"],["showMetaLanguage","Language"]].map(([key, label]) => checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v })))}
-                              </div>
-                            </div>
-                          </div>
-                          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                            <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-slate-100 px-4 py-3">
-                              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">⭐ Ratings & Reviews</p>
-                            </div>
-                            <div className="p-4 space-y-3">
-                              {checkboxRow("Show Ratings tab", form.ratingsEnabled !== false, (v) => sf({ ratingsEnabled: v }))}
-                              {checkboxRow("Show Reviews tab", form.reviewsEnabled !== false, (v) => sf({ reviewsEnabled: v }))}
-                              {form.ratingsEnabled && (
-                                <div className="grid grid-cols-2 gap-2 pt-1">
-                                  <div className="space-y-1"><Label>Rating (0–5)</Label><Input className={fieldCls} type="number" step={0.1} min={0} max={5} value={form.ratingValue || 0} onChange={(e) => sf({ ratingValue: Number(e.target.value) || 0 })} /></div>
-                                  <div className="space-y-1"><Label>Count</Label><Input className={fieldCls} type="number" min={0} value={form.ratingCount || 0} onChange={(e) => sf({ ratingCount: Number(e.target.value) || 0 })} /></div>
-                                </div>
-                              )}
-                              {form.reviewsEnabled && (
-                                <div className="space-y-1.5">
-                                  <Label>Reviews (one per line)</Label>
-                                  <textarea className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-300/40" placeholder="Name | 5 | Great course | 2 weeks ago" value={form.reviewsText || ""} onChange={(e) => sf({ reviewsText: e.target.value })} />
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    )}
-
-                    {/* ── DELIVERY TAB ── */}
-                    {dialogTab === "delivery" && (
-                      <div className="space-y-5">
-                        {form.combinationUseMode && (form.masterCombinationRows || []).length > 0 ? (
-                          <div className="flex items-center gap-3 rounded-2xl border-2 border-blue-300 bg-blue-50 px-5 py-4 shadow-sm">
-                            <DollarSign className="h-5 w-5 text-blue-600 shrink-0" />
-                            <div>
-                              <p className="text-sm font-bold text-blue-900">Delivery Mode Pricing via Combinations</p>
-                              <p className="text-xs text-blue-700">Delivery modes are already handled in your Pricing tab combinations.</p>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                            <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-slate-100 px-5 py-3">
-                              <div className="h-5 w-5 rounded-md bg-orange-500 flex items-center justify-center shrink-0"><Package className="h-3 w-3 text-white" /></div>
-                              <p className="text-xs font-bold text-orange-700 uppercase tracking-wider">Lecture Mode Pricing</p>
-                            </div>
-                            <div className="p-5 space-y-4">
-                              {checkboxRow("Enable delivery mode-wise pricing", form.deliveryModePricingEnabled || false, (v) => sf({ deliveryModePricingEnabled: v }))}
-                              {form.deliveryModePricingEnabled && (
-                                <div className="space-y-3 rounded-xl bg-slate-50 border border-slate-200 p-4">
-                                  {[
-                                    { key: "enableOnlineMode", label: "Online", priceKey: "onlineModePrice" },
-                                    { key: "enableGoogleDriveMode", label: "Google Drive", priceKey: "googleDriveModePrice" },
-                                    { key: "enablePenDriveMode", label: "Pen Drive", priceKey: "penDriveModePrice" },
-                                  ].map(({ key, label, priceKey }) => (
-                                    <div key={key} className="flex items-center gap-4">
-                                      <div className="w-32">{checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v }))}</div>
-                                      <Input className={`${fieldCls} flex-1`} type="number" placeholder={`${label} price (₹)`} value={(form[priceKey as keyof CourseForm] as number) || 0} onChange={(e) => sf({ [priceKey]: Number(e.target.value) || 0 })} />
-                                    </div>
-                                  ))}
-                                  <div className="flex items-center gap-4">
-                                    <div className="w-32">{checkboxRow("Custom", form.enableCustomMode || false, (v) => sf({ enableCustomMode: v }))}</div>
-                                    <Input className={`${fieldCls} flex-1`} placeholder="Mode name" value={form.customModeName || ""} onChange={(e) => sf({ customModeName: e.target.value })} />
-                                    <Input className={`${fieldCls} w-32`} type="number" placeholder="Price (₹)" value={form.customModePrice || 0} onChange={(e) => sf({ customModePrice: Number(e.target.value) || 0 })} />
-                                  </div>
-                                  <div className="space-y-1.5">
-                                    <Label>Additional modes (Name: Price per line)</Label>
-                                    <textarea className="h-16 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-orange-300/40" placeholder={"Android App: 1499\nPrinted Book + Online: 2499"} value={form.customModesText || ""} onChange={(e) => sf({ customModesText: e.target.value })} />
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
                         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                           <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-slate-100 px-5 py-3">
                             <div className="h-5 w-5 rounded-md bg-amber-500 flex items-center justify-center shrink-0"><BookOpen className="h-3 w-3 text-white" /></div>
@@ -2653,6 +2678,116 @@ export default function AdminCourses() {
                         <div className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50/60 px-5 py-4">
                           <FileText className="h-5 w-5 text-blue-500 shrink-0" />
                           <p className="text-xs text-blue-700">To manage <strong>curriculum chapters and lessons</strong>, use the <strong>Course Content</strong> button from the course list after saving this form.</p>
+                        </div>
+
+                        {/* Demo Lecture */}
+                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-slate-100 px-5 py-3">
+                            <div className="h-5 w-5 rounded-md bg-violet-600 flex items-center justify-center shrink-0"><Video className="h-3 w-3 text-white" /></div>
+                            <p className="text-xs font-bold text-violet-700 uppercase tracking-wider">Demo Lecture Settings</p>
+                          </div>
+                          <div className="p-5 space-y-4">
+                            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-violet-200 bg-violet-50/50 px-4 py-3 hover:bg-violet-50 transition-colors">
+                              <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-violet-600" checked={form.demoVideoVisible || false} onChange={(e) => sf({ demoVideoVisible: e.target.checked })} />
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">Show Demo Lecture on Course Page</p>
+                                <p className="text-xs text-slate-500">Allow students to preview a free lecture before purchasing</p>
+                              </div>
+                            </label>
+                            {form.demoVideoVisible && (
+                              <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/40 p-4">
+                                <div className="grid grid-cols-2 gap-4">
+                                  <div className="space-y-1.5">
+                                    <Label>Demo Lecture Title</Label>
+                                    <Input className={fieldCls} placeholder="Introduction Lecture" value={form.demoVideoTitle || ""} onChange={(e) => sf({ demoVideoTitle: e.target.value })} />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label>Video Source</Label>
+                                    <div className="flex gap-2 pt-1">
+                                      {(["youtube", "upload", "direct"] as const).map((src) => (
+                                        <label key={src} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${form.demoVideoSource === src ? "border-violet-400 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                                          <input type="radio" name="videoSource" value={src} checked={form.demoVideoSource === src} onChange={() => sf({ demoVideoSource: src })} className="accent-violet-600 h-3 w-3" />
+                                          {src === "youtube" ? "YouTube" : src === "upload" ? "CDN" : "Direct"}
+                                        </label>
+                                      ))}
+                                    </div>
+                                  </div>
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Description</Label>
+                                  <textarea className="h-16 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/30" value={form.demoVideoDescription || ""} onChange={(e) => sf({ demoVideoDescription: e.target.value })} placeholder="Brief description…" />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>{form.demoVideoSource === "youtube" ? "YouTube Video ID" : "Video URL"}</Label>
+                                  <Input className={fieldCls} placeholder={form.demoVideoSource === "youtube" ? "e.g., dQw4w9WgXcQ" : "https://…"} value={form.demoVideoUrl || ""} onChange={(e) => sf({ demoVideoUrl: e.target.value })} />
+                                  {form.demoVideoSource !== "youtube" && (
+                                    <div className="flex items-center gap-2">
+                                      <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-[11px] font-bold text-white shadow-md hover:bg-violet-700 transition-all">
+                                        {courseDemoVideoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
+                                        {courseDemoVideoUploading ? `Uploading ${courseUploadPercent}%...` : "Upload Video File"}
+                                        <input type="file" accept="video/*" className="hidden" onChange={(e) => handleUploadCourseDemoVideo(e.target.files?.[0])} />
+                                      </label>
+                                      {courseDemoVideoUploading && <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>Cancel</Button>}
+                                    </div>
+                                  )}
+                                  {form.demoVideoSource === "youtube" && form.demoVideoUrl && <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{form.demoVideoUrl}</p>}
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Thumbnail URL (Optional)</Label>
+                                  <div className="flex items-start gap-3">
+                                    {form.demoVideoThumbnailUrl && <img src={form.demoVideoThumbnailUrl} alt="" className="h-14 rounded-xl object-cover ring-2 ring-violet-100 shadow" />}
+                                    <div className="flex-1 space-y-1.5">
+                                      <Input className={fieldCls} placeholder="https://…" value={form.demoVideoThumbnailUrl || ""} onChange={(e) => sf({ demoVideoThumbnailUrl: e.target.value })} />
+                                      <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-600 transition-colors">
+                                        {courseDemoThumbUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
+                                        {courseDemoThumbUploading ? "Uploading..." : "Upload Thumbnail"}
+                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadCourseDemoThumbnail(e.target.files?.[0])} />
+                                      </label>
+                                    </div>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Sidebar + Ratings */}
+                        <div className="grid grid-cols-2 gap-4">
+                          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="flex items-center gap-2 bg-gradient-to-r from-slate-50 to-gray-50 border-b border-slate-100 px-4 py-3">
+                              <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">📊 Sidebar Display</p>
+                            </div>
+                            <div className="p-4 space-y-2">
+                              <div className="space-y-1.5 mb-3">
+                                <Label>Enrollment Count</Label>
+                                <Input className={fieldCls} type="number" min={0} value={form.enrollmentCount || 0} onChange={(e) => sf({ enrollmentCount: Number(e.target.value) || 0 })} />
+                              </div>
+                              <div className="grid grid-cols-2 gap-1.5 text-[11px]">
+                                {[["showEnrollmentCount","Enrolled"],["showMetaLectures","Lectures"],["showMetaHours","Hours"],["showMetaValidity","Validity"],["showMetaResources","Resources"],["showMetaViews","Views"],["showMetaPerHour","₹/hr"],["showMetaLanguage","Language"]].map(([key, label]) => checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v })))}
+                              </div>
+                            </div>
+                          </div>
+                          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+                            <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-slate-100 px-4 py-3">
+                              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">⭐ Ratings & Reviews</p>
+                            </div>
+                            <div className="p-4 space-y-3">
+                              {checkboxRow("Show Ratings tab", form.ratingsEnabled !== false, (v) => sf({ ratingsEnabled: v }))}
+                              {checkboxRow("Show Reviews tab", form.reviewsEnabled !== false, (v) => sf({ reviewsEnabled: v }))}
+                              {form.ratingsEnabled && (
+                                <div className="grid grid-cols-2 gap-2 pt-1">
+                                  <div className="space-y-1"><Label>Rating (0–5)</Label><Input className={fieldCls} type="number" step={0.1} min={0} max={5} value={form.ratingValue || 0} onChange={(e) => sf({ ratingValue: Number(e.target.value) || 0 })} /></div>
+                                  <div className="space-y-1"><Label>Count</Label><Input className={fieldCls} type="number" min={0} value={form.ratingCount || 0} onChange={(e) => sf({ ratingCount: Number(e.target.value) || 0 })} /></div>
+                                </div>
+                              )}
+                              {form.reviewsEnabled && (
+                                <div className="space-y-1.5">
+                                  <Label>Reviews (one per line)</Label>
+                                  <textarea className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-300/40" placeholder="Name | 5 | Great course | 2 weeks ago" value={form.reviewsText || ""} onChange={(e) => sf({ reviewsText: e.target.value })} />
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         </div>
                       </div>
                     )}
@@ -2849,6 +2984,146 @@ export default function AdminCourses() {
               Cancel
             </Button>
             <Button type="button" className="bg-blue-600 hover:bg-blue-700" onClick={generateCourseCombinationsFromSelected}>
+              Generate Selected
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* ─── Package Combo Selector Dialog ───────────────────── */}
+      <Dialog open={pkgComboSelectorOpen} onOpenChange={setPkgComboSelectorOpen}>
+        <DialogContent className="max-w-2xl rounded-2xl border-slate-200">
+          <DialogHeader>
+            <DialogTitle>Select Master Options For Package Generation</DialogTitle>
+          </DialogHeader>
+
+          <div className="space-y-4">
+            <p className="text-xs text-slate-500">
+              Choose only the View, Validity, Attempt, and Lecture Mode options you want from Master module. Same selected options se combinations generate honge.
+            </p>
+
+            {pkgCombinationUseView && (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">View Options</p>
+                  <div className="flex gap-2">
+                    <button type="button" className="text-[11px] text-blue-600 hover:underline" onClick={() => setPkgSelectedViewModeIds(activeMasterViewModes.map((item) => item.id))}>
+                      Select all
+                    </button>
+                    <button type="button" className="text-[11px] text-slate-500 hover:underline" onClick={() => setPkgSelectedViewModeIds([])}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {activeMasterViewModes.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                        checked={pkgSelectedViewModeIds.includes(item.id)}
+                        onChange={(event) => setPkgSelectedViewModeIds((prev) => event.target.checked ? Array.from(new Set([...prev, item.id])) : prev.filter((id) => id !== item.id))}
+                      />
+                      <span className="font-medium text-slate-700">{item.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {pkgCombinationUseValidity && (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">Validity Options</p>
+                  <div className="flex gap-2">
+                    <button type="button" className="text-[11px] text-blue-600 hover:underline" onClick={() => setPkgSelectedValidityIds(activeMasterValidityOptions.map((item) => item.id))}>
+                      Select all
+                    </button>
+                    <button type="button" className="text-[11px] text-slate-500 hover:underline" onClick={() => setPkgSelectedValidityIds([])}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {activeMasterValidityOptions.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                        checked={pkgSelectedValidityIds.includes(item.id)}
+                        onChange={(event) => setPkgSelectedValidityIds((prev) => event.target.checked ? Array.from(new Set([...prev, item.id])) : prev.filter((id) => id !== item.id))}
+                      />
+                      <span className="font-medium text-slate-700">{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {pkgCombinationUseAttempt && (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">Attempt Options</p>
+                  <div className="flex gap-2">
+                    <button type="button" className="text-[11px] text-blue-600 hover:underline" onClick={() => setPkgSelectedAttemptIds(activeMasterAttemptOptions.map((item) => item.id))}>
+                      Select all
+                    </button>
+                    <button type="button" className="text-[11px] text-slate-500 hover:underline" onClick={() => setPkgSelectedAttemptIds([])}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {activeMasterAttemptOptions.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                        checked={pkgSelectedAttemptIds.includes(item.id)}
+                        onChange={(event) => setPkgSelectedAttemptIds((prev) => event.target.checked ? Array.from(new Set([...prev, item.id])) : prev.filter((id) => id !== item.id))}
+                      />
+                      <span className="font-medium text-slate-700">{item.label}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {pkgCombinationUseMode && (
+              <div className="rounded-xl border border-slate-200 p-3">
+                <div className="mb-2 flex items-center justify-between">
+                  <p className="text-xs font-bold text-slate-700">Lecture Mode Options</p>
+                  <div className="flex gap-2">
+                    <button type="button" className="text-[11px] text-blue-600 hover:underline" onClick={() => setPkgSelectedDeliveryModeIds(activeMasterDeliveryModes.map((item) => item.id))}>
+                      Select all
+                    </button>
+                    <button type="button" className="text-[11px] text-slate-500 hover:underline" onClick={() => setPkgSelectedDeliveryModeIds([])}>
+                      Clear
+                    </button>
+                  </div>
+                </div>
+                <div className="grid gap-2 sm:grid-cols-2">
+                  {activeMasterDeliveryModes.map((item) => (
+                    <label key={item.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2.5 py-2 text-xs">
+                      <input
+                        type="checkbox"
+                        className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                        checked={pkgSelectedDeliveryModeIds.includes(item.id)}
+                        onChange={(event) => setPkgSelectedDeliveryModeIds((prev) => event.target.checked ? Array.from(new Set([...prev, item.id])) : prev.filter((id) => id !== item.id))}
+                      />
+                      <span className="font-medium text-slate-700">{item.name}</span>
+                    </label>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="flex justify-end gap-2">
+            <Button type="button" variant="outline" onClick={() => setPkgComboSelectorOpen(false)}>
+              Cancel
+            </Button>
+            <Button type="button" className="bg-blue-600 hover:bg-blue-700" onClick={generatePackageCombinationsFromSelected}>
               Generate Selected
             </Button>
           </div>

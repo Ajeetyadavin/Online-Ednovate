@@ -7,9 +7,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, Mail, Save, Globe, Sparkles, CreditCard, Zap } from "lucide-react";
+import { CheckCircle, Mail, Save, Globe, Sparkles, CreditCard, Zap, GripVertical, ArrowUp, ArrowDown, Eye, EyeOff, SlidersHorizontal } from "lucide-react";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import { adminApi } from "@/services/adminApi";
+import {
+  ADMIN_SIDEBAR_STORAGE_KEY,
+  buildDefaultAdminSidebarConfig,
+  normalizeAdminSidebarConfig,
+  reorderAdminSidebarConfig,
+  type AdminSidebarItemConfig,
+} from "@/lib/adminSidebarConfig";
 
 type SmtpSettings = {
   enabled: boolean;
@@ -153,6 +160,7 @@ export default function AdminSettings() {
     paymentGateways: defaultPaymentGateways(),
     emailAutomationEnabled: true,
     emailTemplates: defaultEmailTemplates(),
+    adminSidebar: buildDefaultAdminSidebarConfig() as AdminSidebarItemConfig[],
   });
 
   const [saved, setSaved] = useState(false);
@@ -161,6 +169,8 @@ export default function AdminSettings() {
   const [smtpTestToEmail, setSmtpTestToEmail] = useState("");
   const [isSmtpTesting, setIsSmtpTesting] = useState(false);
   const [smtpTestResult, setSmtpTestResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [dragSidebarItemId, setDragSidebarItemId] = useState<string | null>(null);
+  const [dragOverSidebarItemId, setDragOverSidebarItemId] = useState<string | null>(null);
 
   useEffect(() => {
     if (siteSettings?.settings?.bunnyStreamApi) {
@@ -212,6 +222,7 @@ export default function AdminSettings() {
         const payuRaw = (paymentRaw.payu && typeof paymentRaw.payu === "object" ? paymentRaw.payu : {}) as Record<string, unknown>;
         const hdfcRaw = (paymentRaw.hdfc && typeof paymentRaw.hdfc === "object" ? paymentRaw.hdfc : {}) as Record<string, unknown>;
         const defaultTemplates = defaultEmailTemplates();
+        const adminSidebar = normalizeAdminSidebarConfig(site.adminSidebar);
 
         if (!isMounted) return;
 
@@ -291,7 +302,10 @@ export default function AdminSettings() {
               ...((templatesRaw.new_account as Record<string, unknown>) || {}),
             },
           },
+          adminSidebar,
         }));
+
+        localStorage.setItem(ADMIN_SIDEBAR_STORAGE_KEY, JSON.stringify(adminSidebar));
 
         siteSettings.updateSettings({
           maintenanceMode: site.maintenanceMode === true,
@@ -405,6 +419,78 @@ export default function AdminSettings() {
     }));
   };
 
+  const updateSidebarConfig = (updater: (items: AdminSidebarItemConfig[]) => AdminSidebarItemConfig[]) => {
+    setSettings((prev) => {
+      const nextSidebar = reorderAdminSidebarConfig(updater(prev.adminSidebar));
+      localStorage.setItem(ADMIN_SIDEBAR_STORAGE_KEY, JSON.stringify(nextSidebar));
+      return {
+        ...prev,
+        adminSidebar: nextSidebar,
+      };
+    });
+  };
+
+  const handleSidebarLabelChange = (id: string, label: string) => {
+    updateSidebarConfig((items) => items.map((item) => (item.id === id ? { ...item, label } : item)));
+  };
+
+  const handleSidebarVisibilityToggle = (id: string, visible: boolean) => {
+    if (id === "settings") return;
+    updateSidebarConfig((items) => items.map((item) => (item.id === id ? { ...item, visible } : item)));
+  };
+
+  const handleSidebarEnabledToggle = (id: string, enabled: boolean) => {
+    if (id === "settings") return;
+    updateSidebarConfig((items) => items.map((item) => (item.id === id ? { ...item, enabled } : item)));
+  };
+
+  const moveSidebarItem = (id: string, direction: "up" | "down") => {
+    updateSidebarConfig((items) => {
+      const list = [...items];
+      const currentIndex = list.findIndex((item) => item.id === id);
+      if (currentIndex < 0) return list;
+      const nextIndex = direction === "up" ? currentIndex - 1 : currentIndex + 1;
+      if (nextIndex < 0 || nextIndex >= list.length) return list;
+      [list[currentIndex], list[nextIndex]] = [list[nextIndex], list[currentIndex]];
+      return list;
+    });
+  };
+
+  const handleSidebarDragStart = (event: React.DragEvent<HTMLElement>, itemId: string) => {
+    setDragSidebarItemId(itemId);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", itemId);
+  };
+
+  const handleSidebarDrop = (event: React.DragEvent<HTMLElement>, targetId: string) => {
+    event.preventDefault();
+    const sourceId = dragSidebarItemId || event.dataTransfer.getData("text/plain");
+    if (!sourceId || sourceId === targetId) {
+      setDragOverSidebarItemId(null);
+      return;
+    }
+    updateSidebarConfig((items) => {
+      const list = [...items];
+      const dragIndex = list.findIndex((item) => item.id === sourceId);
+      const targetIndex = list.findIndex((item) => item.id === targetId);
+      if (dragIndex < 0 || targetIndex < 0) return list;
+      const [dragged] = list.splice(dragIndex, 1);
+      list.splice(targetIndex, 0, dragged);
+      return list;
+    });
+    setDragSidebarItemId(null);
+    setDragOverSidebarItemId(null);
+  };
+
+  const resetSidebarToDefault = () => {
+    const defaults = buildDefaultAdminSidebarConfig();
+    setSettings((prev) => ({
+      ...prev,
+      adminSidebar: defaults,
+    }));
+    localStorage.setItem(ADMIN_SIDEBAR_STORAGE_KEY, JSON.stringify(defaults));
+  };
+
   const handleSave = async () => {
     setError("");
     setIsSaving(true);
@@ -444,6 +530,7 @@ export default function AdminSettings() {
           replyTo: settings.smtp.replyTo,
         },
         paymentGateways: settings.paymentGateways,
+        adminSidebar: settings.adminSidebar,
       },
       smtp: {
         enabled: settings.smtp.enabled,
@@ -520,6 +607,7 @@ export default function AdminSettings() {
           replyTo: settings.smtp.replyTo,
         },
         paymentGateways: settings.paymentGateways,
+        adminSidebar: settings.adminSidebar,
       },
       smtp: {
         enabled: settings.smtp.enabled,
@@ -586,7 +674,7 @@ export default function AdminSettings() {
       )}
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-4 mb-6">
+        <TabsList className="grid w-full grid-cols-5 mb-6">
           <TabsTrigger value="general" className="gap-2">
             <Globe className="w-4 h-4" />
             General
@@ -602,6 +690,10 @@ export default function AdminSettings() {
           <TabsTrigger value="payment" className="gap-2">
             <CreditCard className="w-4 h-4" />
             Payment
+          </TabsTrigger>
+          <TabsTrigger value="sidebar" className="gap-2">
+            <SlidersHorizontal className="w-4 h-4" />
+            Sidebar
           </TabsTrigger>
         </TabsList>
 
@@ -1024,6 +1116,108 @@ export default function AdminSettings() {
                   </div>
                 )}
               </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="sidebar" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <CardTitle>Sidebar Menu Manager</CardTitle>
+                  <CardDescription>Hide/show menu items, rename labels, and drag to reorder menu positions.</CardDescription>
+                </div>
+                <Button type="button" variant="outline" onClick={resetSidebarToDefault}>Reset Default</Button>
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              {settings.adminSidebar.map((item, index) => (
+                <div
+                  key={item.id}
+                  onDragOver={(event) => {
+                    event.preventDefault();
+                    if (dragSidebarItemId && dragSidebarItemId !== item.id) setDragOverSidebarItemId(item.id);
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverSidebarItemId === item.id) setDragOverSidebarItemId(null);
+                  }}
+                  onDrop={(event) => handleSidebarDrop(event, item.id)}
+                  className={`flex flex-wrap items-center gap-3 rounded-xl border bg-white p-3 transition-colors ${
+                    dragOverSidebarItemId === item.id ? "border-orange-300 bg-orange-50/50" : "border-gray-200"
+                  }`}
+                >
+                  {item.id === "settings" ? (
+                    <div className="w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
+                      Settings menu locked: always ON and always visible for recovery.
+                    </div>
+                  ) : null}
+                  <button
+                    type="button"
+                    draggable
+                    onDragStart={(event) => handleSidebarDragStart(event, item.id)}
+                    onDragEnd={() => {
+                      setDragSidebarItemId(null);
+                      setDragOverSidebarItemId(null);
+                    }}
+                    className="cursor-grab rounded-lg border border-gray-200 p-2 text-gray-500 active:cursor-grabbing"
+                    title="Drag to reorder"
+                  >
+                    <GripVertical className="h-4 w-4" />
+                  </button>
+                  <div className="w-8 text-sm font-semibold text-gray-400">{index + 1}</div>
+                  <div className="min-w-[220px] flex-1">
+                    <Input
+                      value={item.label}
+                      onChange={(event) => handleSidebarLabelChange(item.id, event.target.value)}
+                      placeholder="Menu label"
+                    />
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9"
+                      onClick={() => moveSidebarItem(item.id, "up")}
+                      disabled={index === 0}
+                    >
+                      <ArrowUp className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="icon"
+                      className="h-9 w-9"
+                      onClick={() => moveSidebarItem(item.id, "down")}
+                      disabled={index === settings.adminSidebar.length - 1}
+                    >
+                      <ArrowDown className="h-4 w-4" />
+                    </Button>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5">
+                      <span className={`h-2.5 w-2.5 rounded-full ${item.enabled ? "bg-emerald-500" : "bg-gray-300"}`} />
+                      <span className="text-sm text-gray-600">Feature ON</span>
+                      <Switch
+                        checked={item.enabled !== false}
+                        disabled={item.id === "settings"}
+                        onCheckedChange={(value) => handleSidebarEnabledToggle(item.id, value)}
+                      />
+                    </div>
+                    <div className="flex items-center gap-2 rounded-lg border border-gray-200 px-3 py-1.5">
+                      {item.visible ? <Eye className="h-4 w-4 text-emerald-600" /> : <EyeOff className="h-4 w-4 text-gray-400" />}
+                      <span className="text-sm text-gray-600">Sidebar Visible</span>
+                      <Switch
+                        checked={item.visible}
+                        disabled={item.id === "settings"}
+                        onCheckedChange={(value) => handleSidebarVisibilityToggle(item.id, value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+              ))}
+              <p className="text-xs text-gray-500">Feature ON/OFF: OFF karne par module open nahi hoga. Sidebar Visible: hide karne par menu gayab hoga, feature URL se chalta rahega.</p>
             </CardContent>
           </Card>
         </TabsContent>
