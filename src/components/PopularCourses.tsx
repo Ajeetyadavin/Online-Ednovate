@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import CourseCard from "./CourseCard";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
-import { ArrowRight } from "lucide-react";
+import { ArrowRight, Flame, Sparkles } from "lucide-react";
 import { useScrollReveal } from "@/hooks/use-scroll-reveal";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
@@ -65,25 +65,47 @@ const PopularCourses = () => {
     );
   }, [activeTab, homepageCourses]);
 
+  const activeTabLabel = useMemo(
+    () => tabs.find((tab) => tab.id === activeTab)?.label || "All Courses",
+    [activeTab, tabs],
+  );
+
   return (
-    <section id="courses" className="py-8 md:py-10 bg-muted/30">
-      <div className="container mx-auto px-4">
-        <div ref={titleRef} className={`text-center mb-8 reveal-up ${titleVisible ? "visible" : ""}`}>
-          <span className="text-primary text-sm font-extrabold uppercase tracking-widest">Explore</span>
-          <h2 className="section-title mt-2">Popular Courses</h2>
-          <p className="section-subtitle">Choose from our wide range of professional courses</p>
+    <section id="courses" className="py-12 md:py-16 relative overflow-hidden bg-gradient-to-b from-muted/20 via-background to-muted/35">
+      <div className="absolute inset-0 pointer-events-none">
+        <div className="absolute -top-24 -left-16 w-72 h-72 rounded-full bg-primary/10 blur-3xl" />
+        <div className="absolute -bottom-24 -right-16 w-72 h-72 rounded-full bg-accent/10 blur-3xl" />
+      </div>
+
+      <div className="container mx-auto px-4 relative z-10">
+        <div ref={titleRef} className={`text-center mb-8 md:mb-10 reveal-up ${titleVisible ? "visible" : ""}`}>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/15 mb-4">
+            <Sparkles className="w-3.5 h-3.5 text-primary" />
+            <span className="text-primary text-xs font-extrabold uppercase tracking-widest">Explore</span>
+          </div>
+
+          <h2 className="text-2xl md:text-4xl font-black tracking-tight text-foreground">Popular Courses</h2>
+          <p className="text-sm md:text-base text-muted-foreground max-w-xl mx-auto mt-2">
+            Choose from our wide range of professional courses
+          </p>
+
+          <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3 py-2 text-xs md:text-sm font-semibold text-foreground shadow-sm">
+            <Flame className="w-4 h-4 text-accent" />
+            Showing <span className="text-primary">{Math.min(filtered.length, 8)}</span> of {homepageCourses.length} curated courses
+            <span className="text-muted-foreground">in</span> {activeTabLabel}
+          </div>
         </div>
 
-        <div className={`flex justify-center mb-6 reveal-up ${titleVisible ? "visible" : ""}`}>
-          <div className="inline-flex gap-1 p-1 bg-card rounded-xl border border-border shadow-sm overflow-x-auto max-w-full scrollbar-hide">
+        <div className={`flex justify-center mb-7 md:mb-8 reveal-up ${titleVisible ? "visible" : ""}`}>
+          <div className="inline-flex gap-2 p-2 bg-card/90 backdrop-blur rounded-2xl border border-border shadow-sm overflow-x-auto max-w-full scrollbar-hide">
             {tabs.map((tab) => (
               <button
                 key={tab.id}
                 onClick={() => setActiveTab(tab.id)}
-                className={`px-4 py-2 rounded-lg text-sm font-bold transition-all whitespace-nowrap tap-bounce ${
+                className={`px-4 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all whitespace-nowrap tap-bounce ${
                   activeTab === tab.id
-                    ? "bg-primary text-primary-foreground shadow-sm"
-                    : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
+                    ? "bg-gradient-to-r from-primary to-primary/90 text-primary-foreground shadow-lg shadow-primary/20"
+                    : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                 }`}
               >
                 {tab.label}
@@ -92,10 +114,15 @@ const PopularCourses = () => {
           </div>
         </div>
 
-        <div ref={gridRef} className={`grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-5 stagger-children ${gridVisible ? "visible" : ""}`}>
+        <div
+          ref={gridRef}
+          className={`rounded-2xl border border-border/70 bg-card/50 backdrop-blur-sm p-3 md:p-5 shadow-[0_20px_60px_-45px_rgba(15,23,42,0.35)] stagger-children ${gridVisible ? "visible" : ""}`}
+        >
+          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3 md:gap-5">
           {filtered.slice(0, 8).map((course) => (
             <CourseCard key={course.id} course={course} />
           ))}
+          </div>
         </div>
 
         {filtered.length === 0 && (
@@ -107,9 +134,9 @@ const PopularCourses = () => {
           </div>
         )}
 
-        <div className="text-center mt-8">
+        <div className="text-center mt-8 md:mt-10">
           <Link to="/packages">
-            <Button variant="outline" className="font-semibold text-sm gap-2 h-10 px-6 rounded-xl border-primary/20 hover:bg-primary hover:text-primary-foreground transition-all tap-bounce">
+            <Button className="font-bold text-sm gap-2 h-11 px-7 rounded-xl bg-gradient-to-r from-primary to-primary/90 hover:from-primary/95 hover:to-primary text-primary-foreground shadow-lg shadow-primary/25 transition-all tap-bounce">
               View All Courses <ArrowRight className="w-4 h-4" />
             </Button>
           </Link>

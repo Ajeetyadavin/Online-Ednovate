@@ -25,6 +25,14 @@ const extractCourseIdFromPath = (pathName: string) => {
   return "";
 };
 
+const normalizeUploadUrl = (url?: string) => {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  if (value.startsWith("/uploads/")) return value.replace(/^\/uploads\//, "/api/uploads/");
+  return value;
+};
+
 const MarketingPopupEngine = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -127,6 +135,8 @@ const MarketingPopupEngine = () => {
 
   if (!activeCampaign || !isVisible) return null;
 
+  const resolvedMediaUrl = normalizeUploadUrl(activeCampaign.mediaUrl);
+
   if (activeCampaign.contentType === "enquiry_form") {
     return (
       <EnquiryModal
@@ -168,17 +178,17 @@ const MarketingPopupEngine = () => {
             <p className="text-sm text-slate-700 leading-relaxed whitespace-pre-wrap">{activeCampaign.message}</p>
           )}
 
-          {(activeCampaign.contentType === "banner" || activeCampaign.contentType === "text" || activeCampaign.contentType === "alert") && activeCampaign.mediaUrl && (
-            <img src={activeCampaign.mediaUrl} alt={activeCampaign.title} className="w-full rounded-xl border border-slate-200 max-h-64 object-cover" />
+          {(activeCampaign.contentType === "banner" || activeCampaign.contentType === "text" || activeCampaign.contentType === "alert") && resolvedMediaUrl && (
+            <img src={resolvedMediaUrl} alt={activeCampaign.title} className="w-full rounded-xl border border-slate-200 max-h-64 object-cover" />
           )}
 
-          {activeCampaign.contentType === "video" && activeCampaign.mediaUrl && (
-            <video controls autoPlay muted className="w-full rounded-xl border border-slate-200 max-h-80 bg-black" src={activeCampaign.mediaUrl} />
+          {activeCampaign.contentType === "video" && resolvedMediaUrl && (
+            <video controls autoPlay muted className="w-full rounded-xl border border-slate-200 max-h-80 bg-black" src={resolvedMediaUrl} />
           )}
 
-          {activeCampaign.contentType === "pdf" && activeCampaign.mediaUrl && (
+          {activeCampaign.contentType === "pdf" && resolvedMediaUrl && (
             <div className="rounded-xl border border-slate-200 overflow-hidden">
-              <iframe title={activeCampaign.title} src={activeCampaign.mediaUrl} className="w-full h-80" />
+              <iframe title={activeCampaign.title} src={resolvedMediaUrl} className="w-full h-80" />
             </div>
           )}
 

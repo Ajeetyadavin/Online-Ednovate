@@ -26,6 +26,7 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, "uploads");
 app.use("/uploads", express.static(uploadsDir));
+app.use("/api/uploads", express.static(uploadsDir));
 
 const mapStudentRow = (row) => ({
   id: row.id,
@@ -6555,7 +6556,10 @@ app.post("/api/uploads/image", requireAdminPermission("course-content", "create"
     const finalName = `${Date.now()}-${fileName}`;
     const finalPath = path.join(targetDir, finalName);
     await writeFile(finalPath, binary);
-    response.json({ url: `/uploads/${folder}/${finalName}` });
+    response.json({
+      url: `/api/uploads/${folder}/${finalName}`,
+      legacyUrl: `/uploads/${folder}/${finalName}`,
+    });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Image upload failed" });
   }

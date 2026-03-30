@@ -10,9 +10,18 @@ interface DynamicHomepageSectionProps {
   section: HomepageSection;
 }
 
+const normalizeUploadUrl = (url?: string) => {
+  const value = String(url || "").trim();
+  if (!value) return "";
+  if (value.startsWith("http://") || value.startsWith("https://")) return value;
+  if (value.startsWith("/uploads/")) return value.replace(/^\/uploads\//, "/api/uploads/");
+  return value;
+};
+
 const DynamicHomepageSection = ({ section }: DynamicHomepageSectionProps) => {
   const { courses } = usePlatformData();
   const { settings } = useSiteSettings();
+  const resolvedImageUrl = normalizeUploadUrl(section.imageUrl);
 
   const exploreCategorySet = useMemo(
     () => new Set(settings.exploreCategoryIds || []),
@@ -66,9 +75,9 @@ const DynamicHomepageSection = ({ section }: DynamicHomepageSectionProps) => {
       return (
         <section style={baseSectionStyle} className="py-8 md:py-12 lg:py-16">
           <div className="container mx-auto px-4">
-            {section.imageUrl && (
+            {resolvedImageUrl && (
               <img
-                src={section.imageUrl}
+                src={resolvedImageUrl}
                 alt={section.title}
                 className="w-full h-64 md:h-96 object-cover rounded-lg mb-6"
               />
@@ -96,11 +105,11 @@ const DynamicHomepageSection = ({ section }: DynamicHomepageSectionProps) => {
       return (
         <section style={baseSectionStyle} className="py-6 md:py-8">
           <div className="container mx-auto px-4">
-            {section.imageUrl && (
+            {resolvedImageUrl && (
               <div className="w-full rounded-xl overflow-hidden border border-black/5 bg-white/20">
                 <div className="aspect-[16/6] md:aspect-[16/5]">
                   <img
-                    src={section.imageUrl}
+                    src={resolvedImageUrl}
                     alt={section.title}
                     className="w-full h-full object-contain"
                   />
