@@ -24,7 +24,7 @@ dist-ssr
 *.sw?
 
 # Uploads
-server/uploads/
+backend/server/uploads/
 
 # Environment Variables
 .env

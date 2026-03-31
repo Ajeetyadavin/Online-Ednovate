@@ -1,23 +1,10 @@
 {
-  "name": "online-ednovate-workspace",
-  "private": true,
-  "scripts": {
-    "dev:frontend": "npm --prefix frontend run dev",
-    "dev:backend": "npm --prefix backend run dev",
-    "build:frontend": "npm --prefix frontend run build",
-    "preview:frontend": "npm --prefix frontend run preview",
-    "test:frontend": "npm --prefix frontend run test",
-    "lint:frontend": "npm --prefix frontend run lint"
-  }
-}{
-  "name": "vite_react_shadcn_ts",
+  "name": "online-ednovate-frontend",
   "private": true,
   "version": "0.0.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "server": "node server/index.js",
-    "server:dev": "node --watch server/index.js",
     "build": "vite build",
     "build:dev": "vite build --mode development",
     "lint": "eslint .",

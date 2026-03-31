@@ -4,8 +4,8 @@ services:
     runtime: node
     plan: starter
     rootDir: .
-    buildCommand: npm ci
-    startCommand: npm run server
+    buildCommand: npm install
+    startCommand: npm start
     autoDeploy: true
     healthCheckPath: /api/health
     envVars:
