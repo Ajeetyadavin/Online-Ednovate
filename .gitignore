@@ -28,3 +28,6 @@ backend/server/uploads/
 
 # Environment Variables
 .env
+.github/
+.vite/
+.vscode/
