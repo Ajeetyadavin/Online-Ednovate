@@ -71,15 +71,15 @@ const PopularCourses = () => {
   );
 
   return (
-    <section id="courses" className="py-12 md:py-16 relative overflow-hidden bg-gradient-to-b from-muted/20 via-background to-muted/35">
+    <section id="courses" className="py-7 md:py-10 relative overflow-hidden bg-gradient-to-b from-muted/20 via-background to-muted/35">
       <div className="absolute inset-0 pointer-events-none">
         <div className="absolute -top-24 -left-16 w-72 h-72 rounded-full bg-primary/10 blur-3xl" />
         <div className="absolute -bottom-24 -right-16 w-72 h-72 rounded-full bg-accent/10 blur-3xl" />
       </div>
 
       <div className="container mx-auto px-4 relative z-10">
-        <div ref={titleRef} className={`text-center mb-8 md:mb-10 reveal-up ${titleVisible ? "visible" : ""}`}>
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/15 mb-4">
+        <div ref={titleRef} className={`text-center mb-7 md:mb-9 reveal-up ${titleVisible ? "visible" : ""}`}>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/15 mb-3">
             <Sparkles className="w-3.5 h-3.5 text-primary" />
             <span className="text-primary text-xs font-extrabold uppercase tracking-widest">Explore</span>
           </div>

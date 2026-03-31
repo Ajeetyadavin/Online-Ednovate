@@ -538,6 +538,95 @@ export default function AdminHomepage() {
             </div>
           </div>
 
+          <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
+            <div>
+              <p className="text-sm font-bold text-slate-800">Announcement Bar</p>
+              <p className="text-xs text-slate-400 mt-0.5">Control ticker colors, text size, and scrolling speed from admin.</p>
+            </div>
+
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 space-y-2">
+              <FL>Scroll Speed (seconds)</FL>
+              <div className="grid gap-2 sm:grid-cols-[1fr_96px] sm:items-center">
+                <input
+                  type="range"
+                  min={6}
+                  max={120}
+                  step={1}
+                  value={siteDraft.header.announcementSpeedSeconds}
+                  onChange={(e) => {
+                    const nextSpeed = Math.min(120, Math.max(6, Number(e.target.value || 28)));
+                    setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementSpeedSeconds: nextSpeed } }));
+                  }}
+                  className="w-full"
+                />
+                <Input
+                  className={fCls}
+                  type="number"
+                  min={6}
+                  max={120}
+                  value={siteDraft.header.announcementSpeedSeconds}
+                  onChange={(e) => {
+                    const nextSpeed = Math.min(120, Math.max(6, Number(e.target.value || 28)));
+                    setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementSpeedSeconds: nextSpeed } }));
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <div className="space-y-1.5">
+                <FL>Live Badge Text</FL>
+                <Input
+                  className={fCls}
+                  placeholder="LIVE"
+                  value={siteDraft.header.announcementBar.liveLabel}
+                  onChange={(e) => setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, liveLabel: e.target.value } } }))}
+                />
+              </div>
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ColorField label="Bar Background" value={siteDraft.header.announcementBar.backgroundColor} onChange={(value) => setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, backgroundColor: value } } }))} />
+              <ColorField label="Bar Border" value={siteDraft.header.announcementBar.borderColor} onChange={(value) => setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, borderColor: value } } }))} />
+              <ColorField label="Live Badge Background" value={siteDraft.header.announcementBar.badgeBackgroundColor} onChange={(value) => setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, badgeBackgroundColor: value } } }))} />
+              <ColorField label="Live Badge Text" value={siteDraft.header.announcementBar.badgeTextColor} onChange={(value) => setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, badgeTextColor: value } } }))} />
+              <ColorField label="Announcement Text" value={siteDraft.header.announcementBar.textColor} onChange={(value) => setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, textColor: value } } }))} />
+              <ColorField label="Title Text" value={siteDraft.header.announcementBar.titleColor} onChange={(value) => setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, titleColor: value } } }))} />
+            </div>
+
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+              <ColorField label="Bullet Color" value={siteDraft.header.announcementBar.bulletColor} onChange={(value) => setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, bulletColor: value } } }))} />
+              <div className="space-y-1.5">
+                <FL>Desktop Text Size (px)</FL>
+                <Input
+                  className={fCls}
+                  type="number"
+                  min={10}
+                  max={24}
+                  value={siteDraft.header.announcementBar.fontSizePx}
+                  onChange={(e) => {
+                    const nextSize = Math.min(24, Math.max(10, Number(e.target.value || 14)));
+                    setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, fontSizePx: nextSize } } }));
+                  }}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <FL>Mobile Text Size (px)</FL>
+                <Input
+                  className={fCls}
+                  type="number"
+                  min={9}
+                  max={20}
+                  value={siteDraft.header.announcementBar.mobileFontSizePx}
+                  onChange={(e) => {
+                    const nextSize = Math.min(20, Math.max(9, Number(e.target.value || 12)));
+                    setSiteDraft((p) => ({ ...p, header: { ...p.header, announcementBar: { ...p.header.announcementBar, mobileFontSizePx: nextSize } } }));
+                  }}
+                />
+              </div>
+            </div>
+          </div>
+
           {/* FAQ */}
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-3">
             <div className="flex items-center justify-between"><p className="text-sm font-bold text-slate-800">FAQ Content</p><Button type="button" size="sm" variant="outline" className="rounded-xl text-xs" onClick={addFaqItem}>+ Add Question</Button></div>

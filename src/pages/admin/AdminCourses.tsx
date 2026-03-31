@@ -226,6 +226,7 @@ export default function AdminCourses() {
   const [courseFilter, setCourseFilter] = useState("all");
   const [levelFilter, setLevelFilter] = useState("all");
   const [subjectFilter, setSubjectFilter] = useState("all");
+  const [chapterFilter, setChapterFilter] = useState("all");
   const [showHeaderFilters, setShowHeaderFilters] = useState(false);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
@@ -710,6 +711,27 @@ export default function AdminCourses() {
     return Array.from(new Set(pool.map((item) => String(item.subject || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
   }, [courses, courseFilter, levelFilter]);
 
+  const chapterFilterOptions = useMemo(() => {
+    const pool = courses.filter((item) => {
+      if (courseFilter !== "all" && item.category !== courseFilter) return false;
+      if (levelFilter !== "all" && String(item.subcategory || "") !== levelFilter) return false;
+      if (subjectFilter !== "all" && String(item.subject || "").trim() !== subjectFilter) return false;
+      return true;
+    });
+
+    return Array.from(
+      new Set(
+        pool.flatMap((item) => {
+          const selected = Array.isArray(item.selectedChapters)
+            ? item.selectedChapters.map((chapter) => String(chapter || "").trim()).filter(Boolean)
+            : [];
+          const fallback = String(item.chapter || "").trim();
+          return selected.length > 0 ? selected : (fallback ? [fallback] : []);
+        }),
+      ),
+    ).sort((a, b) => a.localeCompare(b));
+  }, [courses, courseFilter, levelFilter, subjectFilter]);
+
   useEffect(() => {
     if (courseFilter === "all") return;
     const valid = courseFilterOptions.some((item) => item.id === courseFilter);
@@ -728,6 +750,12 @@ export default function AdminCourses() {
     if (!valid) setSubjectFilter("all");
   }, [subjectFilter, subjectFilterOptions]);
 
+  useEffect(() => {
+    if (chapterFilter === "all") return;
+    const valid = chapterFilterOptions.includes(chapterFilter);
+    if (!valid) setChapterFilter("all");
+  }, [chapterFilter, chapterFilterOptions]);
+
   const filteredCourses = useMemo(() =>
     courses
       .filter((c) => {
@@ -739,10 +767,18 @@ export default function AdminCourses() {
         if (courseFilter !== "all" && c.category !== courseFilter) return false;
         if (levelFilter !== "all" && String(c.subcategory || "") !== levelFilter) return false;
         if (subjectFilter !== "all" && String(c.subject || "").trim() !== subjectFilter) return false;
+        if (chapterFilter !== "all") {
+          const selected = Array.isArray(c.selectedChapters)
+            ? c.selectedChapters.map((chapter) => String(chapter || "").trim()).filter(Boolean)
+            : [];
+          const fallback = String(c.chapter || "").trim();
+          const chapterNames = selected.length > 0 ? selected : (fallback ? [fallback] : []);
+          if (!chapterNames.includes(chapterFilter)) return false;
+        }
         return true;
       })
       .sort((a, b) => sortOrder === "asc" ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title)),
-  [courses, categoriesById, searchTerm, sortOrder, courseFilter, levelFilter, subjectFilter]);
+  [courses, categoriesById, searchTerm, sortOrder, courseFilter, levelFilter, subjectFilter, chapterFilter]);
 
   const suggestedFaculty = useMemo(() => {
     const query = form.professor.trim().toLowerCase();
@@ -1675,6 +1711,7 @@ export default function AdminCourses() {
                   setCourseFilter(next);
                   setLevelFilter("all");
                   setSubjectFilter("all");
+                  setChapterFilter("all");
                 }}
               >
                 <option value="all">All Courses</option>
@@ -1688,6 +1725,7 @@ export default function AdminCourses() {
                 onChange={(e) => {
                   setLevelFilter(e.target.value);
                   setSubjectFilter("all");
+                  setChapterFilter("all");
                 }}
               >
                 <option value="all">All Levels</option>
@@ -1698,14 +1736,27 @@ export default function AdminCourses() {
               <select
                 className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700"
                 value={subjectFilter}
-                onChange={(e) => setSubjectFilter(e.target.value)}
+                onChange={(e) => {
+                  setSubjectFilter(e.target.value);
+                  setChapterFilter("all");
+                }}
               >
                 <option value="all">All Subjects</option>
                 {subjectFilterOptions.map((name) => (
                   <option key={name} value={name}>{name}</option>
                 ))}
               </select>
-              {(courseFilter !== "all" || levelFilter !== "all" || subjectFilter !== "all") && (
+              <select
+                className="h-9 rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700"
+                value={chapterFilter}
+                onChange={(e) => setChapterFilter(e.target.value)}
+              >
+                <option value="all">All Chapters</option>
+                {chapterFilterOptions.map((name) => (
+                  <option key={name} value={name}>{name}</option>
+                ))}
+              </select>
+              {(courseFilter !== "all" || levelFilter !== "all" || subjectFilter !== "all" || chapterFilter !== "all") && (
                 <Button
                   type="button"
                   variant="outline"
@@ -1715,6 +1766,7 @@ export default function AdminCourses() {
                     setCourseFilter("all");
                     setLevelFilter("all");
                     setSubjectFilter("all");
+                    setChapterFilter("all");
                   }}
                 >
                   Clear Filters

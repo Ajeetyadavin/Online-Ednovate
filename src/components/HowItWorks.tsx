@@ -66,7 +66,7 @@ const HowItWorks = () => {
   const displaySteps = configured?.steps?.length ? configured.steps : steps;
 
   return (
-    <section className="py-12 md:py-16 relative overflow-hidden" style={{ backgroundColor }}>
+    <section className="py-6 md:py-9 relative overflow-hidden" style={{ backgroundColor }}>
       {/* Decorative background elements */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div className="absolute -top-24 -right-24 w-96 h-96 bg-primary/[0.03] rounded-full blur-3xl" />
@@ -75,8 +75,8 @@ const HowItWorks = () => {
 
       <div className="container mx-auto px-4 relative z-10">
         {/* Header */}
-        <div ref={ref} className={`text-center mb-10 md:mb-14 reveal-up ${isVisible ? "visible" : ""}`}>
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 mb-4">
+        <div ref={ref} className={`text-center mb-7 md:mb-9 reveal-up ${isVisible ? "visible" : ""}`}>
+          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 mb-3">
             <div className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
             <span className="text-xs font-bold uppercase tracking-widest text-primary">Simple Process</span>
           </div>

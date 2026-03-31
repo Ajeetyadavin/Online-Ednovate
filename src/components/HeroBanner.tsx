@@ -40,9 +40,9 @@ const HeroBanner = () => {
   const next = () => goTo((current + 1) % visibleBanners.length);
 
   return (
-    <section className="relative overflow-hidden group bg-gradient-to-b from-muted/35 to-background">
+    <section className="relative overflow-hidden group bg-background -mt-3 md:-mt-5 lg:-mt-6">
       <div className="w-full pt-0 pb-1 md:pb-2">
-        <div className="relative overflow-hidden border-y border-border/60 shadow-[0_18px_40px_-34px_hsl(var(--primary)/0.18)]">
+        <div className="relative overflow-hidden border-b border-border/60 shadow-[0_18px_40px_-34px_hsl(var(--primary)/0.18)]">
           <Link to="/packages" className="block">
             <div className="relative aspect-[16/6.3] sm:aspect-[16/5.9] md:aspect-[16/6.1] xl:aspect-[16/6.4] 2xl:aspect-[16/6.8]">
               {visibleBanners.map((slide, i) => (
@@ -61,16 +61,6 @@ const HeroBanner = () => {
                 </div>
               ))}
 
-              <div className="absolute bottom-0 left-0 right-0 h-0.5 bg-primary-foreground/15 z-20">
-                <div
-                  className="h-full bg-accent transition-all ease-linear"
-                  style={{
-                    width: "100%",
-                    animation: "progress 5s linear infinite",
-                  }}
-                  key={current}
-                />
-              </div>
             </div>
           </Link>
 

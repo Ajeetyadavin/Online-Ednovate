@@ -45,6 +45,19 @@ export interface HeaderCourseCollection {
   courseVisibleUntil: string;
 }
 
+export interface AnnouncementBarSettings {
+  liveLabel: string;
+  backgroundColor: string;
+  borderColor: string;
+  badgeBackgroundColor: string;
+  badgeTextColor: string;
+  textColor: string;
+  titleColor: string;
+  bulletColor: string;
+  fontSizePx: number;
+  mobileFontSizePx: number;
+}
+
 export type MobileFooterAction = "link" | "tel" | "login" | "dashboard";
 export type MobileFooterIcon = "home" | "courses" | "phone" | "profile" | "login" | "support" | "settings";
 
@@ -192,6 +205,7 @@ export interface SiteSettings {
     loginLabel: string;
     signupLabel: string;
     announcementSpeedSeconds: number;
+    announcementBar: AnnouncementBarSettings;
     showBrandText: boolean;
     brandTitle: string;
     brandSubtitle: string;
@@ -313,6 +327,18 @@ const createDefaultSettings = (): SiteSettings => ({
     loginLabel: "Login",
     signupLabel: "Sign Up Free",
     announcementSpeedSeconds: 28,
+    announcementBar: {
+      liveLabel: "LIVE",
+      backgroundColor: "#FFFFFF",
+      borderColor: "#E74623",
+      badgeBackgroundColor: "#E74623",
+      badgeTextColor: "#FFFFFF",
+      textColor: "#5C1A0D",
+      titleColor: "#5C1A0D",
+      bulletColor: "#E74623",
+      fontSizePx: 14,
+      mobileFontSizePx: 12,
+    },
     showBrandText: false,
     brandTitle: "Ednovate",
     brandSubtitle: "Exam Ready Learning",
@@ -764,6 +790,30 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
     header: {
       ...base.header,
       ...(stored.header || {}),
+      announcementSpeedSeconds:
+        typeof stored.header?.announcementSpeedSeconds === "number" && Number.isFinite(stored.header.announcementSpeedSeconds)
+          ? Math.min(120, Math.max(6, stored.header.announcementSpeedSeconds))
+          : base.header.announcementSpeedSeconds,
+      announcementBar: {
+        ...base.header.announcementBar,
+        ...(stored.header?.announcementBar || {}),
+        liveLabel: String(stored.header?.announcementBar?.liveLabel || base.header.announcementBar.liveLabel),
+        backgroundColor: String(stored.header?.announcementBar?.backgroundColor || base.header.announcementBar.backgroundColor),
+        borderColor: String(stored.header?.announcementBar?.borderColor || base.header.announcementBar.borderColor),
+        badgeBackgroundColor: String(stored.header?.announcementBar?.badgeBackgroundColor || base.header.announcementBar.badgeBackgroundColor),
+        badgeTextColor: String(stored.header?.announcementBar?.badgeTextColor || base.header.announcementBar.badgeTextColor),
+        textColor: String(stored.header?.announcementBar?.textColor || base.header.announcementBar.textColor),
+        titleColor: String(stored.header?.announcementBar?.titleColor || base.header.announcementBar.titleColor),
+        bulletColor: String(stored.header?.announcementBar?.bulletColor || base.header.announcementBar.bulletColor),
+        fontSizePx:
+          typeof stored.header?.announcementBar?.fontSizePx === "number" && Number.isFinite(stored.header.announcementBar.fontSizePx)
+            ? Math.min(24, Math.max(10, stored.header.announcementBar.fontSizePx))
+            : base.header.announcementBar.fontSizePx,
+        mobileFontSizePx:
+          typeof stored.header?.announcementBar?.mobileFontSizePx === "number" && Number.isFinite(stored.header.announcementBar.mobileFontSizePx)
+            ? Math.min(20, Math.max(9, stored.header.announcementBar.mobileFontSizePx))
+            : base.header.announcementBar.mobileFontSizePx,
+      },
       showBrandText:
         typeof stored.header?.showBrandText === "boolean"
           ? stored.header.showBrandText
@@ -1082,6 +1132,24 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
       header: {
         ...prev.header,
         ...header,
+        announcementSpeedSeconds:
+          typeof header.announcementSpeedSeconds === "number" && Number.isFinite(header.announcementSpeedSeconds)
+            ? Math.min(120, Math.max(6, header.announcementSpeedSeconds))
+            : prev.header.announcementSpeedSeconds,
+        announcementBar: header.announcementBar
+          ? {
+              ...prev.header.announcementBar,
+              ...header.announcementBar,
+              fontSizePx:
+                typeof header.announcementBar.fontSizePx === "number" && Number.isFinite(header.announcementBar.fontSizePx)
+                  ? Math.min(24, Math.max(10, header.announcementBar.fontSizePx))
+                  : prev.header.announcementBar.fontSizePx,
+              mobileFontSizePx:
+                typeof header.announcementBar.mobileFontSizePx === "number" && Number.isFinite(header.announcementBar.mobileFontSizePx)
+                  ? Math.min(20, Math.max(9, header.announcementBar.mobileFontSizePx))
+                  : prev.header.announcementBar.mobileFontSizePx,
+            }
+          : prev.header.announcementBar,
         showBrandText: header.showBrandText ?? prev.header.showBrandText,
         brandTitle: header.brandTitle ?? prev.header.brandTitle,
         brandSubtitle: header.brandSubtitle ?? prev.header.brandSubtitle,

@@ -1,63 +1,250 @@
-import { Megaphone } from "lucide-react";
-import { Link } from "react-router-dom";
+import type { CSSProperties } from "react";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 
+const BRAND = "#E74623";
+
 const AnnouncementBar = () => {
   const { announcements } = usePlatformData();
-  const visibleAnnouncements = announcements.filter((announcement) => announcement.isVisible);
+  const visibleAnnouncements = announcements.filter((a) => a.isVisible);
   const { settings } = useSiteSettings();
-  const speedSeconds = settings.header.announcementSpeedSeconds || 28;
+  const speedSeconds = settings.header.announcementSpeedSeconds || 18;
+  const announcementBarSettings = settings.header.announcementBar;
 
-  if (visibleAnnouncements.length === 0) {
-    return null;
-  }
+  const liveLabel = announcementBarSettings?.liveLabel || "LIVE";
+  const backgroundColor = announcementBarSettings?.backgroundColor || "#FFFFFF";
+  const borderColor = announcementBarSettings?.borderColor || BRAND;
+  const badgeBackgroundColor = announcementBarSettings?.badgeBackgroundColor || BRAND;
+  const badgeTextColor = announcementBarSettings?.badgeTextColor || "#FFFFFF";
+  const textColor = announcementBarSettings?.textColor || "#5C1A0D";
+  const titleColor = announcementBarSettings?.titleColor || textColor;
+  const bulletColor = announcementBarSettings?.bulletColor || BRAND;
+  const fontSizePx = announcementBarSettings?.fontSizePx || 14;
+  const mobileFontSizePx = announcementBarSettings?.mobileFontSizePx || 12;
+
+  if (visibleAnnouncements.length === 0) return null;
+
+  const doubled = [...visibleAnnouncements, ...visibleAnnouncements];
 
   return (
-    <section className="bg-background py-1.5 md:py-2 overflow-x-clip">
-      <div className="w-full">
-        <div className="relative overflow-hidden border-y border-[rgba(38,72,151,0.25)] bg-[rgb(38,72,151)] shadow-[0_18px_45px_-30px_rgba(38,72,151,0.85)]">
-          {/* subtle pattern */}
+    <>
+      <style>{`
+        @keyframes aticker-ring {
+          0%   { transform: translate(-50%, -50%) scale(0.6); opacity: 0.8; }
+          100% { transform: translate(-50%, -50%) scale(2);   opacity: 0; }
+        }
+        @keyframes aticker-scroll {
+          0%   { transform: translateX(0); }
+          100% { transform: translateX(-50%); }
+        }
+        .aticker-ring {
+          animation: aticker-ring 1.8s ease-out infinite;
+        }
+        .aticker-track {
+          animation: aticker-scroll var(--ticker-duration, 18s) linear infinite;
+        }
+        .aticker-track:hover {
+          animation-play-state: paused;
+        }
+        @media (max-width: 639px) {
+          .announcement-bar-wrap {
+            border-radius: 0 !important;
+            border-left: none !important;
+            border-right: none !important;
+            height: 38px !important;
+          }
+          .aticker-label-block {
+            width: 76px !important;
+            gap: 5px !important;
+          }
+          .aticker-live-text {
+            font-size: 9px !important;
+          }
+          .aticker-left-fade {
+            left: 76px !important;
+            width: 24px !important;
+          }
+          .aticker-scroll-container {
+            left: 76px !important;
+          }
+          .aticker-item-text {
+            font-size: var(--ticker-mobile-font-size, 12px) !important;
+            padding: 0 18px !important;
+          }
+        }
+      `}</style>
+
+      <section className="bg-background py-2 mt-2 sm:mt-0">
+        <div
+          className="announcement-bar-wrap"
+          style={{
+            position: "relative",
+            background: backgroundColor,
+            border: `1.5px solid ${borderColor}`,
+            borderRadius: "10px",
+            height: "44px",
+            overflow: "hidden",
+            display: "flex",
+            alignItems: "stretch",
+            ["--ticker-mobile-font-size" as string]: `${mobileFontSizePx}px`,
+          }}
+        >
+          {/* ── Left label block ── */}
           <div
-            className="pointer-events-none absolute inset-0 opacity-[0.08]"
+            className="aticker-label-block"
             style={{
-              backgroundImage: "radial-gradient(circle at 1px 1px, white 1px, transparent 0)",
-              backgroundSize: "18px 18px",
+              background: badgeBackgroundColor,
+              flexShrink: 0,
+              width: "100px",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: "8px",
+              padding: "0 14px",
+              zIndex: 3,
+              position: "relative",
+            }}
+          >
+            {/* Pulse dot with animated ring */}
+            <span
+              style={{
+                position: "relative",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                width: "14px",
+                height: "14px",
+                flexShrink: 0,
+              }}
+            >
+              <span
+                className="aticker-ring"
+                style={{
+                  position: "absolute",
+                  top: "50%",
+                  left: "50%",
+                  width: "7px",
+                  height: "7px",
+                  borderRadius: "50%",
+                  border: `1.5px solid ${badgeTextColor}`,
+                  opacity: 0.6,
+                }}
+              />
+              <span
+                style={{
+                  width: "7px",
+                  height: "7px",
+                  borderRadius: "50%",
+                  background: badgeTextColor,
+                  flexShrink: 0,
+                  position: "relative",
+                  zIndex: 1,
+                }}
+              />
+            </span>
+
+            {/* LIVE label */}
+            <span
+              className="aticker-live-text"
+              style={{
+                fontFamily: "'Syne', sans-serif",
+                fontSize: "10px",
+                fontWeight: 800,
+                color: badgeTextColor,
+                letterSpacing: "0.1em",
+                whiteSpace: "nowrap",
+              }}
+            >
+              {liveLabel}
+            </span>
+          </div>
+
+          {/* ── Left fade ── */}
+          <div
+            className="aticker-left-fade"
+            style={{
+              position: "absolute",
+              left: "100px",
+              top: 0,
+              bottom: 0,
+              width: "40px",
+              background: `linear-gradient(to right, ${backgroundColor}, transparent)`,
+              zIndex: 2,
+              pointerEvents: "none",
             }}
           />
 
-          <div className="flex items-center h-11 md:h-12">
-            <div className="relative z-10 flex items-center gap-2 shrink-0 px-3.5 sm:px-4 bg-white/10 h-full border-r border-white/10">
-              <span className="w-1.5 h-1.5 rounded-full bg-[rgb(231,70,35)] animate-pulse" />
-              <Megaphone className="hidden sm:block w-4 h-4 text-white/90" />
-              <span className="text-[10px] md:text-[11px] font-extrabold text-white uppercase tracking-[0.14em]">
-                Notice
-              </span>
-            </div>
+          {/* ── Right fade ── */}
+          <div
+            style={{
+              position: "absolute",
+              right: 0,
+              top: 0,
+              bottom: 0,
+              width: "60px",
+              background: `linear-gradient(to left, ${backgroundColor}, transparent)`,
+              zIndex: 2,
+              pointerEvents: "none",
+            }}
+          />
 
-            <div className="flex-1 overflow-hidden relative">
-              <div
-                className="flex animate-marquee whitespace-nowrap gap-8 sm:gap-12 py-2 px-3.5 sm:px-5 hover:[animation-play-state:paused]"
-                style={{ animationDuration: `${speedSeconds}s` }}
-              >
-                {[...visibleAnnouncements, ...visibleAnnouncements].map((item, i) => (
-                  <Link
-                    key={i}
-                    to={item.link}
-                    className="inline-flex items-center gap-2 text-[11px] sm:text-xs font-semibold text-white/85 hover:text-white transition-colors"
+          {/* ── Scrolling track container ── */}
+          <div
+            className="aticker-scroll-container"
+            style={{
+              position: "absolute",
+              left: "100px",
+              right: 0,
+              top: 0,
+              bottom: 0,
+              overflow: "hidden",
+              display: "flex",
+              alignItems: "center",
+            }}
+          >
+            <div
+              className="aticker-track"
+              style={{
+                display: "flex",
+                alignItems: "center",
+                whiteSpace: "nowrap",
+                ["--ticker-duration" as string]: `${speedSeconds}s`,
+              } as CSSProperties}
+            >
+              {doubled.map((item, i) => (
+                <span
+                  key={i}
+                  className="aticker-item-text"
+                  style={{
+                    fontFamily: "'DM Sans', sans-serif",
+                    fontSize: `${fontSizePx}px`,
+                    fontWeight: 400,
+                    color: textColor,
+                    padding: "0 30px",
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "10px",
+                    flexShrink: 0,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontFamily: "'Syne', sans-serif",
+                      fontWeight: 500,
+                      color: titleColor,
+                    }}
                   >
-                    <span className="w-1.5 h-1.5 rounded-full bg-[rgb(231,70,35)] shrink-0" />
-                    <span className="text-white font-extrabold">{item.title}</span>
-                    <span className="text-white/70">•</span>
-                    <span className="text-white/80">{item.content}</span>
-                  </Link>
-                ))}
-              </div>
+                    {item.title}:
+                  </span>
+                  {item.content}
+                  <span style={{ color: bulletColor, fontSize: "18px", lineHeight: "1" }}>•</span>
+                </span>
+              ))}
             </div>
           </div>
         </div>
-      </div>
-    </section>
+      </section>
+    </>
   );
 };
 

@@ -111,6 +111,14 @@ const Packages = () => {
     return levelCategory?.parentId || levelId;
   };
 
+  const resolveCourseChapterNames = (course: (typeof managedCourses)[number]) => {
+    const selected = Array.isArray(course.selectedChapters)
+      ? course.selectedChapters.map((chapter) => String(chapter || "").trim()).filter(Boolean)
+      : [];
+    const fallback = String(course.chapter || "").trim();
+    return selected.length > 0 ? selected : (fallback ? [fallback] : []);
+  };
+
   const visibleCategoryIds = useMemo(
     () => new Set(managedCategories.filter((category) => category.isVisible).map((category) => category.id)),
     [managedCategories],
@@ -228,6 +236,8 @@ const Packages = () => {
   // Filter states
   const [selectedParentGroups, setSelectedParentGroups] = useState<string[]>([]);
   const [selectedSubcategories, setSelectedSubcategories] = useState<string[]>([]);
+  const [selectedSubjects, setSelectedSubjects] = useState<string[]>([]);
+  const [selectedChapters, setSelectedChapters] = useState<string[]>([]);
   const [selectedTypes, setSelectedTypes] = useState<string[]>([]);
   const [selectedLanguages, setSelectedLanguages] = useState<string[]>([]);
   const [selectedProfessors, setSelectedProfessors] = useState<string[]>([]);
@@ -236,6 +246,8 @@ const Packages = () => {
   const [openSections, setOpenSections] = useState<Record<string, boolean>>({
     categories: false,
     levels: false,
+    subjects: false,
+    chapters: false,
     types: false,
     language: false,
     professor: false,
@@ -272,6 +284,8 @@ const Packages = () => {
   const activeFilterCount =
     selectedParentGroups.length +
     selectedSubcategories.length +
+    selectedSubjects.length +
+    selectedChapters.length +
     selectedTypes.length +
     selectedLanguages.length +
     selectedProfessors.length +
@@ -280,6 +294,8 @@ const Packages = () => {
   const clearAllFilters = () => {
     setSelectedParentGroups([]);
     setSelectedSubcategories([]);
+    setSelectedSubjects([]);
+    setSelectedChapters([]);
     setSelectedTypes([]);
     setSelectedLanguages([]);
     setSelectedProfessors([]);
@@ -329,8 +345,49 @@ const Packages = () => {
     return childrenArr;
   }, [selectedParentGroups, dynamicCourseGroups, courses, categoriesById]);
 
-  const dynamicDeliveryModes = useMemo(() => {
+  const dynamicSubjects = useMemo(() => {
     const pool = coursePoolAfterCategory;
+    const subjectCounts = new Map<string, number>();
+    pool.forEach((course) => {
+      const subject = String(course.subject || "").trim();
+      if (!subject) return;
+      subjectCounts.set(subject, (subjectCounts.get(subject) || 0) + 1);
+    });
+    return Array.from(subjectCounts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [coursePoolAfterCategory]);
+
+  const coursePoolAfterSubject = useMemo(() => {
+    if (selectedSubjects.length === 0) return coursePoolAfterCategory;
+    return coursePoolAfterCategory.filter((course) => selectedSubjects.includes(String(course.subject || "").trim()));
+  }, [coursePoolAfterCategory, selectedSubjects]);
+
+  const dynamicChapters = useMemo(() => {
+    if (selectedSubjects.length === 0) return [];
+    const chapterCounts = new Map<string, number>();
+    coursePoolAfterSubject.forEach((course) => {
+      resolveCourseChapterNames(course).forEach((chapter) => {
+        chapterCounts.set(chapter, (chapterCounts.get(chapter) || 0) + 1);
+      });
+    });
+    return Array.from(chapterCounts.entries())
+      .map(([label, count]) => ({ label, count }))
+      .sort((a, b) => a.label.localeCompare(b.label));
+  }, [coursePoolAfterSubject, selectedSubjects]);
+
+  const coursePoolAfterAcademicFilters = useMemo(() => {
+    let pool = coursePoolAfterSubject;
+    if (selectedChapters.length > 0) {
+      pool = pool.filter((course) =>
+        resolveCourseChapterNames(course).some((chapter) => selectedChapters.includes(chapter)),
+      );
+    }
+    return pool;
+  }, [coursePoolAfterSubject, selectedChapters]);
+
+  const dynamicDeliveryModes = useMemo(() => {
+    const pool = coursePoolAfterAcademicFilters;
     const modesMap = new Map<string, number>();
     pool.forEach((c) => {
       if (Array.isArray(c.deliveryModes)) {
@@ -341,10 +398,10 @@ const Packages = () => {
       }
     });
     return Array.from(modesMap, ([id, count]) => ({ id, label: id.charAt(0).toUpperCase() + id.slice(1), count }));
-  }, [coursePoolAfterCategory]);
+  }, [coursePoolAfterAcademicFilters]);
 
   const dynamicTypes = useMemo(() => {
-    const pool = coursePoolAfterCategory;
+    const pool = coursePoolAfterAcademicFilters;
     const types: { id: string; label: string; count: number }[] = [];
     const comboCount = pool.filter((c) => c.isCombo).length;
     const materialCount = pool.filter((c) => c.isMaterial).length;
@@ -353,28 +410,34 @@ const Packages = () => {
     if (materialCount > 0) types.push({ id: "material", label: "Study Materials", count: materialCount });
     if (singleCount > 0) types.push({ id: "single", label: "Single Subject", count: singleCount });
     return types;
-  }, [coursePoolAfterCategory]);
+  }, [coursePoolAfterAcademicFilters]);
 
   const dynamicLanguages = useMemo(() => {
-    const pool = coursePoolAfterCategory;
+    const pool = coursePoolAfterAcademicFilters;
     const langs = [...new Set(pool.map((c) => c.language))];
     return langs.map((l) => ({
       label: l,
       count: pool.filter((c) => c.language === l).length,
     }));
-  }, [coursePoolAfterCategory]);
+  }, [coursePoolAfterAcademicFilters]);
 
   const dynamicProfessors = useMemo(() => {
-    const pool = coursePoolAfterCategory;
+    const pool = coursePoolAfterAcademicFilters;
     const profs = [...new Set(pool.map((c) => c.professor))];
     return profs.map((p) => ({
       label: p,
       count: pool.filter((c) => c.professor === p).length,
     }));
-  }, [coursePoolAfterCategory]);
+  }, [coursePoolAfterAcademicFilters]);
 
   // Keep filter selections valid as filter options change.
   useEffect(() => {
+    const validSubjects = dynamicSubjects.map((item) => item.label);
+    setSelectedSubjects((prev) => prev.filter((subject) => validSubjects.includes(subject)));
+
+    const validChapters = dynamicChapters.map((item) => item.label);
+    setSelectedChapters((prev) => prev.filter((chapter) => validChapters.includes(chapter)));
+
     const validTypeIds = dynamicTypes.map((t) => t.id);
     setSelectedTypes((prev) => prev.filter((t) => validTypeIds.includes(t)));
 
@@ -386,11 +449,11 @@ const Packages = () => {
 
     const validModes = dynamicDeliveryModes.map((m) => m.id);
     setSelectedDeliveryModes((prev) => prev.filter((m) => validModes.includes(m)));
-  }, [dynamicTypes, dynamicLanguages, dynamicProfessors, dynamicDeliveryModes]);
+  }, [dynamicSubjects, dynamicChapters, dynamicTypes, dynamicLanguages, dynamicProfessors, dynamicDeliveryModes]);
 
   // ── Final filtered results ────────────────────────────────────────
   const filtered = useMemo(() => {
-    let result = coursePoolAfterCategory;
+    let result = coursePoolAfterAcademicFilters;
 
     if (selectedTypes.length > 0) {
       result = result.filter((c) => {
@@ -431,7 +494,7 @@ const Packages = () => {
     if (sortBy === "discount") result = [...result].sort((a, b) => b.discount - a.discount);
 
     return result;
-  }, [coursePoolAfterCategory, selectedTypes, selectedLanguages, selectedProfessors, selectedDeliveryModes, searchQuery, sortBy]);
+  }, [coursePoolAfterAcademicFilters, selectedTypes, selectedLanguages, selectedProfessors, selectedDeliveryModes, searchQuery, sortBy]);
 
   // ── Sidebar content ───────────────────────────────────────────────
   const filterSidebar = (
@@ -479,6 +542,18 @@ const Packages = () => {
               </span>
             );
           })}
+          {selectedSubjects.map((subject) => (
+            <span key={subject} className="inline-flex items-center gap-1 px-2 py-0.5 bg-amber-500/15 text-amber-700 text-[10px] font-bold rounded-full">
+              {subject}
+              <X className="w-2.5 h-2.5 cursor-pointer hover:opacity-70" onClick={() => toggleFilter(selectedSubjects, setSelectedSubjects, subject)} />
+            </span>
+          ))}
+          {selectedChapters.map((chapter) => (
+            <span key={chapter} className="inline-flex items-center gap-1 px-2 py-0.5 bg-sky-500/15 text-sky-700 text-[10px] font-bold rounded-full">
+              {chapter}
+              <X className="w-2.5 h-2.5 cursor-pointer hover:opacity-70" onClick={() => toggleFilter(selectedChapters, setSelectedChapters, chapter)} />
+            </span>
+          ))}
           {selectedTypes.map((id) => (
             <span key={id} className="inline-flex items-center gap-1 px-2 py-0.5 bg-primary/80 text-primary-foreground text-[10px] font-bold rounded-full">
               {id === "combo" ? "Combo" : id === "material" ? "Material" : "Single"}
@@ -529,6 +604,8 @@ const Packages = () => {
                 checked={selectedParentGroups.includes(group.id)}
                 onChange={() => {
                   toggleFilter(selectedParentGroups, setSelectedParentGroups, group.id);
+                  setSelectedSubjects([]);
+                  setSelectedChapters([]);
                   if (!selectedParentGroups.includes(group.id)) {
                     // When selecting parent, auto-clear any old selected types/languages to reset filters
                     setSelectedTypes([]);
@@ -555,12 +632,62 @@ const Packages = () => {
                 key={level.id}
                 label={level.label}
                 checked={selectedSubcategories.includes(level.id)}
-                onChange={() => toggleFilter(selectedSubcategories, setSelectedSubcategories, level.id)}
+                onChange={() => {
+                  toggleFilter(selectedSubcategories, setSelectedSubcategories, level.id);
+                  setSelectedSubjects([]);
+                  setSelectedChapters([]);
+                }}
                 count={level.count}
               />
             ))
           ) : (
             <p className="text-xs text-muted-foreground italic">Select a course to see levels</p>
+          )}
+        </div>
+      </FilterSection>
+
+      <FilterSection
+        title="Subjects"
+        isOpen={openSections.subjects}
+        onToggle={() => toggleSection("subjects")}
+        badge={selectedSubjects.length}
+      >
+        <div className="space-y-0">
+          {dynamicSubjects.length > 0 ? (
+            dynamicSubjects.map((subject) => (
+              <CheckItem
+                key={subject.label}
+                label={subject.label}
+                checked={selectedSubjects.includes(subject.label)}
+                onChange={() => toggleFilter(selectedSubjects, setSelectedSubjects, subject.label)}
+                count={subject.count}
+              />
+            ))
+          ) : (
+            <p className="text-xs text-muted-foreground italic">Select a course or level to see subjects</p>
+          )}
+        </div>
+      </FilterSection>
+
+      <FilterSection
+        title="Chapters"
+        isOpen={openSections.chapters}
+        onToggle={() => toggleSection("chapters")}
+        badge={selectedChapters.length}
+      >
+        <div className="space-y-0">
+          {dynamicChapters.length > 0 ? (
+            dynamicChapters.map((chapter) => (
+              <CheckItem
+                key={chapter.label}
+                label={chapter.label}
+                checked={selectedChapters.includes(chapter.label)}
+                onChange={() => toggleFilter(selectedChapters, setSelectedChapters, chapter.label)}
+                count={chapter.count}
+              />
+            ))
+          ) : (
+            <p className="text-xs text-muted-foreground italic">Select a subject to see chapters</p>
           )}
         </div>
       </FilterSection>
