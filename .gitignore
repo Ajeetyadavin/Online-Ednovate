@@ -31,3 +31,9 @@ backend/server/uploads/
 .github/
 .vite/
 .vscode/
+.planning/
+.planing/
+BACKEND.md
+FRONTEND.md
+README.md
+SEPARATE-DEPLOY.md
