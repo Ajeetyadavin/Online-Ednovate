@@ -432,23 +432,44 @@ const Packages = () => {
 
   // Keep filter selections valid as filter options change.
   useEffect(() => {
+    const hasSameItems = (a: string[], b: string[]) =>
+      a.length === b.length && a.every((item, index) => item === b[index]);
+
     const validSubjects = dynamicSubjects.map((item) => item.label);
-    setSelectedSubjects((prev) => prev.filter((subject) => validSubjects.includes(subject)));
+    setSelectedSubjects((prev) => {
+      const next = prev.filter((subject) => validSubjects.includes(subject));
+      return hasSameItems(prev, next) ? prev : next;
+    });
 
     const validChapters = dynamicChapters.map((item) => item.label);
-    setSelectedChapters((prev) => prev.filter((chapter) => validChapters.includes(chapter)));
+    setSelectedChapters((prev) => {
+      const next = prev.filter((chapter) => validChapters.includes(chapter));
+      return hasSameItems(prev, next) ? prev : next;
+    });
 
     const validTypeIds = dynamicTypes.map((t) => t.id);
-    setSelectedTypes((prev) => prev.filter((t) => validTypeIds.includes(t)));
+    setSelectedTypes((prev) => {
+      const next = prev.filter((t) => validTypeIds.includes(t));
+      return hasSameItems(prev, next) ? prev : next;
+    });
 
     const validLangs = dynamicLanguages.map((l) => l.label);
-    setSelectedLanguages((prev) => prev.filter((l) => validLangs.includes(l)));
+    setSelectedLanguages((prev) => {
+      const next = prev.filter((l) => validLangs.includes(l));
+      return hasSameItems(prev, next) ? prev : next;
+    });
 
     const validProfs = dynamicProfessors.map((p) => p.label);
-    setSelectedProfessors((prev) => prev.filter((p) => validProfs.includes(p)));
+    setSelectedProfessors((prev) => {
+      const next = prev.filter((p) => validProfs.includes(p));
+      return hasSameItems(prev, next) ? prev : next;
+    });
 
     const validModes = dynamicDeliveryModes.map((m) => m.id);
-    setSelectedDeliveryModes((prev) => prev.filter((m) => validModes.includes(m)));
+    setSelectedDeliveryModes((prev) => {
+      const next = prev.filter((m) => validModes.includes(m));
+      return hasSameItems(prev, next) ? prev : next;
+    });
   }, [dynamicSubjects, dynamicChapters, dynamicTypes, dynamicLanguages, dynamicProfessors, dynamicDeliveryModes]);
 
   // ── Final filtered results ────────────────────────────────────────

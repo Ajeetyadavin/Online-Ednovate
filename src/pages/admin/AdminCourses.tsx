@@ -584,6 +584,30 @@ export default function AdminCourses() {
 
   const categoriesById = useMemo(() => Object.fromEntries(categories.map((c) => [c.id, c])), [categories]);
   const parentCategories = useMemo(() => categories.filter((c) => c.parentId === null), [categories]);
+  const getCategoryCodePrefix = useCallback((categoryId: string) => {
+    const category = categoriesById[categoryId];
+    const raw = String(category?.name || category?.slug || categoryId || "general");
+    const compact = raw.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    return compact || "GEN";
+  }, [categoriesById]);
+
+  const getNextCategoryCourseCode = useCallback((categoryId: string, existingId?: string) => {
+    const prefix = getCategoryCodePrefix(categoryId);
+    const serialWidth = Math.max(3, 6 - prefix.length);
+    const matcher = new RegExp(`^${prefix}(\\d+)$`, "i");
+    const usedSerials = courses
+      .map((course) => {
+        if (existingId && course.id === existingId) return null;
+        const match = String(course.id || "").match(matcher);
+        if (!match) return null;
+        const numeric = Number(match[1]);
+        return Number.isFinite(numeric) ? numeric : null;
+      })
+      .filter((value): value is number => value !== null);
+    const nextSerial = (usedSerials.length > 0 ? Math.max(...usedSerials) : 0) + 1;
+    return `${prefix}${String(nextSerial).padStart(serialWidth, "0")}`;
+  }, [courses, getCategoryCodePrefix]);
+
   const subcategoryOptions = useMemo(() => categories.filter((c) => c.parentId === form.category), [categories, form.category]);
   const subjectOptions = useMemo(
     () => masterSubjects
@@ -947,8 +971,19 @@ export default function AdminCourses() {
   };
 
   const openCreateDialog = () => {
+    const initialCategory = parentCategories[0]?.id || "general";
+    const initialSubcategory = categories.find((c) => c.parentId === initialCategory)?.id || "general";
     setEditingId(null);
-    setForm({ ...BLANK_FORM, id: `course-${Date.now()}`, category: "", subcategory: "", subject: "", selectedChapters: [], chapter: "", language: masterLanguages[0]?.name || "" });
+    setForm({
+      ...BLANK_FORM,
+      id: getNextCategoryCourseCode(initialCategory),
+      category: initialCategory,
+      subcategory: initialSubcategory,
+      subject: "",
+      selectedChapters: [],
+      chapter: "",
+      language: masterLanguages[0]?.name || "",
+    });
     setCourseThumbnailUploading(false);
     setCourseDemoVideoUploading(false);
     setCourseDemoThumbUploading(false);
@@ -1156,8 +1191,12 @@ export default function AdminCourses() {
         .filter((value) => Number.isFinite(value) && value >= 1),
     ));
 
+    const resolvedCourseId = editingId
+      ? form.id
+      : getNextCategoryCourseCode(form.category || "general", form.id);
+
     const nextCourse: ManagedCourse = {
-      id: form.id, title: form.title.trim(), category: form.category || "general",
+      id: resolvedCourseId, title: form.title.trim(), category: form.category || "general",
       subcategory: form.subcategory || "general", language: derivedLanguage,
       subject: String(form.subject || "").trim(),
       chapter: String((form.selectedChapters[0] || form.chapter || "")).trim(),
@@ -2436,7 +2475,18 @@ export default function AdminCourses() {
                             <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-1.5">
                                 <Label>Category *</Label>
-                                <select className={selectCls} value={form.category} onChange={(e) => sf({ category: e.target.value, subcategory: "" })}>
+                                <select
+                                  className={selectCls}
+                                  value={form.category}
+                                  onChange={(e) => {
+                                    const nextCategory = e.target.value;
+                                    sf({
+                                      category: nextCategory,
+                                      subcategory: "",
+                                      ...(editingId ? {} : { id: getNextCategoryCourseCode(nextCategory || "general", form.id) }),
+                                    });
+                                  }}
+                                >
                                   <option value="">Select Category</option>
                                   {parentCategories.length === 0 && <option value="general">General</option>}
                                   {parentCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
