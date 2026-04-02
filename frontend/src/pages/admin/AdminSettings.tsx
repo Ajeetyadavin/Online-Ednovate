@@ -34,6 +34,13 @@ type PaymentGatewaySettings = {
   cod: {
     enabled: boolean;
   };
+  easebuzz: {
+    enabled: boolean;
+    key: string;
+    salt: string;
+    env: "test" | "prod";
+    apiBaseUrl: string;
+  };
   payu: {
     enabled: boolean;
     merchantKey: string;
@@ -53,6 +60,13 @@ type PaymentGatewaySettings = {
 const defaultPaymentGateways = (): PaymentGatewaySettings => ({
   cod: {
     enabled: true,
+  },
+  easebuzz: {
+    enabled: false,
+    key: "",
+    salt: "",
+    env: "test",
+    apiBaseUrl: "https://testpay.easebuzz.in",
   },
   payu: {
     enabled: false,
@@ -219,6 +233,7 @@ export default function AdminSettings() {
             : {}) as Record<string, unknown>;
         const paymentDefaults = defaultPaymentGateways();
         const codRaw = (paymentRaw.cod && typeof paymentRaw.cod === "object" ? paymentRaw.cod : {}) as Record<string, unknown>;
+        const easebuzzRaw = (paymentRaw.easebuzz && typeof paymentRaw.easebuzz === "object" ? paymentRaw.easebuzz : {}) as Record<string, unknown>;
         const payuRaw = (paymentRaw.payu && typeof paymentRaw.payu === "object" ? paymentRaw.payu : {}) as Record<string, unknown>;
         const hdfcRaw = (paymentRaw.hdfc && typeof paymentRaw.hdfc === "object" ? paymentRaw.hdfc : {}) as Record<string, unknown>;
         const defaultTemplates = defaultEmailTemplates();
@@ -259,6 +274,13 @@ export default function AdminSettings() {
           paymentGateways: {
             cod: {
               enabled: codRaw.enabled !== false,
+            },
+            easebuzz: {
+              enabled: easebuzzRaw.enabled === true,
+              key: String(easebuzzRaw.key || paymentDefaults.easebuzz.key),
+              salt: String(easebuzzRaw.salt || paymentDefaults.easebuzz.salt),
+              env: easebuzzRaw.env === "prod" ? "prod" : "test",
+              apiBaseUrl: String(easebuzzRaw.apiBaseUrl || paymentDefaults.easebuzz.apiBaseUrl),
             },
             payu: {
               enabled: payuRaw.enabled === true,
@@ -405,6 +427,10 @@ export default function AdminSettings() {
       paymentGateways: {
         cod: {
           ...prev.paymentGateways.cod,
+          enabled: true,
+        },
+        easebuzz: {
+          ...prev.paymentGateways.easebuzz,
           enabled: true,
         },
         payu: {
@@ -1011,6 +1037,62 @@ export default function AdminSettings() {
                     onCheckedChange={(value) => handleGatewayChange("cod", "enabled", value)}
                   />
                 </div>
+              </div>
+
+              <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="space-y-1">
+                    <Label className="font-semibold text-gray-900">Easebuzz</Label>
+                    <p className="text-xs text-gray-500">Configure Easebuzz credentials for online payments</p>
+                  </div>
+                  <Switch
+                    checked={settings.paymentGateways.easebuzz.enabled}
+                    onCheckedChange={(value) => handleGatewayChange("easebuzz", "enabled", value)}
+                  />
+                </div>
+
+                {settings.paymentGateways.easebuzz.enabled && (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-gray-100">
+                    <div className="grid gap-2">
+                      <Label htmlFor="easebuzzKey">Key</Label>
+                      <Input
+                        id="easebuzzKey"
+                        value={settings.paymentGateways.easebuzz.key}
+                        onChange={(e) => handleGatewayChange("easebuzz", "key", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="easebuzzSalt">Salt</Label>
+                      <Input
+                        id="easebuzzSalt"
+                        type="password"
+                        value={settings.paymentGateways.easebuzz.salt}
+                        onChange={(e) => handleGatewayChange("easebuzz", "salt", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="easebuzzEnv">Environment</Label>
+                      <select
+                        id="easebuzzEnv"
+                        className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                        value={settings.paymentGateways.easebuzz.env}
+                        onChange={(e) => handleGatewayChange("easebuzz", "env", e.target.value as "test" | "prod")}
+                      >
+                        <option value="test">Test</option>
+                        <option value="prod">Production</option>
+                      </select>
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="easebuzzApiBaseUrl">API Base URL</Label>
+                      <Input
+                        id="easebuzzApiBaseUrl"
+                        placeholder="https://testpay.easebuzz.in"
+                        value={settings.paymentGateways.easebuzz.apiBaseUrl}
+                        onChange={(e) => handleGatewayChange("easebuzz", "apiBaseUrl", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               <div className="rounded-lg border border-gray-200 p-4 space-y-3">

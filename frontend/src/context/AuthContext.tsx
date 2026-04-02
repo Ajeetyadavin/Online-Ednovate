@@ -61,6 +61,7 @@ const parseStoredUser = (): AuthUserProfile | null => {
       name: parsed.name || "Student",
       email: parsed.email || "",
       mobile: parsed.mobile || "",
+      address: parsed.address || "",
       gender: parsed.gender || "",
       country: parsed.country || "",
       state: parsed.state || "",
@@ -116,6 +117,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       name: safeName,
       email: nextUser.email || "",
       mobile: nextUser.mobile || "",
+      address: nextUser.address || "",
       gender: nextUser.gender || "",
       country: nextUser.country || "",
       state: nextUser.state || "",
@@ -140,6 +142,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
       name: name || user?.name || "Student",
       email: user?.email || "",
       mobile: user?.mobile || "",
+      address: user?.address || "",
       gender: user?.gender || "",
       country: user?.country || "",
       state: user?.state || "",
@@ -324,10 +327,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
 
     const baseUser: AuthUserProfile = {
-      studentId: loginResult.data.studentId,
+      studentId: String(loginResult.data.studentId || ""),
       name: loginResult.data.name || "Student",
       email: loginResult.data.email || email,
       mobile: loginResult.data.mobile || "",
+      address: loginResult.data.address || "",
       gender: loginResult.data.gender || "",
       country: loginResult.data.country || "",
       state: loginResult.data.state || "",
@@ -342,12 +346,29 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const profileResult = await fetchProfileApi(baseUser.studentId);
       if (profileResult.ok) {
-        const profile = profileResult.data || {};
+        const profile = (profileResult.data || {}) as Partial<AuthUserProfile> & {
+          id?: string | number;
+          student_id?: string | number;
+          userId?: string | number;
+          user_id?: string | number;
+        };
+        const resolvedStudentId = String(
+          profile.studentId ||
+            profile.student_id ||
+            profile.userId ||
+            profile.user_id ||
+            profile.id ||
+            baseUser.studentId ||
+            loginResult.data.email ||
+            email ||
+            "",
+        );
         applyUser({
-          studentId: baseUser.studentId,
+          studentId: resolvedStudentId,
           name: profile.name || baseUser.name,
           email: profile.email || baseUser.email,
           mobile: profile.mobile || baseUser.mobile,
+          address: profile.address || baseUser.address,
           gender: profile.gender || baseUser.gender,
           country: profile.country || baseUser.country,
           state: profile.state || baseUser.state,
@@ -358,7 +379,10 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           attemptYear: profile.attemptYear || baseUser.attemptYear,
         });
       } else {
-        applyUser(baseUser);
+        applyUser({
+          ...baseUser,
+          studentId: String(baseUser.studentId || loginResult.data.email || email || ""),
+        });
       }
     } finally {
       setIsProfileLoading(false);

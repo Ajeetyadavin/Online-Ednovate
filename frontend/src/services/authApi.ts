@@ -3,6 +3,7 @@ export interface AuthUserProfile {
   name: string;
   email: string;
   mobile: string;
+  address?: string;
   gender?: string;
   country?: string;
   state?: string;
@@ -22,6 +23,7 @@ export interface SignupPayload {
   country?: string;
   state?: string;
   city?: string;
+  address?: string;
   pin?: string;
   course?: string;
   level?: string;
@@ -88,10 +90,16 @@ const authHeaders = (includeJson = true): Record<string, string> => {
 
 const parseResponseMessage = async (response: Response, fallback: string) => {
   const payload = await response.json().catch(() => ({}));
+  const payloadMessage = (payload as { message?: unknown })?.message;
   return {
     ok: response.ok,
     payload,
-    message: (payload as { message?: string })?.message || fallback,
+    message:
+      typeof payloadMessage === "string" && payloadMessage.trim().length > 0
+        ? payloadMessage
+        : response.ok
+          ? ""
+          : fallback,
   };
 };
 
@@ -108,6 +116,8 @@ export const signupApi = async (payload: SignupPayload): Promise<AuthActionResul
         city: sanitizeText(payload.city),
         state: sanitizeText(payload.state),
         country: sanitizeText(payload.country),
+        pin: sanitizeText(payload.pin),
+        address: sanitizeText(payload.address),
         level: sanitizeText(payload.level),
       }),
     });
@@ -149,11 +159,104 @@ export const loginWithEmailApi = async (
       return { ok: false, message: parsed.message };
     }
 
-    const token = String((parsed.payload as { token?: string })?.token || "");
-    const user = (parsed.payload as { user?: AuthUserProfile })?.user;
-    if (!token || !user?.studentId) {
+    const payload = parsed.payload as {
+      token?: string;
+      jwt?: string;
+      accessToken?: string;
+      access_token?: string;
+      sessionToken?: string;
+      session_token?: string;
+      user?: Record<string, unknown>;
+      student?: Record<string, unknown>;
+      profile?: Record<string, unknown>;
+      data?: {
+        token?: string;
+        jwt?: string;
+        accessToken?: string;
+        access_token?: string;
+        sessionToken?: string;
+        session_token?: string;
+        user?: Record<string, unknown>;
+        student?: Record<string, unknown>;
+        profile?: Record<string, unknown>;
+      };
+      payload?: {
+        token?: string;
+        jwt?: string;
+        accessToken?: string;
+        access_token?: string;
+        sessionToken?: string;
+        session_token?: string;
+        user?: Record<string, unknown>;
+        student?: Record<string, unknown>;
+        profile?: Record<string, unknown>;
+      };
+    };
+
+    const token = String(
+      payload.token ||
+        payload.jwt ||
+        payload.accessToken ||
+        payload.access_token ||
+        payload.sessionToken ||
+        payload.session_token ||
+        payload.data?.token ||
+        payload.data?.jwt ||
+        payload.data?.accessToken ||
+        payload.data?.access_token ||
+        payload.data?.sessionToken ||
+        payload.data?.session_token ||
+        payload.payload?.token ||
+        payload.payload?.jwt ||
+        payload.payload?.accessToken ||
+        payload.payload?.access_token ||
+        payload.payload?.sessionToken ||
+        payload.payload?.session_token ||
+        "",
+    );
+    const rawUser =
+      payload.user ||
+      payload.student ||
+      payload.profile ||
+      payload.data?.user ||
+      payload.data?.student ||
+      payload.data?.profile ||
+      payload.payload?.user ||
+      payload.payload?.student ||
+      payload.payload?.profile;
+    const studentId = String(
+      (rawUser?.studentId as string | number | undefined) ||
+        (rawUser?.student_id as string | number | undefined) ||
+        (rawUser?.userId as string | number | undefined) ||
+        (rawUser?.user_id as string | number | undefined) ||
+        (rawUser?.id as string | number | undefined) ||
+        "",
+    );
+    if (!token) {
       return { ok: false, message: "Invalid login response." };
     }
+
+    const user: AuthUserProfile = {
+      studentId,
+      name: String((rawUser?.name as string | undefined) || ""),
+      email: String((rawUser?.email as string | undefined) || ""),
+      mobile: String((rawUser?.mobile as string | undefined) || ""),
+      address: String((rawUser?.address as string | undefined) || ""),
+      gender: String((rawUser?.gender as string | undefined) || ""),
+      country: String((rawUser?.country as string | undefined) || ""),
+      state: String((rawUser?.state as string | undefined) || ""),
+      city: String((rawUser?.city as string | undefined) || ""),
+      pin: String(
+        (rawUser?.pin as string | number | undefined) ||
+          (rawUser?.pincode as string | number | undefined) ||
+          (rawUser?.postalCode as string | number | undefined) ||
+          (rawUser?.postal_code as string | number | undefined) ||
+          "",
+      ),
+      course: String((rawUser?.course as string | undefined) || ""),
+      level: String((rawUser?.level as string | undefined) || (rawUser?.education_level as string | undefined) || ""),
+      attemptYear: String((rawUser?.attemptYear as string | undefined) || (rawUser?.attempt_year as string | undefined) || ""),
+    };
 
     localStorage.setItem(SESSION_TOKEN_KEY, token);
     return {
@@ -267,12 +370,8 @@ export const resetPasswordByMobileApi = async (
 };
 
 export const fetchProfileApi = async (
-  studentId: string,
+  _studentId?: string,
 ): Promise<AuthActionResult<Partial<AuthUserProfile>>> => {
-  if (!studentId) {
-    return { ok: false, message: "Missing student ID." };
-  }
-
   try {
     const response = await fetch("/api/auth/student/profile", {
       headers: authHeaders(false),
@@ -437,7 +536,7 @@ export const getStudentDashboardApi = async (): Promise<AuthActionResult<Student
 };
 
 export const updateStudentProfileApi = async (
-  updates: Partial<Pick<AuthUserProfile, "name" | "email" | "mobile">>,
+  updates: Partial<Pick<AuthUserProfile, "name" | "email" | "mobile" | "address" | "country" | "state" | "city" | "pin">>,
 ): Promise<AuthActionResult<AuthUserProfile>> => {
   try {
     const response = await fetch("/api/auth/student/profile", {

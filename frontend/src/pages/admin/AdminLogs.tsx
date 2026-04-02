@@ -40,6 +40,9 @@ const actionBadgeClass = (action: string) => {
   if (key === "purchase") return "bg-indigo-100 text-indigo-700 border-indigo-200";
   if (key === "video_watch") return "bg-sky-100 text-sky-700 border-sky-200";
   if (key === "login") return "bg-gray-100 text-gray-700 border-gray-200";
+  if (key === "course_assign") return "bg-emerald-100 text-emerald-700 border-emerald-200";
+  if (key === "course_update") return "bg-amber-100 text-amber-800 border-amber-200";
+  if (key === "course_remove") return "bg-red-100 text-red-700 border-red-200";
   return "bg-slate-100 text-slate-700 border-slate-200";
 };
 
@@ -56,7 +59,7 @@ export default function AdminLogs() {
   const [error, setError] = useState("");
 
   const [actorType, setActorType] = useState<"all" | "admin" | "subadmin" | "student">("all");
-  const [actionType, setActionType] = useState<"all" | "login" | "create" | "edit" | "delete" | "purchase" | "video_watch">("all");
+  const [actionType, setActionType] = useState<"all" | "login" | "create" | "edit" | "delete" | "purchase" | "video_watch" | "course_assign" | "course_update" | "course_remove">("all");
   const [actorId, setActorId] = useState("");
   const [actorName, setActorName] = useState("");
   const [actorEmail, setActorEmail] = useState("");
@@ -142,7 +145,8 @@ export default function AdminLogs() {
         item.action,
         item.module_key || "-",
         `${item.target_type || "-"}:${item.target_id || "-"}`,
-        item.course_title || (item.details?.lessonTitle as string) || "-",
+        item.course_title || (item.details?.courseTitle as string) || (item.details?.lessonTitle as string) || "-",
+        item.details?.notes ? `Note: ${String(item.details.notes)}` : (item.details?.studentName ? `Student: ${String(item.details.studentName)}` : "-"),
         typeof item.amount === "number" ? String(item.amount) : "-",
       ]),
     });
@@ -242,7 +246,7 @@ export default function AdminLogs() {
                 value={actionType}
                 onChange={(e) =>
                   setActionType(
-                    e.target.value as "all" | "login" | "create" | "edit" | "delete" | "purchase" | "video_watch",
+                    e.target.value as "all" | "login" | "create" | "edit" | "delete" | "purchase" | "video_watch" | "course_assign" | "course_update" | "course_remove",
                   )
                 }
                 className="w-full h-10 rounded-md border border-gray-300 bg-white px-3 text-sm focus:ring-2 focus:ring-orange-500 focus:border-orange-500"
@@ -254,6 +258,9 @@ export default function AdminLogs() {
                 <option value="delete">Delete</option>
                 <option value="purchase">Purchase</option>
                 <option value="video_watch">Video Watch</option>
+                <option value="course_assign">Course Assign</option>
+                <option value="course_update">Course Update</option>
+                <option value="course_remove">Course Remove</option>
               </select>
             </div>
 
@@ -455,6 +462,9 @@ export default function AdminLogs() {
                       <TableCell className="py-3 text-xs text-gray-600">{item.target_type || "-"}:{item.target_id || "-"}</TableCell>
                       <TableCell className="py-3 text-xs text-gray-600">
                         {item.course_title ? <p>Course: {item.course_title}</p> : null}
+                        {(item.details?.courseTitle && !item.course_title) ? <p>Course: {String(item.details.courseTitle)}</p> : null}
+                        {item.details?.studentName ? <p className="font-medium text-gray-800">Student: {String(item.details.studentName)}{item.details.studentEmail ? ` (${String(item.details.studentEmail)})` : ""}</p> : null}
+                        {item.details?.notes ? <p className="text-orange-700 font-medium">Note: {String(item.details.notes)}</p> : null}
                         {typeof item.amount === "number" ? <p>Amount: {item.amount}</p> : null}
                         {item.ip_address ? <p>IP: {item.ip_address}</p> : null}
                         {item.details?.lessonTitle ? <p>Lesson: {String(item.details.lessonTitle)}</p> : null}

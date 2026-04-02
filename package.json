@@ -2,11 +2,11 @@
   "name": "online-ednovate-workspace",
   "private": true,
   "scripts": {
-    "dev:frontend": "npm --prefix frontend run dev",
-    "dev:backend": "npm --prefix backend run dev",
-    "build:frontend": "npm --prefix frontend run build",
-    "preview:frontend": "npm --prefix frontend run preview",
-    "test:frontend": "npm --prefix frontend run test",
-    "lint:frontend": "npm --prefix frontend run lint"
+    "dev:frontend": "cd frontend && npm run dev",
+    "dev:backend": "cd backend && npm run dev",
+    "build:frontend": "cd frontend && npm run build",
+    "preview:frontend": "cd frontend && npm run preview",
+    "test:frontend": "cd frontend && npm run test",
+    "lint:frontend": "cd frontend && npm run lint"
   }
 }

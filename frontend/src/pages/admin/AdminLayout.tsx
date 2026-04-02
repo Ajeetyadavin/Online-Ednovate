@@ -54,7 +54,6 @@ const iconMap = {
   homepage: Settings,
   header: AppWindow,
   users: Users,
-  studentAccess: Gauge,
   orders: ShoppingCart,
   leads: UserCheck,
   announcements: Bell,
@@ -73,6 +72,7 @@ const AdminLayout = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarConfig, setSidebarConfig] = useState(buildDefaultAdminSidebarConfig());
   const [homepageExpanded, setHomepageExpanded] = useState(false);
+  const [usersExpanded, setUsersExpanded] = useState(false);
   const location = useLocation();
 
   useEffect(() => {
@@ -115,6 +115,12 @@ const AdminLayout = () => {
     }
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (["/admin/users", "/admin/subadmins"].some((path) => location.pathname.startsWith(path))) {
+      setUsersExpanded(true);
+    }
+  }, [location.pathname]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -135,6 +141,12 @@ const AdminLayout = () => {
   const homepageChildItems = allowedNavItems.filter((item) => item.id === "header" || item.id === "announcements");
   const showHomepageGroup = Boolean(homepageParentItem) || homepageChildItems.length > 0;
   const isHomepageGroupActive = ["/admin/homepage", "/admin/header", "/admin/announcements"].some((path) =>
+    location.pathname.startsWith(path),
+  );
+  const usersParentItem = allowedNavItems.find((item) => item.id === "users") || null;
+  const usersChildItems = allowedNavItems.filter((item) => item.id === "subadmins");
+  const showUsersGroup = Boolean(usersParentItem) && usersChildItems.length > 0;
+  const isUsersGroupActive = ["/admin/users", "/admin/subadmins"].some((path) =>
     location.pathname.startsWith(path),
   );
   const currentModule =
@@ -169,19 +181,17 @@ const AdminLayout = () => {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-2">
           {allowedNavItems.map((item) => {
-            if (item.id === "header" || item.id === "announcements") {
+            if (item.id === "header" || item.id === "announcements" || item.id === "subadmins") {
               return null;
             }
 
             if (item.id === "homepage" && homepageParentItem) {
+              const allHomepageChildren = [homepageParentItem, ...homepageChildItems];
               return (
                 <div key={item.to} className="space-y-1">
                   <button
                     type="button"
-                    onClick={() => {
-                      setHomepageExpanded((prev) => !prev);
-                      navigate(homepageParentItem.to);
-                    }}
+                    onClick={() => setHomepageExpanded((prev) => !prev)}
                     className={`flex w-full items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium ${
                       isHomepageGroupActive
                         ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg"
@@ -197,9 +207,9 @@ const AdminLayout = () => {
                     )}
                   </button>
 
-                  {sidebarOpen && homepageExpanded && homepageChildItems.length > 0 && (
+                  {sidebarOpen && homepageExpanded && (
                     <div className="ml-6 space-y-1 border-l border-orange-100 pl-3">
-                      {homepageChildItems.map((childItem) => {
+                      {allHomepageChildren.map((childItem) => {
                         const isActive = location.pathname === childItem.to;
                         const Icon = iconMap[childItem.iconName] || LayoutDashboard;
                         return (
@@ -214,6 +224,68 @@ const AdminLayout = () => {
                           >
                             <Icon className="w-4 h-4 flex-shrink-0" />
                             <span className="truncate">{childItem.label}</span>
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
+            if (item.id === "users" && showUsersGroup && usersParentItem) {
+              return (
+                <div key={item.to} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setUsersExpanded((prev) => !prev);
+                      navigate(usersParentItem.to);
+                    }}
+                    className={`flex w-full items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium ${
+                      isUsersGroupActive
+                        ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
+                    }`}
+                  >
+                    <Users className="w-5 h-5 flex-shrink-0" />
+                    {sidebarOpen && (
+                      <>
+                        <span className="truncate flex-1 text-left">Users</span>
+                        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${usersExpanded ? "rotate-180" : ""}`} />
+                      </>
+                    )}
+                  </button>
+
+                  {sidebarOpen && usersExpanded && (
+                    <div className="ml-6 space-y-1 border-l border-orange-100 pl-3">
+                      <NavLink
+                        to={usersParentItem.to}
+                        className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium ${
+                          location.pathname === usersParentItem.to
+                            ? "bg-orange-50 text-orange-700"
+                            : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
+                        }`}
+                      >
+                        <Users className="w-4 h-4 flex-shrink-0" />
+                        <span className="truncate">Student</span>
+                      </NavLink>
+
+                      {usersChildItems.map((childItem) => {
+                        const Icon = iconMap[childItem.iconName] || LayoutDashboard;
+                        const isActive = location.pathname === childItem.to;
+                        return (
+                          <NavLink
+                            key={childItem.to}
+                            to={childItem.to}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium ${
+                              isActive
+                                ? "bg-orange-50 text-orange-700"
+                                : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4 flex-shrink-0" />
+                            <span className="truncate">Admin</span>
                           </NavLink>
                         );
                       })}

@@ -1,12 +1,39 @@
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useMemo, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { Mail, KeyRound, Phone, User2, Eye, EyeOff, ArrowLeft, Sparkles } from "lucide-react";
 import { toast } from "sonner";
+import { Country, State } from "country-state-city";
 
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+
+const fetchIndianCitiesByPin = async (pin: string, selectedStateName: string): Promise<string[]> => {
+  if (!/^\d{6}$/.test(pin)) return [];
+  try {
+    const response = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+    if (!response.ok) return [];
+    const payload = await response.json();
+    const first = Array.isArray(payload) ? payload[0] : null;
+    if (!first || first.Status !== "Success" || !Array.isArray(first.PostOffice)) return [];
+
+    const normalizedState = String(selectedStateName || "").trim().toLowerCase();
+    const filteredOffices = normalizedState
+      ? first.PostOffice.filter((office: { State?: string }) => String(office?.State || "").trim().toLowerCase() === normalizedState)
+      : first.PostOffice;
+
+    return Array.from(
+      new Set(
+        filteredOffices
+          .map((office: { Name?: string }) => String(office?.Name || "").trim())
+          .filter(Boolean),
+      ),
+    );
+  } catch {
+    return [];
+  }
+};
 
 const Signup = () => {
   const navigate = useNavigate();
@@ -15,18 +42,107 @@ const Signup = () => {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [mobile, setMobile] = useState("");
+  const [countryCode, setCountryCode] = useState("IN");
+  const [stateCode, setStateCode] = useState("");
+  const [pinCode, setPinCode] = useState("");
+  const [city, setCity] = useState("");
+  const [cityOptions, setCityOptions] = useState<string[]>([]);
+  const [isCityLookupLoading, setIsCityLookupLoading] = useState(false);
+  const [fullAddress, setFullAddress] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [termsAccepted, setTermsAccepted] = useState(false);
+  const [captchaAnswer, setCaptchaAnswer] = useState("");
+  const [captchaChallenge, setCaptchaChallenge] = useState(() => {
+    const left = Math.floor(Math.random() * 8) + 1;
+    const right = Math.floor(Math.random() * 8) + 1;
+    return { question: `${left} + ${right} = ?`, answer: String(left + right) };
+  });
+
+  const countryOptions = useMemo(() => Country.getAllCountries(), []);
+  const stateOptions = useMemo(() => {
+    if (!countryCode) return [];
+    return State.getStatesOfCountry(countryCode);
+  }, [countryCode]);
+  const selectedCountryName = useMemo(
+    () => countryOptions.find((country) => country.isoCode === countryCode)?.name || "",
+    [countryOptions, countryCode],
+  );
+  const selectedStateName = useMemo(
+    () => stateOptions.find((state) => state.isoCode === stateCode)?.name || "",
+    [stateOptions, stateCode],
+  );
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadCities = async () => {
+      if (countryCode !== "IN") {
+        setCityOptions([]);
+        setIsCityLookupLoading(false);
+        return;
+      }
+      if (!/^\d{6}$/.test(pinCode)) {
+        setCityOptions([]);
+        setIsCityLookupLoading(false);
+        return;
+      }
+
+      setIsCityLookupLoading(true);
+      const cities = await fetchIndianCitiesByPin(pinCode, selectedStateName);
+      if (isCancelled) return;
+
+      setCityOptions(cities);
+      setIsCityLookupLoading(false);
+
+      if (cities.length > 0) {
+        setCity((previous) => (cities.includes(previous) ? previous : cities[0]));
+      }
+    };
+
+    void loadCities();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [countryCode, pinCode, selectedStateName]);
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
 
     if (!name.trim() || !email.trim() || !mobile.trim() || !password.trim() || !confirmPassword.trim()) {
       toast.error("Please fill all required fields.");
+      return;
+    }
+
+    if (!countryCode || !stateCode) {
+      toast.error("Please select country and state.");
+      return;
+    }
+
+    if (countryCode === "IN") {
+      if (!/^\d{6}$/.test(pinCode)) {
+        toast.error("Please enter a valid 6-digit pin code.");
+        return;
+      }
+      if (!city.trim()) {
+        toast.error("Selected pin code does not match the selected state.");
+        return;
+      }
+    } else if (!city.trim()) {
+      toast.error("Please enter city.");
+      return;
+    }
+
+    if (captchaAnswer.trim() !== captchaChallenge.answer) {
+      toast.error("Captcha answer is incorrect.");
+      const left = Math.floor(Math.random() * 8) + 1;
+      const right = Math.floor(Math.random() * 8) + 1;
+      setCaptchaChallenge({ question: `${left} + ${right} = ?`, answer: String(left + right) });
+      setCaptchaAnswer("");
       return;
     }
 
@@ -52,6 +168,11 @@ const Signup = () => {
         email,
         mobile,
         password,
+        country: selectedCountryName,
+        state: selectedStateName,
+        city,
+        pin: pinCode,
+        address: fullAddress,
       });
 
       if (!result.ok) {
@@ -185,6 +306,110 @@ const Signup = () => {
 
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">Country</label>
+                  <select
+                    value={countryCode}
+                    onChange={(event) => {
+                      setCountryCode(event.target.value);
+                      setStateCode("");
+                      setPinCode("");
+                      setCity("");
+                      setCityOptions([]);
+                    }}
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm"
+                  >
+                    <option value="">Select country</option>
+                    {countryOptions.map((country) => (
+                      <option key={country.isoCode} value={country.isoCode}>{country.name}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div className="space-y-2">
+                  <label className="text-sm font-medium text-foreground">State</label>
+                  <select
+                    value={stateCode}
+                    onChange={(event) => {
+                      setStateCode(event.target.value);
+                      setPinCode("");
+                      setCity("");
+                      setCityOptions([]);
+                    }}
+                    disabled={!countryCode}
+                    className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm disabled:opacity-60"
+                  >
+                    <option value="">Select state</option>
+                    {stateOptions.map((state) => (
+                      <option key={state.isoCode} value={state.isoCode}>{state.name}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              {countryCode === "IN" ? (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Pin Code</label>
+                    <Input
+                      type="text"
+                      placeholder="6-digit pin code"
+                      value={pinCode}
+                      onChange={(event) => setPinCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                      className="h-11 rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">City</label>
+                    <select
+                      value={city}
+                      onChange={(event) => setCity(event.target.value)}
+                      disabled={isCityLookupLoading || cityOptions.length === 0}
+                      className="h-11 w-full rounded-xl border border-input bg-background px-3 text-sm disabled:opacity-60"
+                    >
+                      <option value="">{isCityLookupLoading ? "Loading..." : cityOptions.length ? "Select city" : "Enter pin code first"}</option>
+                      {cityOptions.map((option) => (
+                        <option key={option} value={option}>{option}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">City</label>
+                    <Input
+                      type="text"
+                      placeholder="Enter city"
+                      value={city}
+                      onChange={(event) => setCity(event.target.value)}
+                      className="h-11 rounded-xl"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <label className="text-sm font-medium text-foreground">Postal Code</label>
+                    <Input
+                      type="text"
+                      placeholder="Postal code"
+                      value={pinCode}
+                      onChange={(event) => setPinCode(event.target.value.replace(/\D/g, "").slice(0, 10))}
+                      className="h-11 rounded-xl"
+                    />
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <label className="text-sm font-medium text-foreground">Full Address</label>
+                <textarea
+                  placeholder="House/Flat, Area, Landmark"
+                  value={fullAddress}
+                  onChange={(event) => setFullAddress(event.target.value)}
+                  className="min-h-[88px] w-full rounded-xl border border-input bg-background px-3 py-2.5 text-sm"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">Password</label>
                   <div className="relative">
                     <KeyRound className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -242,6 +467,35 @@ const Signup = () => {
                   <span className="font-semibold text-[rgb(38,72,151)]">Privacy Policy</span>.
                 </span>
               </label>
+
+              <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
+                <p className="text-xs font-semibold text-foreground">Captcha Verification</p>
+                <div className="flex items-center gap-2">
+                  <span className="inline-flex h-9 min-w-[90px] items-center justify-center rounded-md border border-border bg-background px-3 text-sm font-bold">
+                    {captchaChallenge.question}
+                  </span>
+                  <Input
+                    type="text"
+                    placeholder="Answer"
+                    value={captchaAnswer}
+                    onChange={(event) => setCaptchaAnswer(event.target.value.replace(/\D/g, "").slice(0, 2))}
+                    className="h-9"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    className="h-9 px-3"
+                    onClick={() => {
+                      const left = Math.floor(Math.random() * 8) + 1;
+                      const right = Math.floor(Math.random() * 8) + 1;
+                      setCaptchaChallenge({ question: `${left} + ${right} = ?`, answer: String(left + right) });
+                      setCaptchaAnswer("");
+                    }}
+                  >
+                    Refresh
+                  </Button>
+                </div>
+              </div>
 
               <Button
                 type="submit"

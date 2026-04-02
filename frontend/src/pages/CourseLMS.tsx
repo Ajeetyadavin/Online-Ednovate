@@ -22,7 +22,7 @@ import {
   type Lesson,
 } from "@/context/PlatformDataContext";
 import { decodeVideoUrl } from "@/lib/video-utils";
-import { isCourseAccessActive } from "@/lib/studentAccess";
+import { getCourseAccessIssueMessage, isCourseAccessActive } from "@/lib/studentAccess";
 import { adminApi } from "@/services/adminApi";
 import { toast } from "@/hooks/use-toast";
 import {
@@ -125,20 +125,20 @@ const CourseLMS = () => {
         }
 
         if (item.isEnabled === false) {
-          setAccessMessage("Course access is disabled by admin.");
+          setAccessMessage(getCourseAccessIssueMessage(item));
           setHasCourseAccess(false);
           return;
         }
 
         if (item.expiresAt && new Date(item.expiresAt).getTime() <= Date.now()) {
-          setAccessMessage("Course validity expired.");
+          setAccessMessage(getCourseAccessIssueMessage(item));
           setHasCourseAccess(false);
           return;
         }
 
         const remainingViews = Math.max(0, Number(item.remainingViews ?? (item.totalViews - item.usedViews)));
         if (!item.isUnlimitedViews && remainingViews <= 0) {
-          setAccessMessage("Course views exhausted.");
+          setAccessMessage(getCourseAccessIssueMessage(item));
           setHasCourseAccess(false);
           return;
         }
@@ -314,7 +314,7 @@ const CourseLMS = () => {
     setAccessItem(response.data.access);
     setHasCourseAccess(Boolean(response.data.accessActive));
     if (!response.data.accessActive) {
-      setAccessMessage("Your course access has expired because watch-time budget is finished.");
+      setAccessMessage(getCourseAccessIssueMessage(response.data.access));
       return;
     }
     setAccessMessage("");

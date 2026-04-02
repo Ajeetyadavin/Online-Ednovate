@@ -87,6 +87,13 @@ export interface PaymentGatewaySettings {
   cod: {
     enabled: boolean;
   };
+  easebuzz: {
+    enabled: boolean;
+    key: string;
+    salt: string;
+    env: "test" | "prod";
+    apiBaseUrl: string;
+  };
   payu: {
     enabled: boolean;
     merchantKey: string;
@@ -509,6 +516,13 @@ const createDefaultSettings = (): SiteSettings => ({
     cod: {
       enabled: true,
     },
+    easebuzz: {
+      enabled: false,
+      key: "",
+      salt: "",
+      env: "test",
+      apiBaseUrl: "https://testpay.easebuzz.in",
+    },
     payu: {
       enabled: false,
       merchantKey: "",
@@ -852,6 +866,13 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
     paymentGateways: {
       cod: {
         enabled: stored.paymentGateways?.cod?.enabled !== false,
+      },
+      easebuzz: {
+        enabled: stored.paymentGateways?.easebuzz?.enabled === true,
+        key: String(stored.paymentGateways?.easebuzz?.key || base.paymentGateways.easebuzz.key),
+        salt: String(stored.paymentGateways?.easebuzz?.salt || base.paymentGateways.easebuzz.salt),
+        env: stored.paymentGateways?.easebuzz?.env === "prod" ? "prod" : "test",
+        apiBaseUrl: String(stored.paymentGateways?.easebuzz?.apiBaseUrl || base.paymentGateways.easebuzz.apiBaseUrl),
       },
       payu: {
         enabled: stored.paymentGateways?.payu?.enabled === true,

@@ -31,7 +31,7 @@ import {
   type StudentCourseAccessSelf,
   type StudentOrderLine,
 } from "@/services/authApi";
-import { isCourseAccessActive } from "@/lib/studentAccess";
+import { getCourseAccessIssueLabel, getCourseAccessIssueMessage, isCourseAccessActive } from "@/lib/studentAccess";
 
 const fmt = (value?: string) => {
   if (!value) return "—";
@@ -186,6 +186,8 @@ export default function CourseAbout() {
   const purchaseStamp = accessItem?.createdAt || accessItem?.purchaseDate || ("purchasedOn" in course ? course.purchasedOn : undefined);
   const latestOrder = orderLines[0] || null;
   const isActive = isCourseAccessActive(accessItem);
+  const accessIssueLabel = getCourseAccessIssueLabel(accessItem);
+  const accessIssueMessage = getCourseAccessIssueMessage(accessItem);
   const thumbnail = course.thumbnail || course.image || "/placeholder.svg";
   const expiresAt = accessItem?.expiresAt;
   const isWebPlayBlocked = course.webPlayEnabled !== true;
@@ -247,9 +249,9 @@ export default function CourseAbout() {
                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-bold text-primary uppercase tracking-wide">
                   {course.category}
                 </span>
-                <span className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${isActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : "bg-red-50 text-red-600 border-red-200"}`}>
+                <span className={`flex items-center gap-1 rounded-full px-2.5 py-0.5 text-[11px] font-bold border ${isActive ? "bg-emerald-50 text-emerald-700 border-emerald-200" : accessIssueLabel === "Disabled" ? "bg-slate-100 text-slate-700 border-slate-200" : accessIssueLabel === "Watchtime Over" ? "bg-amber-50 text-amber-700 border-amber-200" : "bg-red-50 text-red-600 border-red-200"}`}>
                   <Shield className="h-3 w-3" />
-                  {isActive ? "Access Active" : "Access Expired"}
+                  {accessIssueLabel}
                 </span>
               </div>
               <h1 className="text-lg font-extrabold leading-snug text-slate-900">{course.title}</h1>
@@ -319,6 +321,9 @@ export default function CourseAbout() {
             <p className="text-sm font-bold text-slate-800">Course Progress</p>
             <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">{progressPct}%</span>
           </div>
+          {!isActive ? (
+            <p className="mb-3 rounded-xl border border-amber-200 bg-amber-50 px-3 py-2 text-xs font-semibold text-amber-700">{accessIssueMessage}</p>
+          ) : null}
           <Progress value={progressPct} className="h-2.5 rounded-full bg-slate-100" />
           <p className="mt-2 text-xs text-slate-400">{completedCount} of {lessonCount} lessons completed</p>
         </div>

@@ -7,7 +7,10 @@ import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Search, RefreshCcw, UserRound, Trash2, Package, Download, Calendar, ChevronDown, ChevronUp, Mail, RotateCcw, FileText } from "lucide-react";
+import { Search, RefreshCcw, Eye, Trash2, Package, Download, Calendar, ChevronDown, ChevronUp, Mail, RotateCcw, FileText } from "lucide-react";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
+import { usePlatformData } from "@/context/PlatformDataContext";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 
 const DISPATCH_STATUSES = ["pending", "processing", "dispatched", "delivered", "cancelled", "refunded"] as const;
 
@@ -31,12 +34,20 @@ const buildAddressText = (line: AdminOrderLine) => {
 };
 
 export default function AdminOrders() {
+  const { settings } = useSiteSettings();
+  const { courses, categories, getCurriculumForCourse } = usePlatformData();
   const [orders, setOrders] = useState<AdminOrderLine[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
   const [searchTerm, setSearchTerm] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
   const [itemFilter, setItemFilter] = useState<"all" | "ebook" | "course" | "package">("all");
+  const [masterFilter, setMasterFilter] = useState("all");
+  const [accessFilter, setAccessFilter] = useState("all");
+  const [courseFilter, setCourseFilter] = useState("all");
+  const [levelFilter, setLevelFilter] = useState("all");
+  const [subjectFilter, setSubjectFilter] = useState("all");
+  const [chapterFilter, setChapterFilter] = useState("all");
   const [historyOpen, setHistoryOpen] = useState(false);
   const [selectedUserName, setSelectedUserName] = useState("");
   const [historyLines, setHistoryLines] = useState<AdminOrderLine[]>([]);
@@ -73,15 +84,171 @@ export default function AdminOrders() {
 
   useEffect(() => { void loadOrders(); }, [statusFilter, itemFilter]);
 
+  const courseMetaById = useMemo(() => {
+    const map = new Map<string, {
+      title: string;
+      level: string;
+      subject: string;
+      chapters: string[];
+    }>();
+
+    const categoriesById = new Map(categories.map((category) => [String(category.id), category]));
+
+    courses.forEach((course) => {
+      const courseId = String(course.id || "").trim();
+      if (!courseId) return;
+
+      const categoryId = String(course.category || "").trim();
+      const category = categoriesById.get(categoryId);
+      const level = String(
+        category?.name
+          || course.masterConfig?.levelName
+          || course.subcategory
+          || categoryId
+          || "",
+      ).trim();
+
+      const subject = String(course.subject || "").trim();
+
+      const curriculum = getCurriculumForCourse(courseId, course.title);
+      const chapterTitlesById = new Map(
+        curriculum
+          .map((chapter) => [String(chapter.id || "").trim(), String(chapter.title || "").trim()] as const)
+          .filter((entry) => entry[0] && entry[1]),
+      );
+
+      const selected = Array.isArray(course.selectedChapters)
+        ? course.selectedChapters.map((item) => String(item || "").trim()).filter(Boolean)
+        : [];
+
+      const explicitChapter = String(course.chapter || "").trim();
+
+      const resolvedSelected = selected
+        .map((entry) => chapterTitlesById.get(entry) || entry)
+        .map((entry) => String(entry || "").trim())
+        .filter(Boolean);
+
+      const chapterPool = resolvedSelected.length > 0
+        ? resolvedSelected
+        : explicitChapter
+          ? [explicitChapter]
+          : curriculum
+              .map((chapter) => String(chapter.title || "").trim())
+              .filter(Boolean);
+
+      const chapters = Array.from(new Set(chapterPool));
+
+      map.set(courseId, {
+        title: String(course.title || "").trim(),
+        level,
+        subject,
+        chapters,
+      });
+    });
+
+    return map;
+  }, [courses, categories, getCurriculumForCourse]);
+
+  const masterOptions = useMemo(() => {
+    const entries = new Map<string, string>();
+    orders.forEach((order) => {
+      const mode = String(order.modeLabel || "").trim();
+      if (mode) entries.set(`mode:${mode}`, `Mode: ${mode}`);
+      const book = String(order.bookLabel || "").trim();
+      if (book) entries.set(`book:${book}`, `Book: ${book}`);
+    });
+    return Array.from(entries.entries()).map(([value, label]) => ({ value, label }));
+  }, [orders]);
+
   const filteredOrders = useMemo(() => {
     const q = searchTerm.trim().toLowerCase();
-    if (!q) return orders;
-    return orders.filter((order) =>
-      [order.orderId, order.studentName, order.studentEmail, order.courseTitle].some(
+    return orders.filter((order) => {
+      const meta = courseMetaById.get(String(order.courseId || "").trim());
+      const courseTitleFilterValue = String(meta?.title || order.courseTitle || "").trim();
+      const levelFilterValue = String(meta?.level || "").trim();
+      const subjectFilterValue = String(meta?.subject || "").trim();
+      const chapterFilterValues = Array.isArray(meta?.chapters) ? meta!.chapters : [];
+
+      const matchesSearch = !q || [order.orderId, order.studentName, order.studentEmail, order.courseTitle].some(
         (v) => String(v || "").toLowerCase().includes(q)
-      )
-    );
-  }, [orders, searchTerm]);
+      );
+
+      const matchesMaster = masterFilter === "all"
+        ? true
+        : masterFilter.startsWith("mode:")
+          ? String(order.modeLabel || "").trim() === masterFilter.slice(5)
+          : masterFilter.startsWith("book:")
+            ? String(order.bookLabel || "").trim() === masterFilter.slice(5)
+            : true;
+
+      const normalizedAccess = String(order.accessStatus || "").trim().toLowerCase();
+      const matchesAccess = accessFilter === "all" || normalizedAccess === accessFilter;
+
+      const matchesCourse = courseFilter === "all" || courseTitleFilterValue === courseFilter;
+      const matchesLevel = levelFilter === "all" || levelFilterValue === levelFilter;
+      const matchesSubject = subjectFilter === "all" || subjectFilterValue === subjectFilter;
+      const matchesChapter = chapterFilter === "all" || chapterFilterValues.includes(chapterFilter);
+
+      return matchesSearch
+        && matchesMaster
+        && matchesAccess
+        && matchesCourse
+        && matchesLevel
+        && matchesSubject
+        && matchesChapter;
+    });
+  }, [orders, searchTerm, masterFilter, accessFilter, courseMetaById, courseFilter, levelFilter, subjectFilter, chapterFilter]);
+
+  const courseOptions = useMemo(() => {
+    const entries = new Set<string>();
+    orders.forEach((order) => {
+      const meta = courseMetaById.get(String(order.courseId || "").trim());
+      const title = String(meta?.title || order.courseTitle || "").trim();
+      if (title) entries.add(title);
+    });
+    return Array.from(entries).sort((a, b) => a.localeCompare(b));
+  }, [orders, courseMetaById]);
+
+  const levelOptions = useMemo(() => {
+    const entries = new Set<string>();
+    orders.forEach((order) => {
+      const meta = courseMetaById.get(String(order.courseId || "").trim());
+      const level = String(meta?.level || "").trim();
+      if (level) entries.add(level);
+    });
+    return Array.from(entries).sort((a, b) => a.localeCompare(b));
+  }, [orders, courseMetaById]);
+
+  const subjectOptions = useMemo(() => {
+    const entries = new Set<string>();
+    orders.forEach((order) => {
+      const meta = courseMetaById.get(String(order.courseId || "").trim());
+      const subject = String(meta?.subject || "").trim();
+      if (subject) entries.add(subject);
+    });
+    return Array.from(entries).sort((a, b) => a.localeCompare(b));
+  }, [orders, courseMetaById]);
+
+  const chapterOptions = useMemo(() => {
+    const entries = new Set<string>();
+    orders.forEach((order) => {
+      const meta = courseMetaById.get(String(order.courseId || "").trim());
+      (meta?.chapters || []).forEach((chapter) => {
+        const value = String(chapter || "").trim();
+        if (value) entries.add(value);
+      });
+    });
+    return Array.from(entries).sort((a, b) => a.localeCompare(b));
+  }, [orders, courseMetaById]);
+
+  const getOrderAcademicMeta = (order: AdminOrderLine) => {
+    const meta = courseMetaById.get(String(order.courseId || "").trim());
+    return {
+      level: String(meta?.level || "").trim(),
+      subject: String(meta?.subject || "").trim(),
+      chapters: (meta?.chapters || []).map((entry) => String(entry || "").trim()).filter(Boolean),
+    };
+  };
 
   const totalRevenue = useMemo(
     () => filteredOrders.reduce((sum, o) => sum + (o.dispatchStatus === "refunded" ? 0 : Number(o.amount || 0)), 0),
@@ -135,6 +302,13 @@ export default function AdminOrders() {
     const taxableAmount = Math.max(0, Number(line.baseAmount || 0));
     const taxAmount = Math.max(0, Number(line.taxAmount || 0));
     const totalAmount = Math.max(0, Number(line.amount || 0));
+    const logoUrl = `${window.location.origin}${resolveUploadAssetUrl(settings.logo, "/ednovate-logo.svg")}`;
+    const companyName = String(settings.header?.brandTitle || "Ednovate").trim() || "Ednovate";
+    const companyAddress = "4th floor, Ajanta Square Building, near Borivali court, Sundar Nagar, Borivali West, Mumbai, Maharashtra 400092";
+    const billingAddress = buildAddressText(line) || "Address unavailable";
+    const studentName = String(line.studentName || line.customerName || "Student");
+    const invoiceDate = line.orderDate ? new Date(line.orderDate).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN");
+    const invoiceNo = String(line.orderId || `INV-${line.id}`);
     const details = [
       line.itemType ? `Type: ${line.itemType}` : "",
       line.modeLabel ? `Mode: ${line.modeLabel}` : "",
@@ -146,49 +320,92 @@ export default function AdminOrders() {
 <head>
   <meta charset="utf-8" />
   <title>Invoice-${line.orderId}</title>
+  <style>
+    @page { size: A4; margin: 10mm; }
+    html, body { margin: 0; padding: 0; }
+  </style>
 </head>
-<body style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
-  <div style="max-width:760px;margin:0 auto;background:#fff;border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;">
-    <div style="padding:16px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;">
-      <div style="font-weight:800;color:#1f3c88;letter-spacing:.08em;">EDNOVATE</div>
-      <div style="text-align:right;">
-        <div style="font-size:12px;color:#64748b;">INVOICE</div>
-        <div style="font-weight:700;">${line.orderId}</div>
+<body style="font-family:Arial,sans-serif;background:#e5e7eb;padding:24px;color:#111827;">
+  <div style="width:210mm;min-height:297mm;box-sizing:border-box;margin:0 auto;background:#ffffff;border:1px solid #9ca3af;box-shadow:0 4px 14px rgba(15,23,42,.08);padding:12mm;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
+      <div>
+        <img src="${logoUrl}" alt="${companyName}" style="height:46px;object-fit:contain;display:block;margin-bottom:8px;" />
+        <div style="font-size:18px;font-weight:800;color:#1f3c88;letter-spacing:.06em;">${companyName}</div>
+        <div style="font-size:12px;color:#4b5563;margin-top:4px;max-width:340px;line-height:1.4;">${companyAddress}</div>
+      </div>
+      <div style="text-align:right;min-width:250px;">
+        <div style="font-size:34px;font-weight:800;color:#4f7dbd;letter-spacing:.04em;line-height:1;">TAX INVOICE</div>
+        <table style="margin-top:14px;width:100%;border-collapse:collapse;font-size:12px;">
+          <tr>
+            <th style="border:1px solid #9ca3af;background:#d1d5db;padding:6px 8px;text-align:center;">INVOICE #</th>
+            <th style="border:1px solid #9ca3af;background:#d1d5db;padding:6px 8px;text-align:center;">DATE</th>
+          </tr>
+          <tr>
+            <td style="border:1px solid #9ca3af;padding:6px 8px;text-align:center;font-weight:700;">${invoiceNo}</td>
+            <td style="border:1px solid #9ca3af;padding:6px 8px;text-align:center;font-weight:700;">${invoiceDate}</td>
+          </tr>
+        </table>
       </div>
     </div>
-    <div style="padding:16px 20px;font-size:13px;color:#374151;">
-      <p><strong>Student:</strong> ${line.studentName || "Student"}</p>
-      <p><strong>Email:</strong> ${line.studentEmail || ""}</p>
-      <p><strong>Date:</strong> ${line.orderDate || ""}</p>
-      <p><strong>Payment:</strong> ${line.paymentMethod || "Online"}</p>
+
+    <div style="margin-top:22px;display:inline-block;min-width:340px;">
+      <div style="border:1px solid #9ca3af;background:#d1d5db;padding:4px 10px;font-size:12px;font-weight:700;">BILL TO</div>
+      <div style="padding:8px 2px 0 2px;font-size:13px;line-height:1.45;">
+        <div style="font-weight:700;">${studentName}</div>
+        <div>${line.studentEmail || line.customerEmail || "-"}</div>
+        <div>${line.studentMobile || line.customerPhone || "-"}</div>
+        <div>${billingAddress}</div>
+        <div style="margin-top:4px;"><strong>Payment:</strong> ${line.paymentMethod || "Online"}</div>
+      </div>
     </div>
-    <div style="padding:0 20px 20px 20px;">
-      <table style="width:100%;border-collapse:collapse;font-size:13px;">
+
+    <div style="margin-top:20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #9ca3af;">
         <thead>
-          <tr style="background:#f1f5f9;text-align:left;">
-            <th style="padding:10px;">Item</th>
-            <th style="padding:10px;">Details</th>
-            <th style="padding:10px;text-align:right;">Taxable</th>
-            <th style="padding:10px;text-align:right;">Tax</th>
-            <th style="padding:10px;text-align:right;">Total</th>
+          <tr style="background:#d1d5db;text-align:left;">
+            <th style="padding:9px 10px;border-right:1px solid #9ca3af;">DESCRIPTION</th>
+            <th style="padding:9px 10px;text-align:right;">AMOUNT</th>
           </tr>
         </thead>
         <tbody>
           <tr>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${line.courseTitle || "Course"}</td>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${details || "-"}</td>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">₹${taxableAmount.toLocaleString()}</td>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">₹${taxAmount.toLocaleString()}</td>
-            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">₹${totalAmount.toLocaleString()}</td>
+            <td style="padding:10px;border-right:1px solid #9ca3af;border-bottom:1px solid #e5e7eb;vertical-align:top;">
+              <div style="font-weight:700;">${line.courseTitle || "Course"}</div>
+              <div style="color:#4b5563;font-size:12px;margin-top:4px;">${details || "Course purchase"}</div>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;vertical-align:top;">
+              ₹${totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
+          </tr>
+          <tr>
+            <td style="height:140px;border-right:1px solid #9ca3af;"></td>
+            <td></td>
           </tr>
         </tbody>
+        <tfoot>
+          <tr>
+            <td style="padding:10px;border-right:1px solid #9ca3af;font-style:italic;font-size:14px;color:#1f3c88;">Thank you for your business!</td>
+            <td style="padding:10px;">
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+                <span style="color:#4b5563;">Base Price</span>
+                <strong>₹${taxableAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+                <span style="color:#4b5563;">+ GST</span>
+                <strong>₹${taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </div>
+              <div style="border-top:1px solid #9ca3af;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-weight:800;color:#111827;">Grand Total</span>
+                <span style="font-weight:800;font-size:22px;">₹${totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </td>
+          </tr>
+        </tfoot>
       </table>
-      <div style="text-align:right;padding-top:12px;">
-        <div style="font-size:12px;color:#64748b;">Subtotal: ₹${taxableAmount.toLocaleString()}</div>
-        <div style="font-size:12px;color:#64748b;">Tax: ₹${taxAmount.toLocaleString()}</div>
-        <div style="font-size:12px;color:#64748b;">Total</div>
-        <div style="font-size:18px;font-weight:800;color:#111827;">₹${totalAmount.toLocaleString()}</div>
-      </div>
+    </div>
+
+    <div style="margin-top:24px;text-align:center;font-size:12px;color:#4b5563;line-height:1.45;">
+      This is a computer-generated invoice. Signature is not required.
     </div>
   </div>
 </body>
@@ -273,15 +490,26 @@ export default function AdminOrders() {
         return;
       }
       
-      const rows = data.items.map((l: AdminOrderLine) => ({
-        "Order ID": l.orderId || "",
-        "Customer": l.studentName || "",
-        "Email": l.studentEmail || "",
-        "Course": l.courseTitle || "",
-        "Amount": Number(l.amount || 0),
-        "Status": l.dispatchStatus || "",
-        "Date": l.orderDate || "",
-      }));
+      const rows = data.items.map((l: AdminOrderLine) => {
+        const academic = getOrderAcademicMeta(l);
+        return {
+          "Order ID": l.orderId || "",
+          "Customer": l.studentName || "",
+          "Email": l.studentEmail || "",
+          "Course": l.courseTitle || "",
+          "Level": academic.level || "",
+          "Subject": academic.subject || "",
+          "Chapter": academic.chapters.join(", "),
+          "Purchase": l.purchaseDate || l.orderDate || "",
+          "Expiry": l.expiresAt ? new Date(l.expiresAt).toLocaleDateString("en-IN") : "",
+          "Views": `${Number(l.usedViews || 0)}/${Number(l.totalViews || 0)}`,
+          "Views Left": Number(l.remainingViews || 0),
+          "Access": l.accessStatus || "",
+          "Dispatch Status": l.dispatchStatus || "",
+          "Amount": Number(l.amount || 0),
+          "Date": l.orderDate || "",
+        };
+      });
       
       const { utils, writeFile } = await import("xlsx");
       const ws = utils.json_to_sheet(rows);
@@ -301,8 +529,8 @@ export default function AdminOrders() {
             <Package className="w-5 h-5 text-white" />
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-gray-900">Orders</h1>
-            <p className="text-sm text-gray-500">Manage customer orders</p>
+            <h1 className="text-2xl font-bold text-gray-900">Sales</h1>
+            <p className="text-sm text-gray-500">Manage customer sales</p>
           </div>
         </div>
       </div>
@@ -310,7 +538,7 @@ export default function AdminOrders() {
       <div className="grid grid-cols-4 gap-4 mb-6">
         <Card className="border-l-4 border-l-blue-500">
           <CardContent className="py-4">
-            <p className="text-sm text-gray-500">Total Orders</p>
+            <p className="text-sm text-gray-500">Total Sales</p>
             <p className="text-2xl font-bold text-gray-900">{stats.total}</p>
           </CardContent>
         </Card>
@@ -371,6 +599,79 @@ export default function AdminOrders() {
                 <SelectItem value="course">Course</SelectItem>
                 <SelectItem value="ebook">E-Book</SelectItem>
                 <SelectItem value="package">Package</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={masterFilter} onValueChange={setMasterFilter}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Master Filter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Masters</SelectItem>
+                {masterOptions.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>{option.label}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={accessFilter} onValueChange={setAccessFilter}>
+              <SelectTrigger className="w-[150px]">
+                <SelectValue placeholder="Access" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Access</SelectItem>
+                <SelectItem value="active">Active</SelectItem>
+                <SelectItem value="expired">Expired</SelectItem>
+                <SelectItem value="out_of_views">Out of Views</SelectItem>
+                <SelectItem value="disabled">Disabled</SelectItem>
+              </SelectContent>
+            </Select>
+
+            <Select value={courseFilter} onValueChange={setCourseFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Course" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Courses</SelectItem>
+                {courseOptions.map((option) => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={levelFilter} onValueChange={setLevelFilter}>
+              <SelectTrigger className="w-[160px]">
+                <SelectValue placeholder="Level" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Levels</SelectItem>
+                {levelOptions.map((option) => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={subjectFilter} onValueChange={setSubjectFilter}>
+              <SelectTrigger className="w-[170px]">
+                <SelectValue placeholder="Subject" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Subjects</SelectItem>
+                {subjectOptions.map((option) => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+
+            <Select value={chapterFilter} onValueChange={setChapterFilter}>
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Chapter" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">All Chapters</SelectItem>
+                {chapterOptions.map((option) => (
+                  <SelectItem key={option} value={option}>{option}</SelectItem>
+                ))}
               </SelectContent>
             </Select>
 
@@ -462,6 +763,9 @@ export default function AdminOrders() {
                       }>
                         {order.itemType === "package" ? "Package" : order.isEbook ? "E-Book" : "Course"}
                       </Badge>
+                      {(order.modeLabel || order.bookLabel) && (
+                        <p className="text-[11px] text-gray-500 mt-1">{[order.modeLabel, order.bookLabel].filter(Boolean).join(" | ")}</p>
+                      )}
                     </td>
                     <td className="px-4 py-3 text-right font-medium">₹{Number(order.amount || 0).toLocaleString()}</td>
                     <td className="px-4 py-3 text-center">
@@ -472,8 +776,8 @@ export default function AdminOrders() {
                     <td className="px-4 py-3 text-sm text-gray-500">{order.orderDate || "—"}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex justify-end gap-1">
-                        <Button variant="ghost" size="sm" onClick={() => openHistory(order)}>
-                          <UserRound className="w-4 h-4" />
+                        <Button variant="ghost" size="sm" onClick={() => openHistory(order)} title="Access Details">
+                          <Eye className="w-4 h-4" />
                         </Button>
                         <Button variant="ghost" size="sm" onClick={() => deleteOrder(order)}>
                           <Trash2 className="w-4 h-4 text-red-500" />
@@ -491,7 +795,7 @@ export default function AdminOrders() {
       <Dialog open={historyOpen} onOpenChange={setHistoryOpen}>
         <DialogContent className="max-w-2xl">
           <DialogHeader>
-            <DialogTitle>{selectedUserName} - Selected Order</DialogTitle>
+            <DialogTitle>{selectedUserName} - Access Details</DialogTitle>
           </DialogHeader>
           <div className="space-y-3 max-h-[60vh] overflow-y-auto">
             {historyLines.length === 0 ? (
@@ -534,12 +838,34 @@ export default function AdminOrders() {
                       </div>
                     </div>
                   ) : (
-                    <div className="text-sm text-gray-600 grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded-lg">
+                    <div className="space-y-2">
+                      <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2">
+                        <p className="text-xs font-semibold uppercase tracking-wide text-blue-700">Access Details</p>
+                      </div>
+                      <div className="text-sm text-gray-600 grid grid-cols-2 gap-2 p-3 bg-gray-50 rounded-lg">
+                      {(() => {
+                        const academic = getOrderAcademicMeta(line);
+                        return (
+                          <>
+                            <p><span className="text-gray-400">Level:</span> {academic.level || "—"}</p>
+                            <p><span className="text-gray-400">Subject:</span> {academic.subject || "—"}</p>
+                            <p className="col-span-2"><span className="text-gray-400">Chapter:</span> {academic.chapters.length > 0 ? academic.chapters.join(", ") : "—"}</p>
+                          </>
+                        );
+                      })()}
+                      <p><span className="text-gray-400">Order ID:</span> {line.orderId || "—"}</p>
+                      <p><span className="text-gray-400">Course:</span> {line.courseTitle || "—"}</p>
                       <p><span className="text-gray-400">Name:</span> {line.studentName || "—"}</p>
                       <p><span className="text-gray-400">Phone:</span> {line.studentMobile || "—"}</p>
                       <p><span className="text-gray-400">Email:</span> {line.studentEmail || "—"}</p>
                       <p><span className="text-gray-400">Tracking:</span> {line.trackingId || "—"}</p>
+                      <p><span className="text-gray-400">Purchase Date:</span> {line.purchaseDate || line.orderDate || "—"}</p>
+                      <p><span className="text-gray-400">Expiry:</span> {line.expiresAt ? new Date(line.expiresAt).toLocaleDateString("en-IN") : "—"}</p>
+                      <p><span className="text-gray-400">Views:</span> {Number(line.usedViews || 0)}/{Number(line.totalViews || 0)} (Left {Number(line.remainingViews || 0)})</p>
+                      <p><span className="text-gray-400">Access:</span> {line.accessStatus || "—"}</p>
+                      <p><span className="text-gray-400">Dispatch Status:</span> {line.dispatchStatus || "—"}</p>
                       <p className="col-span-2"><span className="text-gray-400">Address:</span> {buildAddressText(line) || "—"}</p>
+                    </div>
                     </div>
                   )}
 

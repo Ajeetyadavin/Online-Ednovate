@@ -141,7 +141,7 @@ export default function AdminDashboard() {
               <AlertTriangle className="w-5 h-5 text-amber-600" />
               <CardTitle className="text-amber-900 text-base">Access Anomaly Alerts</CardTitle>
             </div>
-            <CardDescription className="text-amber-700">Learner access issues detected. Review Student Access module.</CardDescription>
+            <CardDescription className="text-amber-700">Learner access issues detected. Review the Students module.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
             <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-center">

@@ -59,18 +59,21 @@ const fieldClassName =
 
 const EnquiryModal = ({ open, onOpenChange }: EnquiryModalProps) => {
   const [form, setForm] = useState<EnquiryFormState>(INITIAL_FORM_STATE);
-  const [settings, setSettings] = useState<LeadFormSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<LeadFormSettings | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isLoadingSettings, setIsLoadingSettings] = useState(false);
 
+  const hasLoadedSettings = settings !== null;
+  const resolvedSettings = settings || DEFAULT_SETTINGS;
+
   const fieldsByKey = useMemo(
-    () => Object.fromEntries(settings.fields.map((field) => [field.key, field])) as Record<string, LeadFormFieldSetting>,
-    [settings.fields],
+    () => Object.fromEntries(resolvedSettings.fields.map((field) => [field.key, field])) as Record<string, LeadFormFieldSetting>,
+    [resolvedSettings.fields],
   );
 
   const enabledCustomFields = useMemo(
-    () => (settings.customFields || []).filter((field) => field.enabled !== false),
-    [settings.customFields],
+    () => (resolvedSettings.customFields || []).filter((field) => field.enabled !== false),
+    [resolvedSettings.customFields],
   );
 
   useEffect(() => {
@@ -80,6 +83,7 @@ const EnquiryModal = ({ open, onOpenChange }: EnquiryModalProps) => {
 
     let isMounted = true;
     setIsLoadingSettings(true);
+    setSettings(null);
     adminApi
       .getPublicLeadFormSettings()
       .then((result) => {
@@ -116,7 +120,7 @@ const EnquiryModal = ({ open, onOpenChange }: EnquiryModalProps) => {
   const toggleStream = (option: string) => {
     setForm((previous) => {
       const exists = previous.streams.includes(option);
-      if (settings.stream.allowMultiple) {
+      if (resolvedSettings.stream.allowMultiple) {
         return {
           ...previous,
           streams: exists
@@ -144,6 +148,10 @@ const EnquiryModal = ({ open, onOpenChange }: EnquiryModalProps) => {
 
   const handleSubmit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (!hasLoadedSettings) {
+      return;
+    }
 
     const isFieldEnabled = (key: string) => fieldsByKey[key]?.enabled !== false;
     const isFieldRequired = (key: string) => fieldsByKey[key]?.enabled !== false && fieldsByKey[key]?.mandatory === true;
@@ -173,7 +181,7 @@ const EnquiryModal = ({ open, onOpenChange }: EnquiryModalProps) => {
       return;
     }
 
-    if (settings.stream.enabled && settings.stream.mandatory && form.streams.length === 0) {
+    if (resolvedSettings.stream.enabled && resolvedSettings.stream.mandatory && form.streams.length === 0) {
       toast.error("Please select at least one stream.");
       return;
     }
@@ -255,6 +263,12 @@ const EnquiryModal = ({ open, onOpenChange }: EnquiryModalProps) => {
         </div>
 
         <form className="space-y-4 bg-white px-6 py-6" onSubmit={handleSubmit}>
+          {!hasLoadedSettings ? (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-6 text-center text-sm font-medium text-slate-600">
+              Loading enquiry form...
+            </div>
+          ) : (
+            <>
           {fieldsByKey.name?.enabled !== false && (
             <div className="space-y-1.5">
               <Label htmlFor="enquiry-name" className="text-sm font-semibold text-slate-700">
@@ -329,11 +343,11 @@ const EnquiryModal = ({ open, onOpenChange }: EnquiryModalProps) => {
             </div>
           )}
 
-          {settings.stream.enabled && settings.stream.options.length > 0 && (
+          {resolvedSettings.stream.enabled && resolvedSettings.stream.options.length > 0 && (
             <div className="space-y-1.5">
-              <Label className="text-sm font-semibold text-slate-700">{settings.stream.label}</Label>
+              <Label className="text-sm font-semibold text-slate-700">{resolvedSettings.stream.label}</Label>
               <div className="grid grid-cols-2 gap-2">
-                {settings.stream.options.map((option) => {
+                {resolvedSettings.stream.options.map((option) => {
                   const selected = form.streams.includes(option);
                   const styleClass = selected
                     ? "border-[rgb(38,72,151)] bg-[rgb(38,72,151)]/10 text-[rgb(38,72,151)]"
@@ -437,6 +451,8 @@ const EnquiryModal = ({ open, onOpenChange }: EnquiryModalProps) => {
           <p className="text-center text-xs font-medium text-slate-500">
             By submitting, you agree to receive a callback from the Ednovate team.
           </p>
+            </>
+          )}
         </form>
       </DialogContent>
     </Dialog>

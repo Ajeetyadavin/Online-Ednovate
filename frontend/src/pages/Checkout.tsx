@@ -61,17 +61,30 @@ const Checkout = () => {
     setFullName((prev) => prev || user.name || "");
     setEmail((prev) => prev || user.email || "");
     setPhone((prev) => prev || user.mobile || "");
+    setAddressLine1((prev) => prev || user.address || "");
+    setCity((prev) => prev || user.city || "");
+    setState((prev) => prev || user.state || "");
+    setCountry((prev) => prev || user.country || "India");
+    setPincode((prev) => prev || user.pin || "");
   }, [user]);
 
   const paymentGateways = siteSettings.paymentGateways;
   const enabledMethods = useMemo(() => {
-    const methods: Array<{ id: "cod" | "payu" | "hdfc"; label: string; hint: string; icon: typeof Building2 }> = [];
+    const methods: Array<{ id: "cod" | "easebuzz" | "payu" | "hdfc"; label: string; hint: string; icon: typeof Building2 }> = [];
     if (paymentGateways.cod.enabled) {
       methods.push({
         id: "cod",
         label: "Cash on Delivery",
         hint: "Pay when order is delivered",
         icon: Building2,
+      });
+    }
+    if (paymentGateways.easebuzz.enabled) {
+      methods.push({
+        id: "easebuzz",
+        label: "Easebuzz",
+        hint: "Cards, UPI, net banking via Easebuzz",
+        icon: CreditCard,
       });
     }
     if (paymentGateways.payu.enabled) {
@@ -91,7 +104,7 @@ const Checkout = () => {
       });
     }
     return methods;
-  }, [paymentGateways.cod.enabled, paymentGateways.hdfc.enabled, paymentGateways.payu.enabled]);
+  }, [paymentGateways.cod.enabled, paymentGateways.easebuzz.enabled, paymentGateways.hdfc.enabled, paymentGateways.payu.enabled]);
 
   useEffect(() => {
     if (enabledMethods.length === 0) return;

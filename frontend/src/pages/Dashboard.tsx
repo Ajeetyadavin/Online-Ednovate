@@ -19,7 +19,8 @@ import { useCart } from "@/context/CartContext";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import LoginModal from "@/components/LoginModal";
-import { isAccessExpired, isCourseAccessActive } from "@/lib/studentAccess";
+import { Country, State } from "country-state-city";
+import { getCourseAccessIssue, getCourseAccessIssueLabel, getCourseAccessIssueMessage, isCourseAccessActive } from "@/lib/studentAccess";
 import { changeStudentPasswordApi, getStudentDashboardApi, updateStudentCourseVideoQualityApi, updateStudentProfileApi } from "@/services/authApi";
 import type { StudentCourseAccessSelf } from "@/services/authApi";
 
@@ -30,6 +31,32 @@ const quickActions = [
   { label: "Technical Support", icon: Bell, color: "bg-blue-100 text-[#1e3a8a]", href: "/dashboard/technical-support" },
   { label: "Notifications", icon: Bell, color: "bg-amber-100 text-amber-600", href: "#", action: "notifications" },
 ];
+
+const fetchIndianCitiesByPin = async (pin: string, selectedStateName: string): Promise<string[]> => {
+  if (!/^\d{6}$/.test(pin)) return [];
+  try {
+    const response = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+    if (!response.ok) return [];
+    const payload = await response.json();
+    const first = Array.isArray(payload) ? payload[0] : null;
+    if (!first || first.Status !== "Success" || !Array.isArray(first.PostOffice)) return [];
+
+    const normalizedState = String(selectedStateName || "").trim().toLowerCase();
+    const filteredOffices = normalizedState
+      ? first.PostOffice.filter((office: { State?: string }) => String(office?.State || "").trim().toLowerCase() === normalizedState)
+      : first.PostOffice;
+
+    return Array.from(
+      new Set(
+        filteredOffices
+          .map((office: { Name?: string }) => String(office?.Name || "").trim())
+          .filter(Boolean),
+      ),
+    );
+  } catch {
+    return [];
+  }
+};
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -42,9 +69,18 @@ const Dashboard = () => {
     name: "",
     email: "",
     phone: "",
+    address: "",
+    country: "",
+    state: "",
+    city: "",
+    pin: "",
     joinedDate: "",
     avatar: "",
   });
+  const [countryCode, setCountryCode] = useState("IN");
+  const [stateCode, setStateCode] = useState("");
+  const [cityOptions, setCityOptions] = useState<string[]>([]);
+  const [isCityLookupLoading, setIsCityLookupLoading] = useState(false);
   const [passwordForm, setPasswordForm] = useState({
     currentPassword: "",
     newPassword: "",
@@ -65,6 +101,19 @@ const Dashboard = () => {
 
   const PLAY_STORE_URL = "https://play.google.com/store";
   const APP_STORE_URL = "https://www.apple.com/app-store/";
+  const countryOptions = useMemo(() => Country.getAllCountries(), []);
+  const stateOptions = useMemo(() => {
+    if (!countryCode) return [];
+    return State.getStatesOfCountry(countryCode);
+  }, [countryCode]);
+  const selectedCountryName = useMemo(
+    () => countryOptions.find((country) => country.isoCode === countryCode)?.name || profile.country,
+    [countryOptions, countryCode, profile.country],
+  );
+  const selectedStateName = useMemo(
+    () => stateOptions.find((state) => state.isoCode === stateCode)?.name || profile.state,
+    [stateOptions, stateCode, profile.state],
+  );
 
   useEffect(() => {
     if (!user) return;
@@ -73,9 +122,70 @@ const Dashboard = () => {
       name: user.name || "Student",
       email: user.email || "",
       phone: user.mobile || "",
+      address: user.address || "",
+      country: user.country || "",
+      state: user.state || "",
+      city: user.city || "",
+      pin: user.pin || "",
       joinedDate: "",
     }));
-  }, [user?.studentId, user?.name, user?.email, user?.mobile]);
+    const matchedCountry = countryOptions.find(
+      (country) => country.name.trim().toLowerCase() === String(user.country || "").trim().toLowerCase(),
+    );
+    const nextCountryCode = matchedCountry?.isoCode || "IN";
+    setCountryCode(nextCountryCode);
+    const matchedState = State.getStatesOfCountry(nextCountryCode).find(
+      (state) => state.name.trim().toLowerCase() === String(user.state || "").trim().toLowerCase(),
+    );
+    setStateCode(matchedState?.isoCode || "");
+  }, [user?.studentId, user?.name, user?.email, user?.mobile, user?.address, user?.country, user?.state, user?.city, user?.pin, countryOptions]);
+
+  useEffect(() => {
+    if (!profile.state || !stateOptions.length) return;
+    const matchedState = stateOptions.find(
+      (state) => state.name.trim().toLowerCase() === String(profile.state || "").trim().toLowerCase(),
+    );
+    if (matchedState?.isoCode && matchedState.isoCode !== stateCode) {
+      setStateCode(matchedState.isoCode);
+    }
+  }, [profile.state, stateOptions, stateCode]);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadCities = async () => {
+      if (countryCode !== "IN") {
+        setCityOptions([]);
+        setIsCityLookupLoading(false);
+        return;
+      }
+      if (!/^\d{6}$/.test(profile.pin)) {
+        setCityOptions([]);
+        setIsCityLookupLoading(false);
+        return;
+      }
+
+      setIsCityLookupLoading(true);
+      const cities = await fetchIndianCitiesByPin(profile.pin, selectedStateName);
+      if (isCancelled) return;
+
+      setCityOptions(cities);
+      setIsCityLookupLoading(false);
+
+      if (cities.length > 0) {
+        setProfile((previous) => ({
+          ...previous,
+          city: cities.includes(previous.city) ? previous.city : cities[0],
+        }));
+      }
+    };
+
+    void loadCities();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [countryCode, profile.pin, selectedStateName]);
 
   useEffect(() => {
     if (!isLoggedIn) return;
@@ -121,15 +231,7 @@ const Dashboard = () => {
     };
   }, [isLoggedIn]);
 
-  const dashboardCourses = useMemo(() => {
-    return purchasedCourses.filter((course) => {
-      if (!course.isCombo || !Array.isArray(course.packageCourseIds) || course.packageCourseIds.length === 0) {
-        return true;
-      }
-      const hasAnyBundledChild = course.packageCourseIds.some((id) => purchasedCourses.some((p) => p.id === id));
-      return !hasAnyBundledChild;
-    });
-  }, [purchasedCourses]);
+  const dashboardCourses = useMemo(() => purchasedCourses, [purchasedCourses]);
 
   const totalHours = dashboardCourses.reduce((sum, c) => sum + (c.hours || 0), 0);
   const completedCount = dashboardCourses.filter(c => c.progress === 100).length;
@@ -166,12 +268,35 @@ const Dashboard = () => {
   };
 
   const handleSaveProfile = async () => {
+    if (!countryCode || !stateCode) {
+      alert("Please select country and state.");
+      return;
+    }
+    if (countryCode === "IN") {
+      if (!/^\d{6}$/.test(profile.pin)) {
+        alert("Please enter a valid 6-digit pin code.");
+        return;
+      }
+      if (!profile.city.trim()) {
+        alert("Selected pin code does not match the selected state.");
+        return;
+      }
+    } else if (!profile.city.trim()) {
+      alert("Please enter city.");
+      return;
+    }
+
     setIsProfileSaving(true);
     try {
       const result = await updateStudentProfileApi({
         name: profile.name,
         email: profile.email,
         mobile: profile.phone,
+        address: profile.address,
+        country: selectedCountryName,
+        state: selectedStateName,
+        city: profile.city,
+        pin: profile.pin,
       });
       if (!result.ok) {
         alert(result.message || "Failed to update profile");
@@ -375,7 +500,9 @@ const Dashboard = () => {
                 {dashboardCourses.map(course => (
                   (() => {
                     const accessEntry = courseAccessById[course.id];
-                    const isExpired = accessEntry ? isAccessExpired(accessEntry) : false;
+                    const accessIssue = accessEntry ? getCourseAccessIssue(accessEntry) : null;
+                    const accessIssueLabel = accessEntry ? getCourseAccessIssueLabel(accessEntry) : "Access Active";
+                    const accessIssueMessage = accessEntry ? getCourseAccessIssueMessage(accessEntry) : "Access active.";
                     const isAccessAllowed = accessEntry ? isCourseAccessActive(accessEntry) : true;
                     return (
                   <Card key={course.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 group border-slate-200/60">
@@ -397,9 +524,9 @@ const Dashboard = () => {
                             BUNDLE
                           </span>
                         )}
-                        {isExpired && (
-                          <span className="bg-red-600 text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md">
-                            EXPIRED
+                        {accessIssue && (
+                          <span className={`text-white text-[10px] font-bold px-2 py-0.5 rounded-full shadow-md ${accessIssue === "disabled" ? "bg-slate-700" : accessIssue === "watchtime_over" ? "bg-amber-500" : "bg-red-600"}`}>
+                            {accessIssueLabel.toUpperCase()}
                           </span>
                         )}
                       </div>
@@ -430,6 +557,11 @@ const Dashboard = () => {
                       <p className="text-xs text-slate-500 flex items-center gap-1 mb-3">
                         <Star className="w-3 h-3 text-amber-500 fill-amber-500" /> {course.professor}
                       </p>
+                      {accessIssue && (
+                        <div className={`mb-3 rounded-xl border px-3 py-2 text-[11px] font-semibold ${accessIssue === "disabled" ? "border-slate-200 bg-slate-50 text-slate-700" : accessIssue === "watchtime_over" ? "border-amber-200 bg-amber-50 text-amber-700" : "border-red-200 bg-red-50 text-red-700"}`}>
+                          {accessIssueMessage}
+                        </div>
+                      )}
                       {course.isCombo && Array.isArray(course.packageCourseIds) && course.packageCourseIds.length > 0 && (
                         <div className="mb-3">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-[#1e3a8a] mb-1.5">Included Courses ({course.packageCourseIds.length})</p>
@@ -464,7 +596,7 @@ const Dashboard = () => {
                           disabled={!isAccessAllowed}
                         >
                           <PlayCircle className="w-4 h-4 mr-1.5 group-hover/btn:scale-110 transition-transform" />
-                          {!isAccessAllowed ? "Expired" : course.progress === 100 ? "Review" : course.progress > 0 ? "Continue" : "Start"}
+                          {!isAccessAllowed ? accessIssueLabel : course.progress === 100 ? "Review" : course.progress > 0 ? "Continue" : "Start"}
                         </Button>
                         <Button
                           size="sm"
@@ -603,6 +735,7 @@ const Dashboard = () => {
                     { label: "Full Name", key: "name" as const, editable: true, icon: User },
                     { label: "Email Address", key: "email" as const, editable: true, icon: Mail },
                     { label: "Phone Number", key: "phone" as const, editable: true, icon: User },
+                    { label: "Address", key: "address" as const, editable: true, icon: User },
                     { label: "Member Since", key: "joinedDate" as const, editable: false, icon: Calendar },
                   ].map(field => (
                     <div key={field.key} className="space-y-2">
@@ -617,6 +750,125 @@ const Dashboard = () => {
                       />
                     </div>
                   ))}
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5" /> Country
+                    </Label>
+                    <select
+                      value={countryCode}
+                      disabled={!isEditing}
+                      onChange={(event) => {
+                        const nextCountryCode = event.target.value;
+                        setCountryCode(nextCountryCode);
+                        setStateCode("");
+                        setCityOptions([]);
+                        setProfile((previous) => ({
+                          ...previous,
+                          country: countryOptions.find((country) => country.isoCode === nextCountryCode)?.name || "",
+                          state: "",
+                          city: "",
+                          pin: "",
+                        }));
+                      }}
+                      className={`h-12 w-full rounded-xl border px-3 text-sm ${isEditing ? "border-[#E74623]/30 focus:border-[#E74623]" : "border-slate-200 bg-slate-50"}`}
+                    >
+                      <option value="">Select country</option>
+                      {countryOptions.map((country) => (
+                        <option key={country.isoCode} value={country.isoCode}>{country.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                      <User className="w-3.5 h-3.5" /> State
+                    </Label>
+                    <select
+                      value={stateCode}
+                      disabled={!isEditing || !countryCode}
+                      onChange={(event) => {
+                        const nextStateCode = event.target.value;
+                        setStateCode(nextStateCode);
+                        setCityOptions([]);
+                        setProfile((previous) => ({
+                          ...previous,
+                          state: stateOptions.find((state) => state.isoCode === nextStateCode)?.name || "",
+                          city: "",
+                          pin: "",
+                        }));
+                      }}
+                      className={`h-12 w-full rounded-xl border px-3 text-sm ${isEditing ? "border-[#E74623]/30 focus:border-[#E74623]" : "border-slate-200 bg-slate-50"}`}
+                    >
+                      <option value="">Select state</option>
+                      {stateOptions.map((state) => (
+                        <option key={state.isoCode} value={state.isoCode}>{state.name}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {countryCode === "IN" ? (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5" /> Pin Code
+                        </Label>
+                        <Input
+                          value={profile.pin}
+                          disabled={!isEditing}
+                          onChange={(event) => setProfile((previous) => ({ ...previous, pin: event.target.value.replace(/\D/g, "").slice(0, 6) }))}
+                          placeholder="6-digit pin code"
+                          className={`h-12 text-sm rounded-xl ${isEditing ? "border-[#E74623]/30 focus:border-[#E74623] focus:ring-2 focus:ring-orange-100" : "border-slate-200 bg-slate-50"}`}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5" /> City
+                        </Label>
+                        <select
+                          value={profile.city}
+                          disabled={!isEditing || isCityLookupLoading || cityOptions.length === 0}
+                          onChange={(event) => setProfile((previous) => ({ ...previous, city: event.target.value }))}
+                          className={`h-12 w-full rounded-xl border px-3 text-sm ${isEditing ? "border-[#E74623]/30 focus:border-[#E74623]" : "border-slate-200 bg-slate-50"}`}
+                        >
+                          <option value="">{isCityLookupLoading ? "Loading..." : cityOptions.length ? "Select city" : "Enter pin code first"}</option>
+                          {profile.city && !cityOptions.includes(profile.city) && (
+                            <option value={profile.city}>{profile.city}</option>
+                          )}
+                          {cityOptions.map((city) => (
+                            <option key={city} value={city}>{city}</option>
+                          ))}
+                        </select>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5" /> City
+                        </Label>
+                        <Input
+                          value={profile.city}
+                          disabled={!isEditing}
+                          onChange={(event) => setProfile((previous) => ({ ...previous, city: event.target.value }))}
+                          className={`h-12 text-sm rounded-xl ${isEditing ? "border-[#E74623]/30 focus:border-[#E74623] focus:ring-2 focus:ring-orange-100" : "border-slate-200 bg-slate-50"}`}
+                        />
+                      </div>
+
+                      <div className="space-y-2">
+                        <Label className="text-xs font-semibold text-slate-600 flex items-center gap-1.5">
+                          <User className="w-3.5 h-3.5" /> Postal Code
+                        </Label>
+                        <Input
+                          value={profile.pin}
+                          disabled={!isEditing}
+                          onChange={(event) => setProfile((previous) => ({ ...previous, pin: event.target.value.replace(/\D/g, "").slice(0, 10) }))}
+                          className={`h-12 text-sm rounded-xl ${isEditing ? "border-[#E74623]/30 focus:border-[#E74623] focus:ring-2 focus:ring-orange-100" : "border-slate-200 bg-slate-50"}`}
+                        />
+                      </div>
+                    </>
+                  )}
                 </div>
 
                 <div className="pt-4 border-t border-slate-100 space-y-4">

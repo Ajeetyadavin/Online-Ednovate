@@ -70,6 +70,20 @@ export default function AdminHomepage() {
 
   useEffect(() => { setSiteDraft(settings); }, [settings]);
 
+  const buildHomepagePlatformSettingsPayload = (draft: SiteSettings) => ({
+    bunnyStreamApi: {
+      enabled: Boolean(draft.bunnyStreamApi?.enabled),
+      libraryId: String(draft.bunnyStreamApi?.libraryId || ""),
+      apiKey: String(draft.bunnyStreamApi?.apiKey || ""),
+      cdnHostname: String(draft.bunnyStreamApi?.cdnHostname || ""),
+      pullZone: String(draft.bunnyStreamApi?.pullZone || ""),
+    },
+    siteSettings: draft as unknown as Record<string, unknown>,
+    homepage: {
+      exploreCategoryIds: Array.isArray(draft.exploreCategoryIds) ? draft.exploreCategoryIds : [],
+    },
+  });
+
   const persistHomepage = async (nextBanners = banners, nextTestimonials = testimonials, nextAnnouncements = announcements) => {
     setIsSaving(true);
     try { await adminApi.updateHomepage({ banners: nextBanners, testimonials: nextTestimonials, announcements: nextAnnouncements }); }
@@ -120,7 +134,21 @@ export default function AdminHomepage() {
     setIsSaving(true);
     try {
       if (syncLocal) updateSettings(draft);
-      await adminApi.saveHomepagePlatformSettings({ bunnyStreamApi: { enabled: Boolean(draft.bunnyStreamApi?.enabled), libraryId: String(draft.bunnyStreamApi?.libraryId || ""), apiKey: String(draft.bunnyStreamApi?.apiKey || ""), cdnHostname: String(draft.bunnyStreamApi?.cdnHostname || ""), pullZone: String(draft.bunnyStreamApi?.pullZone || "") }, siteSettings: draft as unknown as Record<string, unknown>, homepage: { exploreCategoryIds: draft.exploreCategoryIds || [] } });
+      const result = await adminApi.saveHomepagePlatformSettings(buildHomepagePlatformSettingsPayload(draft));
+      const savedSiteSettings = result?.settings?.siteSettings as Partial<SiteSettings> | undefined;
+      const savedExploreIds = Array.isArray(result?.settings?.homepage?.exploreCategoryIds)
+        ? result.settings.homepage.exploreCategoryIds.map((item) => String(item).trim()).filter(Boolean)
+        : draft.exploreCategoryIds || [];
+
+      if (savedSiteSettings) {
+        const nextDraft = {
+          ...draft,
+          ...savedSiteSettings,
+          exploreCategoryIds: savedExploreIds,
+        } as SiteSettings;
+        setSiteDraft(nextDraft);
+        updateSettings(nextDraft);
+      }
     } catch (error) { alert(error instanceof Error ? error.message : "Failed to save site settings"); }
     finally { setIsSaving(false); }
   };
@@ -144,18 +172,20 @@ export default function AdminHomepage() {
   const sortedCategories = [...categories].sort((a, b) => a.sortOrder - b.sortOrder);
 
   const handleToggleExploreCategory = (categoryId: string, checked: boolean) => {
-    const current = siteDraft.exploreCategoryIds || [];
-    const next = checked
-      ? Array.from(new Set([...current, categoryId]))
-      : current.filter((id) => id !== categoryId);
-    const nextDraft = { ...siteDraft, exploreCategoryIds: next };
+    setSiteDraft((prev) => {
+      const current = prev.exploreCategoryIds || [];
+      const next = checked
+        ? Array.from(new Set([...current, categoryId]))
+        : current.filter((id) => id !== categoryId);
+      const nextDraft = { ...prev, exploreCategoryIds: next };
 
-    setSiteDraft(nextDraft);
-    updateSettings(nextDraft);
+      updateSettings(nextDraft);
+      settingsSaveQueueRef.current = settingsSaveQueueRef.current
+        .then(() => persistSiteSettings(nextDraft, false))
+        .catch(() => undefined);
 
-    settingsSaveQueueRef.current = settingsSaveQueueRef.current
-      .then(() => persistSiteSettings(nextDraft, false))
-      .catch(() => undefined);
+      return nextDraft;
+    });
   };
 
   const uploadImageFile = async (file: File, folder: string) => {

@@ -41,13 +41,14 @@ export async function checkDatabaseConnection() {
 export async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS students (
-      id TEXT PRIMARY KEY,
+      id BIGSERIAL PRIMARY KEY,
       name TEXT NOT NULL,
       email TEXT UNIQUE NOT NULL,
       mobile TEXT,
       city TEXT,
       state TEXT,
       country TEXT,
+      address TEXT,
       status TEXT NOT NULL DEFAULT 'Active',
       join_date DATE NOT NULL DEFAULT CURRENT_DATE,
       courses_enrolled INTEGER NOT NULL DEFAULT 0,
@@ -59,6 +60,9 @@ export async function ensureSchema() {
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
   `);
+
+  await pool.query("ALTER TABLE students ADD COLUMN IF NOT EXISTS address TEXT");
+  await pool.query("ALTER TABLE students ADD COLUMN IF NOT EXISTS pin TEXT");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS courses (
@@ -152,7 +156,7 @@ export async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS auth_sessions (
       token TEXT PRIMARY KEY,
-      student_id TEXT NOT NULL,
+      student_id BIGINT NOT NULL,
       role TEXT NOT NULL DEFAULT 'student',
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       expires_at TIMESTAMPTZ NOT NULL
@@ -219,7 +223,7 @@ export async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_course_access (
       id BIGSERIAL PRIMARY KEY,
-      student_id TEXT NOT NULL,
+      student_id BIGINT NOT NULL,
       course_id TEXT NOT NULL,
       course_title TEXT NOT NULL,
       purchase_date DATE,
@@ -249,7 +253,7 @@ export async function ensureSchema() {
     CREATE TABLE IF NOT EXISTS student_orders (
       id BIGSERIAL PRIMARY KEY,
       order_id TEXT NOT NULL,
-      student_id TEXT NOT NULL,
+      student_id BIGINT NOT NULL,
       customer_name TEXT,
       customer_email TEXT,
       customer_phone TEXT,
@@ -373,7 +377,7 @@ export async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_login_logs (
       id BIGSERIAL PRIMARY KEY,
-      student_id TEXT NOT NULL,
+      student_id BIGINT NOT NULL,
       ip_address TEXT,
       user_agent TEXT,
       source TEXT NOT NULL DEFAULT 'student_login',
@@ -384,7 +388,7 @@ export async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_video_activity (
       id BIGSERIAL PRIMARY KEY,
-      student_id TEXT NOT NULL,
+      student_id BIGINT NOT NULL,
       course_id TEXT,
       chapter_title TEXT,
       lesson_title TEXT,
@@ -397,7 +401,7 @@ export async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_lesson_views (
       id BIGSERIAL PRIMARY KEY,
-      student_id TEXT NOT NULL,
+      student_id BIGINT NOT NULL,
       course_id TEXT NOT NULL,
       lesson_id TEXT NOT NULL,
       chapter_title TEXT,
@@ -410,7 +414,7 @@ export async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_lesson_notes (
       id BIGSERIAL PRIMARY KEY,
-      student_id TEXT NOT NULL,
+      student_id BIGINT NOT NULL,
       course_id TEXT NOT NULL,
       lesson_id TEXT NOT NULL,
       chapter_title TEXT,
@@ -428,7 +432,7 @@ export async function ensureSchema() {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS student_notifications (
       id BIGSERIAL PRIMARY KEY,
-      student_id TEXT NOT NULL,
+      student_id BIGINT NOT NULL,
       channel TEXT NOT NULL DEFAULT 'in_app',
       subject TEXT,
       message TEXT NOT NULL,
@@ -442,7 +446,7 @@ export async function ensureSchema() {
     CREATE TABLE IF NOT EXISTS technical_support_tickets (
       id BIGSERIAL PRIMARY KEY,
       ticket_code TEXT UNIQUE NOT NULL,
-      student_id TEXT NOT NULL,
+      student_id BIGINT NOT NULL,
       student_name TEXT NOT NULL,
       student_email TEXT NOT NULL,
       course_id TEXT NOT NULL,

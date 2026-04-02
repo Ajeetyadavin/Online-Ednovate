@@ -82,6 +82,19 @@ const mapStudentOrderLine = (row) => {
   const baseAmount = (storedBaseAmount > 0 || storedTaxAmount > 0)
     ? storedBaseAmount
     : Math.max(0, grossAmount - storedTaxAmount);
+  const totalViews = Math.max(0, Number(row.access_total_views || 0));
+  const usedViews = Math.max(0, Number(row.access_used_views || 0));
+  const remainingViews = Math.max(0, totalViews - usedViews);
+  const expiresAt = row.access_expires_at || null;
+  const isExpired = Boolean(expiresAt && new Date(expiresAt).getTime() <= Date.now());
+  const isEnabled = row.access_is_enabled !== false;
+  const accessStatus = !isEnabled
+    ? "disabled"
+    : isExpired
+      ? "expired"
+      : totalViews > 0 && usedViews >= totalViews
+        ? "out_of_views"
+        : "active";
 
   return {
     id: Number(row.id),
@@ -104,6 +117,12 @@ const mapStudentOrderLine = (row) => {
       ? row.package_course_ids.map((item) => String(item || "")).filter(Boolean)
       : [],
     orderDate: row.order_date,
+    purchaseDate: row.access_purchase_date || row.order_date || null,
+    expiresAt,
+    totalViews,
+    usedViews,
+    remainingViews,
+    accessStatus,
     paymentMethod: String(row.payment_method || ""),
     baseAmount,
     taxAmount: storedTaxAmount,
@@ -256,19 +275,78 @@ const mapSupportMessage = (row) => ({
 });
 
 const mapStudentSelf = (row) => ({
-  studentId: row.id,
+  studentId: Number(row.id),
   name: row.name,
   email: row.email,
   mobile: row.mobile || "",
+  address: row.address || "",
   country: row.country || "",
   state: row.state || "",
   city: row.city || "",
   level: row.education_level || "",
   attemptYear: "",
   gender: "",
-  pin: "",
+  pin: row.pin || "",
   course: "",
 });
+
+const withOrderLocationFallback = async (studentRow) => {
+  const profile = mapStudentSelf(studentRow);
+  const needsFallback = !profile.pin || !profile.city || !profile.state || !profile.country;
+  if (!needsFallback) return profile;
+
+  try {
+    const locationResult = await pool.query(
+      `
+      SELECT shipping_pincode, shipping_city, shipping_state, shipping_country
+      FROM student_orders
+      WHERE student_id = $1
+        AND (
+          COALESCE(NULLIF(shipping_pincode, ''), NULL) IS NOT NULL
+          OR COALESCE(NULLIF(shipping_city, ''), NULL) IS NOT NULL
+          OR COALESCE(NULLIF(shipping_state, ''), NULL) IS NOT NULL
+          OR COALESCE(NULLIF(shipping_country, ''), NULL) IS NOT NULL
+        )
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [String(studentRow.id)],
+    );
+
+    const latest = locationResult.rows[0];
+    if (!latest) return profile;
+
+    const fallbackPin = String(latest.shipping_pincode || "");
+    const fallbackCity = String(latest.shipping_city || "");
+    const fallbackState = String(latest.shipping_state || "");
+    const fallbackCountry = String(latest.shipping_country || "");
+
+    const nextProfile = {
+      ...profile,
+      pin: profile.pin || fallbackPin,
+      city: profile.city || fallbackCity,
+      state: profile.state || fallbackState,
+      country: profile.country || fallbackCountry,
+    };
+
+    await pool.query(
+      `
+      UPDATE students
+      SET pin = COALESCE(NULLIF(pin, ''), NULLIF($2, ''), pin),
+          city = COALESCE(NULLIF(city, ''), NULLIF($3, ''), city),
+          state = COALESCE(NULLIF(state, ''), NULLIF($4, ''), state),
+          country = COALESCE(NULLIF(country, ''), NULLIF($5, ''), country),
+          updated_at = NOW()
+      WHERE id = $1
+      `,
+      [String(studentRow.id), fallbackPin, fallbackCity, fallbackState, fallbackCountry],
+    );
+
+    return nextProfile;
+  } catch {
+    return profile;
+  }
+};
 
 const normalizeStringList = (value) => {
   if (!Array.isArray(value)) return [];
@@ -328,8 +406,6 @@ const normalizeLeadFormSettings = (input) => {
   const ensureRequiredField = (key, fallbackLabel, fallbackType, mandatory = false) => {
     const existing = normalizedFields.find((field) => field.key === key);
     if (existing) {
-      existing.enabled = true;
-      if (mandatory) existing.mandatory = true;
       if (!existing.label) existing.label = fallbackLabel;
       if (!existing.type) existing.type = fallbackType;
       return;
@@ -1254,6 +1330,9 @@ const buildInvoiceDocument = ({ orderId, studentName, studentEmail, orderDate, p
   const subtotal = safeItems.reduce((sum, item) => sum + Math.max(0, Number(item.baseAmount || 0)), 0);
   const taxTotal = safeItems.reduce((sum, item) => sum + Math.max(0, Number(item.taxAmount || 0)), 0);
   const total = safeItems.reduce((sum, item) => sum + Math.max(0, Number(item.amount || 0)), 0);
+  const companyAddress = "4th floor, Ajanta Square Building, near Borivali court, Sundar Nagar, Borivali West, Mumbai, Maharashtra 400092";
+  const invoiceNo = String(orderId || "");
+  const invoiceDate = orderDate ? new Date(orderDate).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN");
   const rowsHtml = safeItems.map((item, index) => {
     const details = [
       item.itemType ? `Type: ${item.itemType}` : "",
@@ -1263,80 +1342,115 @@ const buildInvoiceDocument = ({ orderId, studentName, studentEmail, orderDate, p
 
     return `
       <tr>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${index + 1}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;">${String(item.courseTitle || "Course")}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;color:#4b5563;">${details || "-"}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">${formatMoneyInr(item.baseAmount)}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">${formatMoneyInr(item.taxAmount)}</td>
-        <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;">${formatMoneyInr(item.amount)}</td>
+        <td style="padding:10px;border-right:1px solid #9ca3af;border-bottom:1px solid #e5e7eb;vertical-align:top;">
+          <div style="font-weight:700;">${index + 1}. ${String(item.courseTitle || "Course")}</div>
+          <div style="color:#4b5563;font-size:12px;margin-top:4px;">${details || "Course purchase"}</div>
+        </td>
+        <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;vertical-align:top;">${formatMoneyInr(item.amount)}</td>
       </tr>
     `;
   }).join("");
 
   const headerLogoHtml = logoUrl
-    ? `<img src="${logoUrl}" alt="${platformName}" style="height:36px;object-fit:contain;" />`
-    : `<div style="font-weight:800;font-size:18px;letter-spacing:.08em;color:#1f3c88;">${platformName}</div>`;
+    ? `<img src="${logoUrl}" alt="${platformName}" style="height:44px;object-fit:contain;display:block;margin-bottom:8px;" />`
+    : "";
+  const companyTitle = `<div style="font-weight:800;font-size:18px;letter-spacing:.08em;color:#1f3c88;">${platformName}</div>`;
 
   const html = `
-    <div style="font-family:Arial,sans-serif;background:#f8fafc;padding:24px;">
-      <div style="max-width:780px;margin:0 auto;background:#ffffff;border:1px solid #e5e7eb;border-radius:14px;overflow:hidden;">
-        <div style="padding:18px 20px;border-bottom:1px solid #e5e7eb;display:flex;justify-content:space-between;align-items:center;gap:12px;">
-          <div>${headerLogoHtml}</div>
-          <div style="text-align:right;">
-            <div style="font-size:12px;color:#6b7280;">TAX INVOICE</div>
-            <div style="font-size:14px;font-weight:700;color:#111827;">Order ${String(orderId || "")}</div>
-          </div>
-        </div>
-        <div style="padding:18px 20px;display:grid;grid-template-columns:1fr 1fr;gap:12px;font-size:13px;color:#374151;">
+    <div style="font-family:Arial,sans-serif;background:#e5e7eb;padding:24px;color:#111827;">
+      <div style="width:210mm;min-height:297mm;box-sizing:border-box;margin:0 auto;background:#ffffff;border:1px solid #9ca3af;box-shadow:0 4px 14px rgba(15,23,42,.08);padding:12mm;">
+        <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
           <div>
-            <div style="font-size:11px;color:#6b7280;">BILLED TO</div>
-            <div style="font-weight:700;color:#111827;">${String(studentName || "Student")}</div>
-            <div>${String(studentEmail || "")}</div>
+            ${headerLogoHtml}
+            ${companyTitle}
+            <div style="font-size:12px;color:#4b5563;margin-top:4px;line-height:1.4;max-width:340px;">${companyAddress}</div>
           </div>
-          <div style="text-align:right;">
-            <div><span style="color:#6b7280;">Date:</span> ${String(orderDate || "")}</div>
-            <div><span style="color:#6b7280;">Payment:</span> ${String(paymentMethod || "Online")}</div>
-            <div><span style="color:#6b7280;">Currency:</span> ${String(currency || "INR")}</div>
+          <div style="text-align:right;min-width:250px;">
+            <div style="font-size:34px;font-weight:800;color:#4f7dbd;letter-spacing:.04em;line-height:1;">TAX INVOICE</div>
+            <table style="margin-top:14px;width:100%;border-collapse:collapse;font-size:12px;">
+              <tr>
+                <th style="border:1px solid #9ca3af;background:#d1d5db;padding:6px 8px;text-align:center;">INVOICE #</th>
+                <th style="border:1px solid #9ca3af;background:#d1d5db;padding:6px 8px;text-align:center;">DATE</th>
+              </tr>
+              <tr>
+                <td style="border:1px solid #9ca3af;padding:6px 8px;text-align:center;font-weight:700;">${invoiceNo}</td>
+                <td style="border:1px solid #9ca3af;padding:6px 8px;text-align:center;font-weight:700;">${invoiceDate}</td>
+              </tr>
+            </table>
           </div>
         </div>
-        <div style="padding:0 20px 20px 20px;">
-          <table style="width:100%;border-collapse:collapse;font-size:13px;">
+
+        <div style="margin-top:22px;display:inline-block;min-width:340px;">
+          <div style="border:1px solid #9ca3af;background:#d1d5db;padding:4px 10px;font-size:12px;font-weight:700;">BILL TO</div>
+          <div style="padding:8px 2px 0 2px;font-size:13px;line-height:1.45;">
+            <div style="font-weight:700;">${String(studentName || "Student")}</div>
+            <div>${String(studentEmail || "")}</div>
+            <div style="margin-top:4px;"><strong>Payment:</strong> ${String(paymentMethod || "Online")}</div>
+            <div><strong>Currency:</strong> ${String(currency || "INR")}</div>
+          </div>
+        </div>
+
+        <div style="margin-top:20px;">
+          <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #9ca3af;">
             <thead>
-              <tr style="background:#f1f5f9;color:#334155;text-align:left;">
-                <th style="padding:10px;">#</th>
-                <th style="padding:10px;">Item</th>
-                <th style="padding:10px;">Details</th>
-                <th style="padding:10px;text-align:right;">Taxable</th>
-                <th style="padding:10px;text-align:right;">Tax</th>
-                <th style="padding:10px;text-align:right;">Total</th>
+              <tr style="background:#d1d5db;color:#111827;text-align:left;">
+                <th style="padding:9px 10px;border-right:1px solid #9ca3af;">DESCRIPTION</th>
+                <th style="padding:9px 10px;text-align:right;">AMOUNT</th>
               </tr>
             </thead>
-            <tbody>${rowsHtml}</tbody>
+            <tbody>
+              ${rowsHtml}
+              <tr>
+                <td style="height:120px;border-right:1px solid #9ca3af;"></td>
+                <td></td>
+              </tr>
+            </tbody>
+            <tfoot>
+              <tr>
+                <td style="padding:10px;border-right:1px solid #9ca3af;font-style:italic;font-size:14px;color:#1f3c88;">Thank you for your business!</td>
+                <td style="padding:10px;">
+                  <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+                    <span style="color:#4b5563;">Base Price</span>
+                    <strong>${formatMoneyInr(subtotal)}</strong>
+                  </div>
+                  <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+                    <span style="color:#4b5563;">+ GST</span>
+                    <strong>${formatMoneyInr(taxTotal)}</strong>
+                  </div>
+                  <div style="border-top:1px solid #9ca3af;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
+                    <span style="font-weight:800;color:#111827;">Grand Total</span>
+                    <span style="font-weight:800;font-size:22px;">${formatMoneyInr(total)}</span>
+                  </div>
+                </td>
+              </tr>
+            </tfoot>
           </table>
-          <div style="margin-top:16px;text-align:right;">
-            <div style="font-size:13px;color:#475569;">Subtotal: ${formatMoneyInr(subtotal)}</div>
-            <div style="font-size:13px;color:#475569;">Tax: ${formatMoneyInr(taxTotal)}</div>
-            <div style="font-size:12px;color:#6b7280;">Total Payable</div>
-            <div style="font-size:18px;font-weight:800;color:#0f172a;">${formatMoneyInr(total)}</div>
-          </div>
         </div>
+
+        <div style="margin-top:20px;text-align:center;font-size:12px;color:#4b5563;line-height:1.45;">
+          This is a computer-generated invoice. Signature is not required.
+        </div>
+        <div style="margin-top:8px;text-align:right;font-size:11px;color:#94a3b8;">Generated by ${platformName}</div>
       </div>
     </div>
   `;
 
   const text = [
     `${platformName} Invoice`,
-    `Order: ${String(orderId || "")}`,
+    `Invoice #: ${invoiceNo}`,
+    `Date: ${invoiceDate}`,
     `Student: ${String(studentName || "Student")}`,
     `Email: ${String(studentEmail || "")}`,
-    `Date: ${String(orderDate || "")}`,
     `Payment: ${String(paymentMethod || "Online")}`,
+    `Currency: ${String(currency || "INR")}`,
+    `Company Address: ${companyAddress}`,
     "",
-    ...safeItems.map((item, index) => `${index + 1}. ${String(item.courseTitle || "Course")} | Taxable ${formatMoneyInr(item.baseAmount)} | Tax ${formatMoneyInr(item.taxAmount)} | Total ${formatMoneyInr(item.amount)}`),
+    ...safeItems.map((item, index) => `${index + 1}. ${String(item.courseTitle || "Course")} | Amount ${formatMoneyInr(item.amount)}`),
     "",
-    `Subtotal: ${formatMoneyInr(subtotal)}`,
-    `Tax: ${formatMoneyInr(taxTotal)}`,
-    `Total: ${formatMoneyInr(total)}`,
+    `Base Price: ${formatMoneyInr(subtotal)}`,
+    `GST: ${formatMoneyInr(taxTotal)}`,
+    `Grand Total: ${formatMoneyInr(total)}`,
+    "This is a computer-generated invoice. Signature is not required.",
   ].join("\n");
 
   return { html, text, total };
@@ -1683,7 +1797,7 @@ const getModuleFromPath = (pathName) => {
 const sanitizeAuditBody = (body) => {
   if (!body || typeof body !== "object") return {};
   const clone = { ...body };
-  ["password", "password_hash", "apiKey", "bunnyStreamApiKey"].forEach((key) => {
+  ["password", "password_hash", "apiKey", "bunnyStreamApiKey", "merchantKey", "merchantSalt", "workingKey", "easebuzzKey", "easebuzzSalt"].forEach((key) => {
     if (key in clone) clone[key] = "[REDACTED]";
   });
   return clone;
@@ -2241,37 +2355,56 @@ app.post("/api/auth/student/signup", async (request, response) => {
   try {
     const name = String(request.body?.name || "").trim();
     const email = String(request.body?.email || "").trim().toLowerCase();
-    const mobile = String(request.body?.mobile || "").trim();
+    const mobileRaw = String(request.body?.mobile || "").trim();
+    const mobile = mobileRaw.replace(/\D/g, "").slice(-10);
     const password = String(request.body?.password || "").trim();
     const city = String(request.body?.city || "").trim();
     const state = String(request.body?.state || "").trim();
     const country = String(request.body?.country || "").trim();
+    const pin = String(request.body?.pin || "").trim();
+    const address = String(request.body?.address || "").trim();
     const educationLevel = String(request.body?.level || "").trim();
 
-    if (!name || !email || !password) {
-      response.status(400).json({ message: "name, email and password are required" });
+    if (!name || !email || !mobile || !password) {
+      response.status(400).json({ message: "name, email, mobile and password are required" });
+      return;
+    }
+
+    if (!/^\d{10}$/.test(mobile)) {
+      response.status(400).json({ message: "Please enter a valid 10-digit mobile number" });
       return;
     }
 
     const existingResult = await pool.query(
       "SELECT id FROM students WHERE LOWER(email) = $1 OR mobile = $2 LIMIT 1",
-      [email, mobile || null],
+      [email, mobile],
     );
     if (existingResult.rowCount > 0) {
       response.status(409).json({ message: "Account already exists. Please login." });
       return;
     }
 
-    const id = `std-${Date.now()}`;
     const passwordHash = hashPassword(password);
 
     await pool.query(
       `
       INSERT INTO students
-      (id, name, email, mobile, city, state, country, status, education_level, password, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,'Active',$8,$9,NOW())
+      (id, name, email, mobile, city, state, country, pin, address, status, education_level, password, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,'Active',$10,$11,NOW())
       `,
-      [id, name, email, mobile || null, city || null, state || null, country || null, educationLevel || null, passwordHash],
+      [
+        Number(mobile),
+        name,
+        email,
+        mobile,
+        city || null,
+        state || null,
+        country || null,
+        pin || null,
+        address || null,
+        educationLevel || null,
+        passwordHash,
+      ],
     );
 
     void sendAutomatedMail({
@@ -2492,7 +2625,8 @@ app.get("/api/auth/student/session-status", async (request, response) => {
 });
 
 app.get("/api/auth/student/profile", requireStudentSession, async (request, response) => {
-  response.json({ user: request.studentSession.student });
+  const student = await withOrderLocationFallback(request.studentSession.student);
+  response.json({ user: student });
 });
 
 app.put("/api/auth/student/profile", requireStudentSession, async (request, response) => {
@@ -2501,6 +2635,11 @@ app.put("/api/auth/student/profile", requireStudentSession, async (request, resp
     const name = String(request.body?.name || "").trim();
     const email = String(request.body?.email || "").trim().toLowerCase();
     const mobile = String(request.body?.mobile || "").trim();
+    const address = String(request.body?.address || "").trim();
+    const city = String(request.body?.city || "").trim();
+    const country = String(request.body?.country || "").trim();
+    const state = String(request.body?.state || "").trim();
+    const pin = String(request.body?.pin || "").trim();
 
     await pool.query(
       `
@@ -2508,10 +2647,15 @@ app.put("/api/auth/student/profile", requireStudentSession, async (request, resp
       SET name = COALESCE(NULLIF($2, ''), name),
           email = COALESCE(NULLIF($3, ''), email),
           mobile = COALESCE(NULLIF($4, ''), mobile),
+          address = COALESCE(NULLIF($5, ''), address),
+          city = COALESCE(NULLIF($6, ''), city),
+          country = COALESCE(NULLIF($7, ''), country),
+          state = COALESCE(NULLIF($8, ''), state),
+          pin = COALESCE(NULLIF($9, ''), pin),
           updated_at = NOW()
       WHERE id = $1
       `,
-      [studentId, name, email, mobile],
+        [studentId, name, email, mobile, address, city, country, state, pin],
     );
 
     const updated = await pool.query("SELECT * FROM students WHERE id = $1", [studentId]);
@@ -3752,9 +3896,17 @@ app.get("/api/admin/orders", requireAdminPermission("orders", "read"), async (re
         o.*,
         s.name AS student_name,
         s.email AS student_email,
-        s.mobile AS student_mobile
+        s.mobile AS student_mobile,
+        a.purchase_date AS access_purchase_date,
+        a.expires_at AS access_expires_at,
+        a.total_views AS access_total_views,
+        a.used_views AS access_used_views,
+        a.is_enabled AS access_is_enabled
       FROM student_orders o
       JOIN students s ON s.id = o.student_id
+      LEFT JOIN student_course_access a
+        ON a.student_id = o.student_id
+       AND a.course_id = o.course_id
       ${whereClause}
       ORDER BY o.created_at DESC
       LIMIT $${idx}
@@ -3789,9 +3941,17 @@ app.get("/api/admin/orders/student/:studentId", requireAdminPermission("orders",
         o.*,
         s.name AS student_name,
         s.email AS student_email,
-        s.mobile AS student_mobile
+        s.mobile AS student_mobile,
+        a.purchase_date AS access_purchase_date,
+        a.expires_at AS access_expires_at,
+        a.total_views AS access_total_views,
+        a.used_views AS access_used_views,
+        a.is_enabled AS access_is_enabled
       FROM student_orders o
       JOIN students s ON s.id = o.student_id
+      LEFT JOIN student_course_access a
+        ON a.student_id = o.student_id
+       AND a.course_id = o.course_id
       WHERE o.student_id = $1
       ORDER BY o.created_at DESC
       LIMIT 1000
@@ -4112,18 +4272,16 @@ app.post("/api/admin/orders/:id/refund", requireAdminPermission("orders", "edit"
 app.post("/api/students", requireAdminPermission("users", "create"), async (request, response) => {
   try {
     const body = request.body || {};
-    const id = String(body.id || `std-${Date.now()}`);
     const rawPassword = String(body.password || "student123");
     const storedPassword = hashPassword(rawPassword);
-    await pool.query(
+    const insertResult = await pool.query(
       `
       INSERT INTO students
-      (id, name, email, mobile, city, state, country, status, courses_enrolled, courses_completed, bio, education_level, password, updated_at)
-      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
-      ON CONFLICT (id)
+      (name, email, mobile, city, state, country, status, courses_enrolled, courses_completed, bio, education_level, password, updated_at)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+      ON CONFLICT (email)
       DO UPDATE SET
         name = EXCLUDED.name,
-        email = EXCLUDED.email,
         mobile = EXCLUDED.mobile,
         city = EXCLUDED.city,
         state = EXCLUDED.state,
@@ -4135,11 +4293,11 @@ app.post("/api/students", requireAdminPermission("users", "create"), async (requ
         education_level = EXCLUDED.education_level,
         password = EXCLUDED.password,
         updated_at = NOW()
+      RETURNING id
       `,
       [
-        id,
         String(body.name || "Student"),
-        String(body.email || `${id}@student.local`),
+        String(body.email || ""),
         String(body.mobile || ""),
         String(body.city || ""),
         String(body.state || ""),
@@ -4152,8 +4310,8 @@ app.post("/api/students", requireAdminPermission("users", "create"), async (requ
         storedPassword,
       ],
     );
-
-    const result = await pool.query("SELECT * FROM students WHERE id = $1", [id]);
+    const newId = insertResult.rows[0].id;
+    const result = await pool.query("SELECT * FROM students WHERE id = $1", [newId]);
     response.json({ student: mapStudentRow(result.rows[0]) });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save student" });
@@ -4211,7 +4369,7 @@ app.post("/api/students/bulk-delete", requireAdminPermission("users", "delete"),
       response.status(400).json({ message: "ids are required" });
       return;
     }
-    await pool.query("DELETE FROM students WHERE id = ANY($1::text[])", [ids]);
+    await pool.query("DELETE FROM students WHERE id = ANY($1::bigint[])", [ids]);
     response.json({ ok: true, deletedCount: ids.length });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Bulk delete failed" });
@@ -4332,10 +4490,33 @@ app.post("/api/students/:id/course-access", requireAdminPermission("users", "edi
         response.status(400).json({ message: "courseId is required" });
         return;
       }
+      const removeCourseResult = await pool.query(
+        "SELECT course_title FROM student_course_access WHERE student_id = $1 AND course_id = $2",
+        [studentId, courseId],
+      );
+      const removeCourseTitle = removeCourseResult.rows[0]?.course_title || courseId;
+      let removeStudentName = "";
+      let removeStudentEmail = "";
+      try {
+        const sr = await pool.query("SELECT name, email FROM students WHERE id = $1", [studentId]);
+        removeStudentName = sr.rows[0]?.name || "";
+        removeStudentEmail = sr.rows[0]?.email || "";
+      } catch { /* ignore */ }
       await pool.query(
         "DELETE FROM student_course_access WHERE student_id = $1 AND course_id = $2",
         [studentId, courseId],
       );
+      writeAdminAuditLog({
+        adminId: request.adminSession?.admin?.id,
+        adminEmail: request.adminSession?.admin?.email,
+        action: "course_remove",
+        moduleKey: "users",
+        targetType: "student",
+        targetId: String(studentId),
+        ipAddress: getIpAddress(request),
+        userAgent: String(request.headers["user-agent"] || ""),
+        details: { courseId, courseTitle: removeCourseTitle, studentName: removeStudentName, studentEmail: removeStudentEmail },
+      }).catch(() => {});
       response.json({ ok: true });
       return;
     }
@@ -4441,6 +4622,24 @@ app.post("/api/students/:id/course-access", requireAdminPermission("users", "edi
       ],
     );
 
+    let assignStudentName = "";
+    let assignStudentEmail = "";
+    try {
+      const sr = await pool.query("SELECT name, email FROM students WHERE id = $1", [studentId]);
+      assignStudentName = sr.rows[0]?.name || "";
+      assignStudentEmail = sr.rows[0]?.email || "";
+    } catch { /* ignore */ }
+    writeAdminAuditLog({
+      adminId: request.adminSession?.admin?.id,
+      adminEmail: request.adminSession?.admin?.email,
+      action: existingRow ? "course_update" : "course_assign",
+      moduleKey: "users",
+      targetType: "student",
+      targetId: String(studentId),
+      ipAddress: getIpAddress(request),
+      userAgent: String(request.headers["user-agent"] || ""),
+      details: { courseId, courseTitle, notes: notes || null, studentName: assignStudentName, studentEmail: assignStudentEmail },
+    }).catch(() => {});
     response.json({ ok: true });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save course access" });

@@ -100,6 +100,7 @@ type CourseForm = {
   reviewsText?: string; enrollmentCount?: number; showEnrollmentCount?: boolean;
   showMetaLectures?: boolean; showMetaHours?: boolean; showMetaValidity?: boolean;
   showMetaResources?: boolean; showMetaViews?: boolean; showMetaPerHour?: boolean; showMetaLanguage?: boolean;
+  masterCombinationsEnabled?: boolean;
   masterCombinationRows?: CourseMasterPricingCombination[];
   combinationUseView?: boolean;
   combinationUseValidity?: boolean;
@@ -150,6 +151,7 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
   showMetaValidity: c.showMetaValidity !== false, showMetaResources: c.showMetaResources !== false,
   showMetaViews: c.showMetaViews !== false, showMetaPerHour: c.showMetaPerHour !== false,
   showMetaLanguage: c.showMetaLanguage !== false,
+  masterCombinationsEnabled: Array.isArray(c.masterConfig?.combinations) && c.masterConfig.combinations.length > 0,
   masterCombinationRows: Array.isArray(c.masterConfig?.combinations)
     ? c.masterConfig.combinations
         .map((item, index) => ({
@@ -191,6 +193,7 @@ const BLANK_FORM: CourseForm = {
   ratingsEnabled: true, reviewsEnabled: true, ratingValue: 4.8, ratingCount: 0, reviewsText: "",
   enrollmentCount: 0, showEnrollmentCount: true, showMetaLectures: true, showMetaHours: true,
   showMetaValidity: true, showMetaResources: true, showMetaViews: true, showMetaPerHour: true, showMetaLanguage: true,
+  masterCombinationsEnabled: false,
   masterCombinationRows: [],
   combinationUseView: true,
   combinationUseValidity: true,
@@ -1072,7 +1075,7 @@ export default function AdminCourses() {
   const handleSaveCourse = async () => {
     if (!form.title.trim()) { alert("Please add a valid course title"); return; }
     const UNLIMITED_VALIDITY_DAYS = 36500;
-    const hasValidCourseComboPrice = (form.masterCombinationRows || []).some(
+    const hasValidCourseComboPrice = form.masterCombinationsEnabled !== false && (form.masterCombinationRows || []).some(
       (row) => row.isActive !== false
         && Number(row.price || 0) > 0
         && Boolean(row.viewModeId || row.validityOptionId || row.attemptOptionId || row.deliveryModeId || row.languageId),
@@ -1095,7 +1098,7 @@ export default function AdminCourses() {
       if (form.enableEnotesAddon) bookAddons.push({ id: "enotes", label: "eNotes", price: Math.max(0, Number(form.enotesAddonPrice || 0)), enabled: true });
       if (form.enablePhysicalBookAddon) bookAddons.push({ id: "physical-book", label: "Physical Book", price: Math.max(0, Number(form.physicalBookAddonPrice || 0)), enabled: true });
     }
-    const selectedMasterCombinationsWithPricing = (form.masterCombinationRows || [])
+    const selectedMasterCombinationsWithPricing = (form.masterCombinationsEnabled === false ? [] : (form.masterCombinationRows || []))
       .map((item, index) => ({
         id: String(item.id || `combo-${index + 1}`).trim(),
         label: String(item.label || "").trim(),
@@ -2653,9 +2656,52 @@ export default function AdminCourses() {
                               <div className="h-5 w-5 rounded-md bg-blue-600 flex items-center justify-center shrink-0"><DollarSign className="h-3 w-3 text-white" /></div>
                               <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Master Price Combinations</p>
                             </div>
-                            <a href="/admin/masters" target="_blank" className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"><Settings className="h-3 w-3" /> Configure Masters</a>
+                              <div className="flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  onClick={() => sf({ masterCombinationsEnabled: !form.masterCombinationsEnabled })}
+                                  className={`h-7 px-3 rounded-lg text-xs font-semibold border transition-all ${
+                                    form.masterCombinationsEnabled
+                                      ? "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
+                                      : "bg-white border-slate-300 text-slate-600 hover:bg-orange-50 hover:border-orange-400 hover:text-orange-700"
+                                  }`}
+                                >
+                                  {form.masterCombinationsEnabled ? "✓ Enabled" : "Disabled"}
+                                </button>
+                                <a href="/admin/masters" target="_blank" className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"><Settings className="h-3 w-3" /> Configure Masters</a>
+                              </div>
                           </div>
+                          {!form.masterCombinationsEnabled && (
+                            <div className="p-5 space-y-4">
+                              <p className="text-xs text-slate-500">Master Price Combinations is <strong>disabled</strong>. Your course will use the base price set below. Click <strong>Disabled</strong> above to enable combinations.</p>
+                              <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-1.5">
+                                  <Label>Sell Price (₹) *</Label>
+                                  <Input className={`${fieldCls} font-bold text-emerald-700`} type="number" placeholder="3999" value={form.price || ""} onChange={(e) => sf({ price: Number(e.target.value) || 0 })} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Original / MRP (₹)</Label>
+                                  <Input className={`${fieldCls} text-slate-500`} type="number" placeholder="5999" value={form.originalPrice || ""} onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })} />
+                                </div>
+                              </div>
+                            </div>
+                          )}
+                          {form.masterCombinationsEnabled && (
                           <div className="p-5 space-y-4">
+                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+                              <p className="text-xs font-semibold text-emerald-800">Base / Fallback Price</p>
+                              <div className="grid grid-cols-2 gap-3">
+                                <div className="space-y-1.5">
+                                  <Label>Sell Price (₹)</Label>
+                                  <Input className={`${fieldCls} font-bold text-emerald-700`} type="number" placeholder="3999" value={form.price || ""} onChange={(e) => sf({ price: Number(e.target.value) || 0 })} />
+                                </div>
+                                <div className="space-y-1.5">
+                                  <Label>Original / MRP (₹)</Label>
+                                  <Input className={`${fieldCls} text-slate-500`} type="number" placeholder="5999" value={form.originalPrice || ""} onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })} />
+                                </div>
+                              </div>
+                              <p className="text-[10px] text-emerald-600">Used as fallback price when no combination matches.</p>
+                            </div>
                             <p className="text-xs text-slate-500">Choose which dimensions to price by. Each must have active options in Masters.</p>
                             <div className="grid grid-cols-3 gap-3">
                               {[
@@ -2790,13 +2836,14 @@ export default function AdminCourses() {
                         <div className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50/60 px-5 py-4">
                           <FileText className="h-5 w-5 text-blue-500 shrink-0" />
                           <p className="text-xs text-blue-700">To manage <strong>curriculum chapters and lessons</strong>, use the <strong>Video</strong> button from the course list after saving this form.</p>
+                              </div>
+                            )}
+                          </div>
+                          )}
                         </div>
 
-                        {/* Demo Lecture */}
                         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                          <div className="flex items-center gap-2 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-slate-100 px-5 py-3">
-                            <div className="h-5 w-5 rounded-md bg-violet-600 flex items-center justify-center shrink-0"><Video className="h-3 w-3 text-white" /></div>
-                            <p className="text-xs font-bold text-violet-700 uppercase tracking-wider">Demo Lecture Settings</p>
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-slate-100 px-5 py-3">
                           </div>
                           <div className="p-5 space-y-4">
                             <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-violet-200 bg-violet-50/50 px-4 py-3 hover:bg-violet-50 transition-colors">

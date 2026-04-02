@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { Check, ChevronLeft, Eye, EyeOff, KeyRound, Mail, Phone, ShieldCheck, Smartphone } from "lucide-react";
 import { toast } from "sonner";
+import { Country, State } from "country-state-city";
 
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -32,18 +33,12 @@ interface SignupFormState {
   state: string;
   city: string;
   pin: string;
-  captchaChecked: boolean;
+  fullAddress: string;
+  captchaAnswer: string;
   termsAccepted: boolean;
 }
 
 const GENDER_OPTIONS = ["Male", "Female", "Other"];
-const COUNTRY_OPTIONS = ["India", "United Arab Emirates", "United States", "Canada"];
-const STATE_OPTIONS_BY_COUNTRY: Record<string, string[]> = {
-  India: ["Maharashtra", "Gujarat", "Delhi", "Karnataka", "Tamil Nadu"],
-  "United Arab Emirates": ["Dubai", "Abu Dhabi", "Sharjah"],
-  "United States": ["California", "Texas", "New York", "Florida"],
-  Canada: ["Ontario", "Alberta", "British Columbia", "Quebec"],
-};
 
 const INITIAL_SIGNUP_FORM: SignupFormState = {
   firstName: "",
@@ -54,11 +49,12 @@ const INITIAL_SIGNUP_FORM: SignupFormState = {
   email: "",
   password: "",
   confirmPassword: "",
-  country: "",
+  country: "IN",
   state: "",
   city: "",
   pin: "",
-  captchaChecked: false,
+  fullAddress: "",
+  captchaAnswer: "",
   termsAccepted: false,
 };
 
@@ -67,6 +63,41 @@ const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.
 const formatTime = (seconds: number) => `0:${String(seconds).padStart(2, "0")}`;
 const hasActiveSessionConflict = (value: unknown): value is { requiresConfirmation: true } => {
   return Boolean(value) && typeof value === "object" && (value as { requiresConfirmation?: boolean }).requiresConfirmation === true;
+};
+
+const createCaptchaChallenge = () => {
+  const left = Math.floor(Math.random() * 8) + 1;
+  const right = Math.floor(Math.random() * 8) + 1;
+  return {
+    question: `${left} + ${right} = ?`,
+    answer: String(left + right),
+  };
+};
+
+const fetchIndianCitiesByPin = async (pin: string, selectedStateName: string): Promise<string[]> => {
+  if (!/^\d{6}$/.test(pin)) return [];
+  try {
+    const response = await fetch(`https://api.postalpincode.in/pincode/${pin}`);
+    if (!response.ok) return [];
+    const payload = await response.json();
+    const first = Array.isArray(payload) ? payload[0] : null;
+    if (!first || first.Status !== "Success" || !Array.isArray(first.PostOffice)) return [];
+
+    const normalizedState = String(selectedStateName || "").trim().toLowerCase();
+    const filteredOffices = normalizedState
+      ? first.PostOffice.filter((office: { State?: string }) => String(office?.State || "").trim().toLowerCase() === normalizedState)
+      : first.PostOffice;
+
+    return Array.from(
+      new Set(
+        filteredOffices
+          .map((office: { Name?: string }) => String(office?.Name || "").trim())
+          .filter(Boolean),
+      ),
+    );
+  } catch {
+    return [];
+  }
 };
 
 const fieldClassName =
@@ -124,7 +155,64 @@ const LoginModal = ({
     return "OTP Verification";
   }, [signupStep]);
 
-  const availableStates = signupForm.country ? STATE_OPTIONS_BY_COUNTRY[signupForm.country] || [] : [];
+  const [captchaChallenge, setCaptchaChallenge] = useState(() => createCaptchaChallenge());
+
+  const countryOptions = useMemo(() => Country.getAllCountries(), []);
+  const availableStates = useMemo(() => {
+    if (!signupForm.country) return [];
+    return State.getStatesOfCountry(signupForm.country);
+  }, [signupForm.country]);
+
+  const selectedCountryName = useMemo(
+    () => countryOptions.find((country) => country.isoCode === signupForm.country)?.name || "",
+    [countryOptions, signupForm.country],
+  );
+
+  const selectedStateName = useMemo(
+    () => availableStates.find((state) => state.isoCode === signupForm.state)?.name || "",
+    [availableStates, signupForm.state],
+  );
+
+  const [cityOptions, setCityOptions] = useState<string[]>([]);
+  const [isCityLookupLoading, setIsCityLookupLoading] = useState(false);
+
+  useEffect(() => {
+    let isCancelled = false;
+
+    const loadCities = async () => {
+      if (signupForm.country !== "IN") {
+        setCityOptions([]);
+        setIsCityLookupLoading(false);
+        return;
+      }
+
+      if (!/^\d{6}$/.test(signupForm.pin)) {
+        setCityOptions([]);
+        setIsCityLookupLoading(false);
+        return;
+      }
+
+      setIsCityLookupLoading(true);
+      const cities = await fetchIndianCitiesByPin(signupForm.pin, selectedStateName);
+      if (isCancelled) return;
+
+      setCityOptions(cities);
+      setIsCityLookupLoading(false);
+
+      if (cities.length > 0) {
+        setSignupForm((previous) => ({
+          ...previous,
+          city: cities.includes(previous.city) ? previous.city : cities[0],
+        }));
+      }
+    };
+
+    void loadCities();
+
+    return () => {
+      isCancelled = true;
+    };
+  }, [signupForm.country, signupForm.pin, selectedStateName]);
 
   const resetFormState = () => {
     setLoginIdentifier("");
@@ -147,6 +235,7 @@ const LoginModal = ({
     setOtpSeconds(55);
     setIsOtpSending(false);
     setIsSignupSubmitting(false);
+    setCaptchaChallenge(createCaptchaChallenge());
 
     setShowForgotPassword(false);
     setForgotMobile("");
@@ -276,16 +365,23 @@ const LoginModal = ({
       toast.error("Please choose state.");
       return false;
     }
-    if (!signupForm.city.trim()) {
+    if (signupForm.country === "IN") {
+      if (!/^\d{6}$/.test(signupForm.pin)) {
+        toast.error("Please enter a valid 6-digit pin code.");
+        return false;
+      }
+      if (!signupForm.city.trim()) {
+        toast.error("Selected pin code does not match the selected state.");
+        return false;
+      }
+    } else if (!signupForm.city.trim()) {
       toast.error("Please enter city.");
       return false;
     }
-    if (!/^\d{6}$/.test(signupForm.pin)) {
-      toast.error("Please enter a valid 6-digit pin code.");
-      return false;
-    }
-    if (!signupForm.captchaChecked) {
-      toast.error("Please confirm captcha checkbox.");
+    if (signupForm.captchaAnswer.trim() !== captchaChallenge.answer) {
+      toast.error("Captcha answer is incorrect.");
+      setCaptchaChallenge(createCaptchaChallenge());
+      updateSignupField("captchaAnswer", "");
       return false;
     }
     if (!signupForm.termsAccepted) {
@@ -469,9 +565,10 @@ const LoginModal = ({
         mobile: signupForm.mobile,
         password: signupForm.password,
         gender: signupForm.gender,
-        country: signupForm.country,
-        state: signupForm.state,
+        country: selectedCountryName,
+        state: selectedStateName,
         city: signupForm.city,
+        address: signupForm.fullAddress,
         pin: signupForm.pin,
       });
 
@@ -631,7 +728,7 @@ const LoginModal = ({
                   : loginMethod === "password"
                     ? "Sign in to continue your learning journey."
                     : loginOtpSent
-                      ? `OTP sent to \u2022\u2022\u2022\u2022\u2022\u2022${loginOtpMobile.slice(-4)}. Enter below.`
+                      ? `OTP sent to ******${loginOtpMobile.slice(-4)}. Enter below.`
                       : "Enter your mobile to receive a one-time password."}
               </p>
             </div>
@@ -777,7 +874,7 @@ const LoginModal = ({
                     <div className="flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3">
                       <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-semibold text-emerald-800">OTP sent to \u2022\u2022\u2022\u2022\u2022\u2022{loginOtpMobile.slice(-4)}</p>
+                        <p className="text-sm font-semibold text-emerald-800">OTP sent to ******{loginOtpMobile.slice(-4)}</p>
                         <p className="text-xs text-emerald-600">Valid for 10 minutes.</p>
                       </div>
                       <button
@@ -794,9 +891,11 @@ const LoginModal = ({
                       </Label>
                       <Input
                         id="loginOtpCode"
-                        className={`${fieldClassName} text-center text-2xl font-bold tracking-[0.5em]`}
-                        placeholder="\u2022 \u2022 \u2022 \u2022 \u2022 \u2022"
+                        className={`${fieldClassName} text-center text-xl font-bold tracking-[0.2em]`}
+                        placeholder="Enter 6-digit OTP"
                         maxLength={6}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         value={loginOtpCode}
                         onChange={(event) => setLoginOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
                       />
@@ -854,7 +953,7 @@ const LoginModal = ({
                       <ShieldCheck className="h-5 w-5 shrink-0 text-emerald-600" />
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-semibold text-emerald-800">
-                          OTP sent to ••••••{normalizeMobile(forgotMobile).slice(-4)}
+                          OTP sent to ******{normalizeMobile(forgotMobile).slice(-4)}
                         </p>
                         <p className="text-xs text-emerald-600">Enter OTP and set a new password.</p>
                       </div>
@@ -870,9 +969,11 @@ const LoginModal = ({
                     <div className="space-y-1.5">
                       <Label className="text-sm font-semibold text-slate-700">Enter 6-Digit OTP</Label>
                       <Input
-                        className={`${fieldClassName} text-center text-2xl font-bold tracking-[0.5em]`}
-                        placeholder="• • • • • •"
+                        className={`${fieldClassName} text-center text-xl font-bold tracking-[0.2em]`}
+                        placeholder="Enter 6-digit OTP"
                         maxLength={6}
+                        inputMode="numeric"
+                        pattern="[0-9]*"
                         value={forgotOtpCode}
                         onChange={(event) => setForgotOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
                       />
@@ -1017,34 +1118,69 @@ const LoginModal = ({
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-slate-700">Country*</Label>
-                    <select className={`${fieldClassName} appearance-none`} value={signupForm.country} onChange={(event) => { setSignupForm((previous) => ({ ...previous, country: event.target.value, state: "" })); }}>
+                    <select className={`${fieldClassName} appearance-none`} value={signupForm.country} onChange={(event) => { setSignupForm((previous) => ({ ...previous, country: event.target.value, state: "", pin: "", city: "" })); setCityOptions([]); }}>
                       <option value="">Select</option>
-                      {COUNTRY_OPTIONS.map((option) => <option key={option} value={option}>{option}</option>)}
+                      {countryOptions.map((option) => <option key={option.isoCode} value={option.isoCode}>{option.name}</option>)}
                     </select>
                   </div>
                   <div className="space-y-1.5">
                     <Label className="text-xs font-semibold text-slate-700">State*</Label>
-                    <select className={`${fieldClassName} appearance-none`} value={signupForm.state} onChange={(event) => updateSignupField("state", event.target.value)} disabled={!signupForm.country}>
+                    <select className={`${fieldClassName} appearance-none`} value={signupForm.state} onChange={(event) => { updateSignupField("state", event.target.value); updateSignupField("pin", ""); updateSignupField("city", ""); setCityOptions([]); }} disabled={!signupForm.country}>
                       <option value="">Select</option>
-                      {availableStates.map((option) => <option key={option} value={option}>{option}</option>)}
+                      {availableStates.map((option) => <option key={option.isoCode} value={option.isoCode}>{option.name}</option>)}
                     </select>
                   </div>
                 </div>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">City*</Label>
-                    <Input className={fieldClassName} placeholder="Your city" value={signupForm.city} onChange={(event) => updateSignupField("city", event.target.value)} />
+                {signupForm.country === "IN" ? (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">Pin Code*</Label>
+                      <Input className={fieldClassName} placeholder="6-digit pin" value={signupForm.pin} onChange={(event) => updateSignupField("pin", event.target.value.replace(/\D/g, "").slice(0, 6))} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">City*</Label>
+                      <select className={`${fieldClassName} appearance-none`} value={signupForm.city} onChange={(event) => updateSignupField("city", event.target.value)} disabled={isCityLookupLoading || cityOptions.length === 0}>
+                        <option value="">{isCityLookupLoading ? "Loading..." : cityOptions.length ? "Select city" : "Enter pin code first"}</option>
+                        {cityOptions.map((city) => <option key={city} value={city}>{city}</option>)}
+                      </select>
+                    </div>
                   </div>
-                  <div className="space-y-1.5">
-                    <Label className="text-xs font-semibold text-slate-700">Pin Code*</Label>
-                    <Input className={fieldClassName} placeholder="6-digit pin" value={signupForm.pin} onChange={(event) => updateSignupField("pin", event.target.value.replace(/\D/g, "").slice(0, 6))} />
+                ) : (
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">City*</Label>
+                      <Input className={fieldClassName} placeholder="Your city" value={signupForm.city} onChange={(event) => updateSignupField("city", event.target.value)} />
+                    </div>
+                    <div className="space-y-1.5">
+                      <Label className="text-xs font-semibold text-slate-700">Postal Code</Label>
+                      <Input className={fieldClassName} placeholder="Postal code" value={signupForm.pin} onChange={(event) => updateSignupField("pin", event.target.value.replace(/\D/g, "").slice(0, 10))} />
+                    </div>
+                  </div>
+                )}
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-semibold text-slate-700">Full Address</Label>
+                  <textarea
+                    className="min-h-[78px] w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm font-medium text-slate-900 shadow-sm placeholder:text-slate-400 transition-colors focus-visible:border-[rgb(38,72,151)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[rgb(38,72,151)]/20"
+                    placeholder="House/Flat, Area, Landmark"
+                    value={signupForm.fullAddress}
+                    onChange={(event) => updateSignupField("fullAddress", event.target.value)}
+                  />
+                </div>
+                <div className="rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5 space-y-2">
+                  <p className="text-xs font-semibold text-slate-700">Captcha: Solve to continue</p>
+                  <div className="flex items-center gap-2">
+                    <span className="inline-flex h-9 min-w-[90px] items-center justify-center rounded-md border border-slate-300 bg-white px-3 text-sm font-bold text-slate-800">{captchaChallenge.question}</span>
+                    <Input
+                      className="h-9"
+                      placeholder="Answer"
+                      value={signupForm.captchaAnswer}
+                      onChange={(event) => updateSignupField("captchaAnswer", event.target.value.replace(/\D/g, "").slice(0, 2))}
+                    />
+                    <Button type="button" variant="outline" className="h-9 px-3" onClick={() => { setCaptchaChallenge(createCaptchaChallenge()); updateSignupField("captchaAnswer", ""); }}>
+                      Refresh
+                    </Button>
                   </div>
                 </div>
-                <label className="flex cursor-pointer items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 px-3 py-2.5">
-                  <input type="checkbox" checked={signupForm.captchaChecked} onChange={(event) => updateSignupField("captchaChecked", event.target.checked)} className="h-4 w-4 accent-emerald-600" />
-                  <span className="flex-1 text-xs text-slate-700">I am not a robot</span>
-                  <span className="text-[11px] font-bold text-slate-400">reCAPTCHA</span>
-                </label>
                 <label className="flex cursor-pointer items-start gap-2">
                   <input type="checkbox" checked={signupForm.termsAccepted} onChange={(event) => updateSignupField("termsAccepted", event.target.checked)} className="mt-0.5 h-4 w-4 accent-emerald-600" />
                   <span className="text-xs text-slate-500">
@@ -1075,9 +1211,11 @@ const LoginModal = ({
                 <div className="space-y-1.5">
                   <Label className="text-xs font-semibold text-slate-700">Enter 6-Digit OTP</Label>
                   <Input
-                    className={`${fieldClassName} text-center text-2xl font-bold tracking-[0.5em]`}
-                    placeholder="\u2022 \u2022 \u2022 \u2022 \u2022 \u2022"
+                    className={`${fieldClassName} text-center text-xl font-bold tracking-[0.2em]`}
+                    placeholder="Enter 6-digit OTP"
                     maxLength={6}
+                    inputMode="numeric"
+                    pattern="[0-9]*"
                     value={otpCode}
                     onChange={(event) => setOtpCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
                   />

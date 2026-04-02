@@ -11,7 +11,6 @@ export type AdminSidebarIconName =
   | "homepage"
   | "header"
   | "users"
-  | "studentAccess"
   | "orders"
   | "leads"
   | "announcements"
@@ -42,24 +41,23 @@ export const ADMIN_SIDEBAR_STORAGE_KEY = "ednovate_admin_sidebar_v1";
 
 export const ADMIN_SIDEBAR_DEFINITIONS: AdminSidebarDefinition[] = [
   { id: "dashboard", to: "/admin/dashboard", defaultLabel: "Dashboard", moduleKey: "dashboard", iconName: "dashboard" },
-  { id: "courses", to: "/admin/courses", defaultLabel: "Courses", moduleKey: "courses", iconName: "courses" },
-  { id: "course-content", to: "/admin/course-content", defaultLabel: "Video", moduleKey: "course-content", iconName: "courseContent" },
+  { id: "homepage", to: "/admin/homepage", defaultLabel: "Home Page", moduleKey: "homepage", iconName: "homepage" },
+  { id: "subadmins", to: "/admin/subadmins", defaultLabel: "Admins", moduleKey: "subadmins", iconName: "subadmins" },
+  { id: "masters", to: "/admin/masters", defaultLabel: "Masters", moduleKey: "masters", iconName: "masters" },
+  { id: "course-content", to: "/admin/course-content", defaultLabel: "Videos", moduleKey: "course-content", iconName: "courseContent" },
   { id: "bunny-video", to: "/admin/bunny-video", defaultLabel: "Bunny Video", moduleKey: "settings", iconName: "bunnyVideo" },
-  { id: "masters", to: "/admin/masters", defaultLabel: "Master", moduleKey: "masters", iconName: "masters" },
-  { id: "coupons", to: "/admin/coupons", defaultLabel: "Coupons", moduleKey: "coupons", iconName: "coupons" },
-  { id: "faculty", to: "/admin/faculty", defaultLabel: "Faculty", moduleKey: "faculty", iconName: "faculty" },
-  { id: "homepage", to: "/admin/homepage", defaultLabel: "Homepage", moduleKey: "homepage", iconName: "homepage" },
-  { id: "header", to: "/admin/header", defaultLabel: "Header Module", moduleKey: "homepage", iconName: "header" },
-  { id: "users", to: "/admin/users", defaultLabel: "Students", moduleKey: "users", iconName: "users" },
-  { id: "student-access", to: "/admin/student-access", defaultLabel: "Student Access", moduleKey: "users", iconName: "studentAccess" },
-  { id: "orders", to: "/admin/orders", defaultLabel: "Orders", moduleKey: "orders", iconName: "orders" },
-  { id: "leads", to: "/admin/leads", defaultLabel: "Leads", moduleKey: "leads", iconName: "leads" },
-  { id: "announcements", to: "/admin/announcements", defaultLabel: "Announcements", moduleKey: "announcements", iconName: "announcements" },
-  { id: "technical-support", to: "/admin/technical-support", defaultLabel: "Technical Support", moduleKey: "technical-support", iconName: "technicalSupport" },
-  { id: "marketing", to: "/admin/marketing", defaultLabel: "Marketing", moduleKey: "marketing", iconName: "marketing" },
+  { id: "courses", to: "/admin/courses", defaultLabel: "Courses", moduleKey: "courses", iconName: "courses" },
+  { id: "users", to: "/admin/users", defaultLabel: "Users", moduleKey: "users", iconName: "users" },
   { id: "settings", to: "/admin/settings", defaultLabel: "Settings", moduleKey: "settings", iconName: "settings" },
-  { id: "subadmins", to: "/admin/subadmins", defaultLabel: "Sub Admins", moduleKey: "subadmins", iconName: "subadmins" },
-  { id: "logs", to: "/admin/logs", defaultLabel: "Activity Logs", moduleKey: "logs", iconName: "logs" },
+  { id: "orders", to: "/admin/orders", defaultLabel: "Sales", moduleKey: "orders", iconName: "orders" },
+  { id: "logs", to: "/admin/logs", defaultLabel: "Reports", moduleKey: "logs", iconName: "logs" },
+  { id: "marketing", to: "/admin/marketing", defaultLabel: "Marketing", moduleKey: "marketing", iconName: "marketing" },
+  { id: "coupons", to: "/admin/coupons", defaultLabel: "Coupons", moduleKey: "coupons", iconName: "coupons" },
+  { id: "leads", to: "/admin/leads", defaultLabel: "Call Requests", moduleKey: "leads", iconName: "leads" },
+  { id: "announcements", to: "/admin/announcements", defaultLabel: "Notifications", moduleKey: "announcements", iconName: "announcements" },
+  { id: "faculty", to: "/admin/faculty", defaultLabel: "Professors", moduleKey: "faculty", iconName: "faculty" },
+  { id: "header", to: "/admin/header", defaultLabel: "Header", moduleKey: "homepage", iconName: "header" },
+  { id: "technical-support", to: "/admin/technical-support", defaultLabel: "Technical Support", moduleKey: "technical-support", iconName: "technicalSupport" },
   { id: "apis", to: "/admin/apis", defaultLabel: "API Module", moduleKey: "settings", iconName: "apis" },
 ];
 
@@ -67,6 +65,10 @@ const withSortedOrder = (items: AdminSidebarItemConfig[]): AdminSidebarItemConfi
   [...items]
     .sort((a, b) => a.order - b.order)
     .map((item, index) => ({ ...item, order: index }));
+
+const SIDEBAR_SEQUENCE_PRIORITY = new Map(
+  ADMIN_SIDEBAR_DEFINITIONS.map((definition, index) => [definition.id, index]),
+);
 
 export const buildDefaultAdminSidebarConfig = (): AdminSidebarItemConfig[] =>
   ADMIN_SIDEBAR_DEFINITIONS.map((definition, index) => ({
@@ -107,10 +109,37 @@ export const normalizeAdminSidebarConfig = (raw: unknown): AdminSidebarItemConfi
     const incomingLabel = incoming.label || "";
     const migratedLabel = (() => {
       if (base.id === "course-content" && incomingLabel === "Course Content") {
-        return "Video";
+        return "Videos";
       }
-      if (base.id === "homepage" && incomingLabel === "Homepage Content") {
-        return "Homepage";
+      if (base.id === "homepage" && (incomingLabel === "Homepage Content" || incomingLabel === "Homepage")) {
+        return "Home Page";
+      }
+      if (base.id === "orders" && incomingLabel === "Orders") {
+        return "Sales";
+      }
+      if (base.id === "subadmins" && incomingLabel === "Sub Admins") {
+        return "Admins";
+      }
+      if (base.id === "users" && incomingLabel === "Students") {
+        return "Users";
+      }
+      if (base.id === "logs" && incomingLabel === "Activity Logs") {
+        return "Reports";
+      }
+      if (base.id === "leads" && incomingLabel === "Leads") {
+        return "Call Requests";
+      }
+      if (base.id === "announcements" && incomingLabel === "Announcements") {
+        return "Notifications";
+      }
+      if (base.id === "header" && incomingLabel === "Header Module") {
+        return "Header";
+      }
+      if (base.id === "faculty" && incomingLabel === "Faculty") {
+        return "Professors";
+      }
+      if (base.id === "masters" && incomingLabel === "Master") {
+        return "Masters";
       }
       return incomingLabel;
     })();
@@ -124,7 +153,14 @@ export const normalizeAdminSidebarConfig = (raw: unknown): AdminSidebarItemConfi
     };
   });
 
-  return withSortedOrder(merged);
+  const sequenced = [...merged].sort((a, b) => {
+    const priorityA = SIDEBAR_SEQUENCE_PRIORITY.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+    const priorityB = SIDEBAR_SEQUENCE_PRIORITY.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+    if (priorityA !== priorityB) return priorityA - priorityB;
+    return a.order - b.order;
+  });
+
+  return withSortedOrder(sequenced);
 };
 
 export const getConfiguredAdminSidebarItems = (config: AdminSidebarItemConfig[]) => {

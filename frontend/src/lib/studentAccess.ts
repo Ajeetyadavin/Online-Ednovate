@@ -10,6 +10,8 @@ export interface CourseAccessLike {
   usedWatchSeconds?: number;
 }
 
+export type CourseAccessIssue = "disabled" | "expired" | "watchtime_over" | null;
+
 export const computeRemainingViews = (entry: CourseAccessLike) => {
   const remaining = Number(entry.remainingViews);
   if (Number.isFinite(remaining)) {
@@ -44,6 +46,42 @@ export const isCourseAccessActive = (entry?: CourseAccessLike | null, nowMs = Da
   }
 
   return computeRemainingViews(entry) > 0;
+};
+
+export const getCourseAccessIssue = (entry?: CourseAccessLike | null, nowMs = Date.now()): CourseAccessIssue => {
+  if (!entry) return null;
+  if (entry.isEnabled === false) return "disabled";
+  if (isAccessExpired(entry, nowMs)) return "expired";
+  if (entry.isUnlimitedViews === true) return null;
+
+  const remainingWatchSeconds = Number(entry.remainingWatchSeconds);
+  if (Number.isFinite(remainingWatchSeconds)) {
+    return Math.max(0, remainingWatchSeconds) > 0 ? null : "watchtime_over";
+  }
+
+  const allowedWatchSeconds = Number(entry.allowedWatchSeconds);
+  const usedWatchSeconds = Number(entry.usedWatchSeconds || 0);
+  if (Number.isFinite(allowedWatchSeconds) && allowedWatchSeconds > 0) {
+    return Math.max(0, allowedWatchSeconds - usedWatchSeconds) > 0 ? null : "watchtime_over";
+  }
+
+  return computeRemainingViews(entry) > 0 ? null : "watchtime_over";
+};
+
+export const getCourseAccessIssueLabel = (entry?: CourseAccessLike | null, nowMs = Date.now()) => {
+  const issue = getCourseAccessIssue(entry, nowMs);
+  if (issue === "disabled") return "Disabled";
+  if (issue === "expired") return "Expired";
+  if (issue === "watchtime_over") return "Watchtime Over";
+  return "Access Active";
+};
+
+export const getCourseAccessIssueMessage = (entry?: CourseAccessLike | null, nowMs = Date.now()) => {
+  const issue = getCourseAccessIssue(entry, nowMs);
+  if (issue === "disabled") return "Course disabled by admin.";
+  if (issue === "expired") return "Course validity expired.";
+  if (issue === "watchtime_over") return "Watchtime over.";
+  return "Access active.";
 };
 
 export const progressFromViews = (entry: CourseAccessLike) => {

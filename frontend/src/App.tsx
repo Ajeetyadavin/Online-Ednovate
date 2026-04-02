@@ -46,7 +46,6 @@ import AdminHeader from "./pages/admin/AdminHeader";
 import AdminSettings from "./pages/admin/AdminSettings";
 import AdminCoupons from "./pages/admin/AdminCoupons";
 import AdminSubAdmins from "./pages/admin/AdminSubAdmins";
-import AdminStudentAccess from "./pages/admin/AdminStudentAccess";
 import AdminMarketing from "./pages/admin/AdminMarketing";
 import AdminFaculty from "./pages/admin/AdminFaculty";
 import AdminLogs from "./pages/admin/AdminLogs";
@@ -372,7 +371,6 @@ const AppContent = () => (
                     <Route path="coupons" element={<AdminCoupons />} />
                     <Route path="faculty" element={<AdminFaculty />} />
                     <Route path="users" element={<AdminUsers />} />
-                    <Route path="student-access" element={<AdminStudentAccess />} />
                     <Route path="orders" element={<AdminOrders />} />
                     <Route path="leads" element={<AdminLeads />} />
                     <Route path="announcements" element={<AdminAnnouncements />} />

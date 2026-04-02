@@ -27,8 +27,13 @@ export interface StudentCourseAccess {
   totalViews: number;
   usedViews: number;
   remainingViews: number;
+  courseDurationSeconds?: number;
+  allowedWatchSeconds?: number;
+  usedWatchSeconds?: number;
+  remainingWatchSeconds?: number;
   isUnlimitedViews?: boolean;
   isEnabled: boolean;
+  preferredVideoQuality?: "auto" | "high" | "medium" | "low";
   notes?: string;
   createdAt?: string;
   updatedAt?: string;
@@ -359,6 +364,12 @@ export interface AdminOrderLine {
   parentPackageTitle?: string;
   packageCourseIds?: string[];
   orderDate?: string;
+  purchaseDate?: string;
+  expiresAt?: string;
+  totalViews?: number;
+  usedViews?: number;
+  remainingViews?: number;
+  accessStatus?: "active" | "expired" | "disabled" | "out_of_views" | string;
   paymentMethod?: string;
   baseAmount?: number;
   taxAmount?: number;
@@ -1684,7 +1695,10 @@ export const adminApi = {
           headers: withAuthHeaders({}),
         }),
       );
-    } catch {
+    } catch (error) {
+      if (!is404Error(error)) {
+        throw error;
+      }
       // Fallback for servers that only expose the generic platform settings endpoint.
       return parseResponse<{ settings: PlatformSettingsPayload }>(
         await fetch("/api/admin/platform-settings", {
@@ -1703,7 +1717,10 @@ export const adminApi = {
           body: JSON.stringify({ settings }),
         }),
       );
-    } catch {
+    } catch (error) {
+      if (!is404Error(error)) {
+        throw error;
+      }
       // Fallback for servers that only expose the generic platform settings endpoint.
       return parseResponse<{ ok: boolean; settings: PlatformSettingsPayload }>(
         await fetch("/api/admin/platform-settings", {

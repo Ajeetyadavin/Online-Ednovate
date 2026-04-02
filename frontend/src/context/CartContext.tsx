@@ -6,7 +6,7 @@ import {
   createStudentPurchaseApi,
   type StudentCourseAccessSelf,
 } from "@/services/authApi";
-import { isCourseAccessActive, progressFromViews } from "@/lib/studentAccess";
+import { progressFromViews } from "@/lib/studentAccess";
 
 interface OrderRecord {
   id: string;
@@ -37,6 +37,12 @@ interface OrderRecord {
   trackingId?: string;
   dispatchNote?: string;
 }
+
+type RemoteOrderItem = {
+  courseId?: string;
+  title?: string;
+  itemType?: string;
+};
 
 interface PurchasedCourse extends Course {
   purchasedOn: string;
@@ -91,6 +97,12 @@ const parseStored = <T,>(key: string, fallback: T): T => {
   } catch {
     return fallback;
   }
+};
+
+const shouldIncludeDashboardOrderItem = (item: RemoteOrderItem) => {
+  const itemType = String(item.itemType || "course").trim().toLowerCase();
+  if (!String(item.courseId || "").trim()) return false;
+  return itemType === "course" || itemType === "package";
 };
 
 const CartContext = createContext<CartContextType | undefined>(undefined);
@@ -165,25 +177,47 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           return acc;
         }, {});
 
-        const nextPurchased: PurchasedCourse[] = accessItems
-          .filter((item) => item?.courseId)
-          .map((item) => {
-            const base = courses.find((course) => course.id === item.courseId);
-            if (!base) {
-              return null;
-            }
+        const serverOrders = Array.isArray(dashboardPayload?.orders) ? dashboardPayload.orders : [];
+        const purchasedById = new Map<string, PurchasedCourse>();
 
-            return {
+        accessItems
+          .filter((item) => item?.courseId)
+          .forEach((item) => {
+            const base = courses.find((course) => course.id === item.courseId);
+            if (!base) return;
+
+            purchasedById.set(item.courseId, {
               ...base,
               purchasedOn: item.purchaseDate || new Date(item.createdAt || Date.now()).toLocaleDateString("en-IN"),
               progress: Math.max(progressFromViews(item), progressByCourse[item.courseId] || 0),
-            };
+            });
+          });
+
+        serverOrders
+          .flatMap((order: { date?: string; items?: RemoteOrderItem[] }) => {
+            const orderDate = String(order?.date || "").trim();
+            const items = Array.isArray(order?.items) ? order.items : [];
+            return items.map((item) => ({ item, orderDate }));
           })
-          .filter(Boolean) as PurchasedCourse[];
+          .filter(({ item }) => shouldIncludeDashboardOrderItem(item))
+          .forEach(({ item, orderDate }) => {
+            const courseId = String(item.courseId || "").trim();
+            if (!courseId || purchasedById.has(courseId)) return;
+
+            const base = courses.find((course) => course.id === courseId);
+            if (!base) return;
+
+            purchasedById.set(courseId, {
+              ...base,
+              purchasedOn: orderDate || new Date().toLocaleDateString("en-IN"),
+              progress: progressByCourse[courseId] || 0,
+            });
+          });
+
+        const nextPurchased = Array.from(purchasedById.values());
 
         setPurchasedCourses(nextPurchased);
 
-        const serverOrders = Array.isArray(dashboardPayload?.orders) ? dashboardPayload.orders : [];
         const nextOrders: OrderRecord[] = serverOrders.map((order: any) => ({
           id: String(order.id || `ORD-${Date.now()}`),
           date: String(order.date || ""),

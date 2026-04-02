@@ -4,6 +4,7 @@ import { useAuth } from "@/context/AuthContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import {
   adminApi,
+  type AdminOrderGroup,
   type CourseMasterAttemptOption,
   type CourseMasterDeliveryMode,
   type CourseMasterViewMode,
@@ -25,6 +26,7 @@ import {
   Clock, Eye, BookOpen, KeyRound, Send, Users, Activity,
   MessageSquare, RefreshCcw, GraduationCap, ToggleLeft, ToggleRight,
   ChevronRight, Phone, Calendar, Download, ChevronDown, ChevronUp,
+  CheckCircle2, XCircle, Infinity, CreditCard, Settings2, Save,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -93,6 +95,48 @@ type AssignableCourseOption = {
   };
 };
 
+type AccessDraft = {
+  expiresAt: string;
+  isEnabled: boolean;
+  isUnlimitedViews: boolean;
+};
+
+type AccessHealth = "active" | "disabled" | "expired" | "out_of_views";
+
+const formatWatchDuration = (seconds?: number) => {
+  const safeSeconds = Math.max(0, Number(seconds || 0));
+  const hours = Math.floor(safeSeconds / 3600);
+  const minutes = Math.floor((safeSeconds % 3600) / 60);
+  return `${hours}h ${minutes}m`;
+};
+
+const toDateTimeLocalValue = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  const offsetMs = date.getTimezoneOffset() * 60 * 1000;
+  return new Date(date.getTime() - offsetMs).toISOString().slice(0, 16);
+};
+
+const accessStatusConfig: Record<AccessHealth, { label: string; badge: string }> = {
+  active: { label: "Active", badge: "border border-emerald-200 bg-emerald-50 text-emerald-700" },
+  disabled: { label: "Disabled", badge: "border border-slate-200 bg-slate-100 text-slate-600" },
+  expired: { label: "Expired", badge: "border border-red-200 bg-red-50 text-red-700" },
+  out_of_views: { label: "Out of Watch Time", badge: "border border-amber-200 bg-amber-50 text-amber-700" },
+};
+
+const getCourseAccessHealth = (access: StudentCourseAccess): AccessHealth => {
+  if (access.isEnabled === false) return "disabled";
+  if (access.expiresAt) {
+    const expiry = new Date(access.expiresAt).getTime();
+    if (Number.isFinite(expiry) && expiry < Date.now()) return "expired";
+  }
+  if (access.isUnlimitedViews !== true && Math.max(0, Number(access.remainingWatchSeconds || 0)) <= 0) {
+    return "out_of_views";
+  }
+  return "active";
+};
+
 /* ─── Component ─────────────────────────────────────────────────── */
 export default function AdminUsers() {
   const navigate = useNavigate();
@@ -122,7 +166,18 @@ export default function AdminUsers() {
   const [loginLogs, setLoginLogs] = useState<StudentLoginLog[]>([]);
   const [videoActivity, setVideoActivity] = useState<StudentVideoActivity[]>([]);
   const [notifications, setNotifications] = useState<StudentNotification[]>([]);
+  const [studentOrders, setStudentOrders] = useState<AdminOrderGroup[]>([]);
   const [activeTab, setActiveTab] = useState<DetailTab>("overview");
+  const [selectedAccessCourseId, setSelectedAccessCourseId] = useState("");
+  const [accessDraft, setAccessDraft] = useState<AccessDraft>({ expiresAt: "", isEnabled: true, isUnlimitedViews: false });
+  const [accessActionKey, setAccessActionKey] = useState("");
+  const [accessExtendDays, setAccessExtendDays] = useState("30");
+  const [accessExtendWatchHours, setAccessExtendWatchHours] = useState("0");
+  const [accessExtendWatchMinutes, setAccessExtendWatchMinutes] = useState("0");
+  const [accessExtendDirection, setAccessExtendDirection] = useState<"add" | "subtract">("add");
+  const [accessAdjustWatchHours, setAccessAdjustWatchHours] = useState("0");
+  const [accessAdjustWatchMinutes, setAccessAdjustWatchMinutes] = useState("0");
+  const [accessAdjustDirection, setAccessAdjustDirection] = useState<"add" | "subtract">("add");
   const [showDateFilter, setShowDateFilter] = useState(false);
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
@@ -188,12 +243,16 @@ export default function AdminUsers() {
     setDetailLoading(true);
     setDetailError("");
     try {
-      const data = await adminApi.getStudentDetails(studentId);
+      const [data, orderHistory] = await Promise.all([
+        adminApi.getStudentDetails(studentId),
+        adminApi.getStudentOrderHistory(studentId).catch(() => ({ lines: [], grouped: [] })),
+      ]);
       setSelectedStudent(data.student);
       setCourseAccess(data.courseAccess || []);
       setLoginLogs(data.loginLogs || []);
       setVideoActivity(data.videoActivity || []);
       setNotifications(data.notifications || []);
+      setStudentOrders(orderHistory.grouped || []);
     } catch (error) {
       setDetailError(error instanceof Error ? error.message : "Failed to load student details");
     } finally {
@@ -318,6 +377,23 @@ export default function AdminUsers() {
     const meta = curriculumMetaByCourse[courseForm.courseId];
     return { lectures: meta?.lectures || 0, durationText: formatSecondsToClock(meta?.totalSeconds || 0) };
   }, [curriculumMetaByCourse, courseForm.courseId]);
+
+  const selectedManagedAccess = useMemo(
+    () => courseAccess.find((access) => access.courseId === selectedAccessCourseId) || null,
+    [courseAccess, selectedAccessCourseId],
+  );
+
+  const courseAccessStats = useMemo(() => {
+    return courseAccess.reduce(
+      (acc, access) => {
+        const status = getCourseAccessHealth(access);
+        acc.total += 1;
+        acc[status] += 1;
+        return acc;
+      },
+      { total: 0, active: 0, disabled: 0, expired: 0, out_of_views: 0 },
+    );
+  }, [courseAccess]);
 
   const assignableCourses = useMemo(() => {
     const source = assignCourseOptions.length > 0
@@ -458,7 +534,7 @@ export default function AdminUsers() {
       await adminApi.deleteStudent(id);
       setStudents((prev) => prev.filter((s) => s.id !== id));
       setSelectedIds((prev) => prev.filter((x) => x !== id));
-      if (selectedStudentId === id) { setSelectedStudentId(""); setSelectedStudent(null); setCourseAccess([]); setLoginLogs([]); setVideoActivity([]); setNotifications([]); }
+      if (selectedStudentId === id) { setSelectedStudentId(""); setSelectedStudent(null); setCourseAccess([]); setLoginLogs([]); setVideoActivity([]); setNotifications([]); setStudentOrders([]); setSelectedAccessCourseId(""); }
     } catch (error) {
       alert(error instanceof Error ? error.message : "Failed to delete student");
     }
@@ -694,6 +770,40 @@ export default function AdminUsers() {
       await loadStudentDetails(selectedStudentId);
     } catch (error) {
       alert(error instanceof Error ? error.message : "Failed to delete notification");
+    }
+  };
+
+  useEffect(() => {
+    if (!selectedManagedAccess) {
+      setAccessDraft({ expiresAt: "", isEnabled: true, isUnlimitedViews: false });
+      return;
+    }
+
+    setAccessDraft({
+      expiresAt: toDateTimeLocalValue(selectedManagedAccess.expiresAt),
+      isEnabled: selectedManagedAccess.isEnabled !== false,
+      isUnlimitedViews: selectedManagedAccess.isUnlimitedViews === true,
+    });
+    setAccessExtendDays("30");
+    setAccessExtendWatchHours("0");
+    setAccessExtendWatchMinutes("0");
+    setAccessExtendDirection("add");
+    setAccessAdjustWatchHours("0");
+    setAccessAdjustWatchMinutes("0");
+    setAccessAdjustDirection("add");
+  }, [selectedManagedAccess?.courseId, selectedManagedAccess?.updatedAt]);
+
+  const runAccessAction = async (actionKey: string, callback: () => Promise<unknown>) => {
+    setAccessActionKey(actionKey);
+    try {
+      await callback();
+      if (selectedStudentId) {
+        await loadStudentDetails(selectedStudentId);
+      }
+    } catch (error) {
+      alert(error instanceof Error ? error.message : "Failed to update access");
+    } finally {
+      setAccessActionKey("");
     }
   };
 
@@ -1069,9 +1179,9 @@ export default function AdminUsers() {
                   <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
                     {[
                       { label: "Courses", value: courseAccess.length, color: "text-blue-700 bg-blue-50" },
+                      { label: "Orders", value: studentOrders.length, color: "text-amber-700 bg-amber-50" },
                       { label: "Videos Watched", value: videoActivity.length, color: "text-violet-700 bg-violet-50" },
                       { label: "Watch Time", value: `${(totalWatchedSeconds / 3600).toFixed(1)}h`, color: "text-emerald-700 bg-emerald-50" },
-                      { label: "Notifications", value: notifications.length, color: "text-amber-700 bg-amber-50" },
                     ].map((stat) => (
                       <div key={stat.label} className={`rounded-xl px-4 py-3 ${stat.color}`}>
                         <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70">{stat.label}</p>
@@ -1122,6 +1232,61 @@ export default function AdminUsers() {
               /* ── COURSES TAB ── */
               ) : activeTab === "courses" ? (
                 <div className="space-y-5 p-6">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      { label: "Purchased", value: courseAccessStats.total, color: "text-slate-700 bg-slate-50", icon: BookOpen },
+                      { label: "Active", value: courseAccessStats.active, color: "text-emerald-700 bg-emerald-50", icon: CheckCircle2 },
+                      { label: "Expired", value: courseAccessStats.expired, color: "text-red-700 bg-red-50", icon: XCircle },
+                      { label: "Out of Time", value: courseAccessStats.out_of_views, color: "text-amber-700 bg-amber-50", icon: Clock },
+                    ].map((stat) => (
+                      <div key={stat.label} className={`rounded-xl px-4 py-3 ${stat.color}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70">{stat.label}</p>
+                          <stat.icon className="h-4 w-4 opacity-70" />
+                        </div>
+                        <p className="mt-0.5 text-lg font-bold">{stat.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="rounded-xl border border-slate-200 p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-3">
+                      <p className="text-xs font-bold text-slate-800">Order / Purchase History</p>
+                      <span className="text-[11px] text-slate-500">{studentOrders.length} orders</span>
+                    </div>
+                    {studentOrders.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">No purchase history found</div>
+                    ) : (
+                      <div className="space-y-3">
+                        {studentOrders.slice(0, 10).map((order) => (
+                          <div key={order.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-2">
+                              <div>
+                                <p className="text-xs font-semibold text-slate-900">Order {order.id}</p>
+                                <p className="text-[11px] text-slate-500">{formatDateTime(order.date)} · {order.paymentMethod || "Payment recorded"}</p>
+                              </div>
+                              <div className="text-right">
+                                <p className="text-xs font-semibold text-slate-900">₹{Number(order.total || 0).toLocaleString("en-IN")}</p>
+                                <span className="inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">{order.dispatchStatus || order.status}</span>
+                              </div>
+                            </div>
+                            <div className="mt-3 space-y-2">
+                              {order.items.map((item, index) => (
+                                <div key={`${order.id}-${item.id || index}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs">
+                                  <div className="min-w-0">
+                                    <p className="truncate font-medium text-slate-800">{item.title}</p>
+                                    <p className="text-[11px] text-slate-500">{item.itemType || "course"}{item.modeLabel ? ` · ${item.modeLabel}` : ""}{item.bookLabel ? ` · ${item.bookLabel}` : ""}</p>
+                                  </div>
+                                  <p className="shrink-0 font-semibold text-slate-700">₹{Number(item.price || 0).toLocaleString("en-IN")}</p>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
                   {/* Assign / Update */}
                   <div className="rounded-xl border border-slate-200 p-4 space-y-3">
                     <p className="text-xs font-bold text-slate-800">Assign / Update Course Access</p>
@@ -1195,21 +1360,47 @@ export default function AdminUsers() {
                       <div className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">No courses assigned yet</div>
                     ) : (
                       courseAccess.map((access) => (
-                        <div key={`${access.studentId}-${access.courseId}`} className="flex items-center justify-between rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
-                          <div className="min-w-0">
-                            <p className="text-xs font-semibold text-slate-900 line-clamp-1">{access.courseTitle}</p>
-                            <p className="text-[11px] text-slate-500 mt-0.5">
-                              {formatDuration(access.durationDays)} · Views: {access.usedViews}/{access.totalViews} (rem: {access.remainingViews}) · Expires: {formatDateTime(access.expiresAt)}
-                            </p>
-                          </div>
-                          <div className="ml-3 flex shrink-0 items-center gap-2">
-                            <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${access.isEnabled ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"}`}>
-                              {access.isEnabled ? "Enabled" : "Disabled"}
-                            </span>
-                            <Button variant="outline" size="sm" className="h-7 rounded-lg border-slate-200 px-2 text-[11px]" onClick={() => handleToggleCourse(access.courseId, !access.isEnabled)}>
-                              {access.isEnabled ? <ToggleLeft className="h-3.5 w-3.5" /> : <ToggleRight className="h-3.5 w-3.5" />}
-                              {access.isEnabled ? "Disable" : "Enable"}
-                            </Button>
+                        <div key={`${access.studentId}-${access.courseId}`} className="rounded-xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                          <div className="flex flex-wrap items-start justify-between gap-3">
+                            <div className="min-w-0 flex-1">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <p className="text-xs font-semibold text-slate-900 line-clamp-1">{access.courseTitle}</p>
+                                <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${accessStatusConfig[getCourseAccessHealth(access)].badge}`}>
+                                  {accessStatusConfig[getCourseAccessHealth(access)].label}
+                                </span>
+                                {access.isUnlimitedViews ? (
+                                  <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
+                                    <Infinity className="h-3 w-3" /> Unlimited
+                                  </span>
+                                ) : null}
+                              </div>
+                              <p className="mt-1 text-[11px] text-slate-500">
+                                Purchase: {formatDateTime(access.purchaseDate)} · Expires: {formatDateTime(access.expiresAt)}
+                              </p>
+                              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-3">
+                                <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                  <p className="font-semibold text-slate-700">Views</p>
+                                  <p>{access.usedViews}/{access.totalViews} used · {access.remainingViews} left</p>
+                                </div>
+                                <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                  <p className="font-semibold text-slate-700">Watch Time</p>
+                                  <p>{access.isUnlimitedViews ? "Unlimited" : `${formatWatchDuration(access.remainingWatchSeconds)} left`}</p>
+                                </div>
+                                <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                  <p className="font-semibold text-slate-700">Notes</p>
+                                  <p className="line-clamp-2">{access.notes || "No notes"}</p>
+                                </div>
+                              </div>
+                            </div>
+                            <div className="ml-auto flex shrink-0 items-center gap-2">
+                              <Button variant="outline" size="sm" className="h-8 rounded-lg border-slate-200 px-3 text-[11px]" onClick={() => handleToggleCourse(access.courseId, !access.isEnabled)}>
+                                {access.isEnabled ? <ToggleLeft className="mr-1 h-3.5 w-3.5" /> : <ToggleRight className="mr-1 h-3.5 w-3.5" />}
+                                {access.isEnabled ? "Disable" : "Enable"}
+                              </Button>
+                              <Button size="sm" className="h-8 rounded-lg px-3 text-[11px] font-semibold" onClick={() => setSelectedAccessCourseId(access.courseId)}>
+                                Manage
+                              </Button>
+                            </div>
                           </div>
                         </div>
                       ))
@@ -1436,6 +1627,255 @@ export default function AdminUsers() {
               ) : null
             )}
           </div>
+        </DialogContent>
+      </Dialog>
+
+      <Dialog open={Boolean(selectedManagedAccess)} onOpenChange={(open) => !open && setSelectedAccessCourseId("") }>
+        <DialogContent className="max-h-[92vh] max-w-2xl overflow-y-auto rounded-2xl border border-slate-100 bg-white p-0 shadow-2xl">
+          <DialogHeader className="border-b border-slate-100 px-6 py-4">
+            <DialogTitle className="flex items-center gap-2.5 text-base font-bold text-slate-900">
+              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
+                <Settings2 className="h-4 w-4 text-primary" />
+              </div>
+              Manage Course Access
+            </DialogTitle>
+            {selectedManagedAccess ? (
+              <div className="mt-1 text-xs text-slate-500">
+                <span className="font-medium text-slate-700">{selectedStudent?.name || "Student"}</span>
+                <span> · </span>
+                <span>{selectedManagedAccess.courseTitle}</span>
+              </div>
+            ) : null}
+          </DialogHeader>
+
+          {selectedManagedAccess ? (
+            <div className="divide-y divide-slate-100">
+              <div className="grid grid-cols-2 gap-4 px-6 py-5">
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Student</p>
+                  <p className="font-semibold text-slate-900">{selectedStudent?.name || "—"}</p>
+                  <p className="text-xs text-slate-500">{selectedStudent?.email || "—"}</p>
+                </div>
+                <div>
+                  <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Course</p>
+                  <p className="font-semibold text-slate-900">{selectedManagedAccess.courseTitle}</p>
+                  <p className="text-xs text-slate-500">{selectedManagedAccess.courseId}</p>
+                </div>
+              </div>
+
+              <div className="px-6 py-5">
+                <div className="mb-3 flex items-center gap-2">
+                  <CreditCard className="h-4 w-4 text-slate-500" />
+                  <h3 className="text-sm font-bold text-slate-800">Access Snapshot</h3>
+                </div>
+                <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  {[
+                    { label: "Status", value: accessStatusConfig[getCourseAccessHealth(selectedManagedAccess)].label },
+                    { label: "Views", value: `${selectedManagedAccess.usedViews}/${selectedManagedAccess.totalViews}` },
+                    { label: "Watch Left", value: selectedManagedAccess.isUnlimitedViews ? "Unlimited" : formatWatchDuration(selectedManagedAccess.remainingWatchSeconds) },
+                    { label: "Expiry", value: formatDateTime(selectedManagedAccess.expiresAt) },
+                  ].map((item) => (
+                    <div key={item.label} className="rounded-xl bg-slate-50 px-3 py-3">
+                      <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">{item.label}</p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">{item.value}</p>
+                    </div>
+                  ))}
+                </div>
+
+                <div className="mt-4 space-y-4">
+                  <div className="space-y-1.5">
+                    <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Expiry Date & Time</label>
+                    <Input
+                      type="datetime-local"
+                      value={accessDraft.expiresAt}
+                      onChange={(e) => setAccessDraft((prev) => ({ ...prev, expiresAt: e.target.value }))}
+                      className="h-10 rounded-xl border-slate-200 bg-slate-50 text-sm"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Access State</label>
+                      <div className="flex gap-2">
+                        {(["enabled", "disabled"] as const).map((mode) => (
+                          <button
+                            key={mode}
+                            type="button"
+                            onClick={() => setAccessDraft((prev) => ({ ...prev, isEnabled: mode === "enabled" }))}
+                            className={`flex-1 rounded-xl border py-2 text-xs font-semibold transition-all ${(mode === "enabled" ? accessDraft.isEnabled : !accessDraft.isEnabled) ? "border-primary/40 bg-primary/10 text-primary shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}
+                          >
+                            {mode === "enabled" ? "Enabled" : "Disabled"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Watch Limit</label>
+                      <div className="flex gap-2">
+                        {[{ value: false, label: "Limited" }, { value: true, label: "Unlimited" }].map((mode) => (
+                          <button
+                            key={mode.label}
+                            type="button"
+                            onClick={() => setAccessDraft((prev) => ({ ...prev, isUnlimitedViews: mode.value }))}
+                            className={`flex-1 rounded-xl border py-2 text-xs font-semibold transition-all ${accessDraft.isUnlimitedViews === mode.value ? "border-primary/40 bg-primary/10 text-primary shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}
+                          >
+                            {mode.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div className="px-6 py-5">
+                <div className="mb-3 flex items-center gap-2">
+                  <Calendar className="h-4 w-4 text-slate-500" />
+                  <h3 className="text-sm font-bold text-slate-800">Extend / Reduce Credits</h3>
+                </div>
+                <div className="rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+                  <div className="flex gap-2">
+                    {(["add", "subtract"] as const).map((direction) => (
+                      <button
+                        key={direction}
+                        type="button"
+                        onClick={() => setAccessExtendDirection(direction)}
+                        className={`flex-1 rounded-xl border py-2 text-xs font-semibold transition-all ${accessExtendDirection === direction ? direction === "add" ? "border-emerald-300 bg-emerald-50 text-emerald-700 shadow-sm" : "border-red-200 bg-red-50 text-red-700 shadow-sm" : "border-slate-200 bg-white text-slate-500 hover:border-slate-300"}`}
+                      >
+                        {direction === "add" ? "Add Credits" : "Subtract Credits"}
+                      </button>
+                    ))}
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Days</label>
+                      <Input type="number" min={0} value={accessExtendDays} onChange={(e) => setAccessExtendDays(e.target.value)} className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Watch Hrs</label>
+                      <Input type="number" min={0} value={accessExtendWatchHours} onChange={(e) => setAccessExtendWatchHours(e.target.value)} className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Watch Mins</label>
+                      <Input type="number" min={0} max={59} value={accessExtendWatchMinutes} onChange={(e) => setAccessExtendWatchMinutes(e.target.value)} className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
+                    </div>
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full rounded-xl text-xs font-semibold"
+                    disabled={accessActionKey === "extend"}
+                    onClick={() => {
+                      const extraDays = Math.max(0, Number(accessExtendDays || 0));
+                      const watchHours = Math.max(0, Number(accessExtendWatchHours || 0));
+                      const watchMinutes = Math.max(0, Math.min(59, Number(accessExtendWatchMinutes || 0)));
+                      const totalWatchHours = watchHours + watchMinutes / 60;
+                      if (extraDays <= 0 && totalWatchHours <= 0) {
+                        alert("Please add at least one credit: days or watch time.");
+                        return;
+                      }
+                      const signedDays = accessExtendDirection === "subtract" ? -extraDays : extraDays;
+                      const signedWatch = accessExtendDirection === "subtract" ? -totalWatchHours : totalWatchHours;
+                      void runAccessAction("extend", () => adminApi.extendStudentCourseAccess(selectedManagedAccess.studentId, selectedManagedAccess.courseId, signedDays, 0, signedWatch));
+                    }}
+                  >
+                    {accessActionKey === "extend" ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Applying…</> : accessExtendDirection === "subtract" ? "Apply Reduction" : "Apply Extension"}
+                  </Button>
+                </div>
+
+                {!accessDraft.isUnlimitedViews ? (
+                  <div className="mt-4 rounded-xl border border-slate-200 bg-slate-50/60 p-4 space-y-3">
+                    <p className="text-xs font-bold text-slate-700">Manual Watch Time Adjust</p>
+                    <div className="grid grid-cols-3 gap-3">
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Action</label>
+                        <select value={accessAdjustDirection} onChange={(e) => setAccessAdjustDirection(e.target.value === "subtract" ? "subtract" : "add")} className="h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs text-slate-700">
+                          <option value="add">Add Time</option>
+                          <option value="subtract">Subtract Time</option>
+                        </select>
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Hours</label>
+                        <Input type="number" min={0} value={accessAdjustWatchHours} onChange={(e) => setAccessAdjustWatchHours(e.target.value)} className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
+                      </div>
+                      <div className="space-y-1.5">
+                        <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Mins</label>
+                        <Input type="number" min={0} max={59} value={accessAdjustWatchMinutes} onChange={(e) => setAccessAdjustWatchMinutes(e.target.value)} className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
+                      </div>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="w-full rounded-xl text-xs font-semibold"
+                      disabled={accessActionKey === "watch-adjust"}
+                      onClick={() => {
+                        const hoursPart = Math.max(0, Number(accessAdjustWatchHours || 0));
+                        const minutesPart = Math.max(0, Math.min(59, Number(accessAdjustWatchMinutes || 0)));
+                        const totalHours = hoursPart + minutesPart / 60;
+                        if (totalHours <= 0) {
+                          alert("Enter watch time greater than 0.");
+                          return;
+                        }
+                        const signedHours = accessAdjustDirection === "subtract" ? -totalHours : totalHours;
+                        void runAccessAction("watch-adjust", () => adminApi.adjustStudentCourseWatchTime(selectedManagedAccess.studentId, selectedManagedAccess.courseId, signedHours));
+                      }}
+                    >
+                      {accessActionKey === "watch-adjust" ? <><Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" /> Applying…</> : "Apply Watch Adjustment"}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 bg-slate-50/70 px-6 py-4">
+                <div className="flex gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 rounded-xl border-slate-200 text-xs text-slate-600"
+                    disabled={accessActionKey === "reset"}
+                    onClick={() => {
+                      if (!window.confirm("Reset used views/watch-time for this course access to zero?")) return;
+                      void runAccessAction("reset", () => adminApi.resetStudentCourseViews(selectedManagedAccess.studentId, selectedManagedAccess.courseId, 0));
+                    }}
+                  >
+                    <RefreshCcw className="h-3.5 w-3.5" /> Reset Views
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="gap-1.5 rounded-xl border-red-200 text-xs text-red-600 hover:bg-red-50"
+                    disabled={accessActionKey === "remove"}
+                    onClick={() => {
+                      if (!window.confirm("Remove this course access for the student? This cannot be undone.")) return;
+                      void runAccessAction("remove", async () => {
+                        await adminApi.removeStudentCourseAccess(selectedManagedAccess.studentId, selectedManagedAccess.courseId);
+                        setSelectedAccessCourseId("");
+                      });
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" /> Remove Access
+                  </Button>
+                </div>
+                <div className="flex gap-2">
+                  <Button variant="outline" size="sm" className="rounded-xl border-slate-200 text-xs text-slate-600" onClick={() => setSelectedAccessCourseId("")}>Cancel</Button>
+                  <Button
+                    size="sm"
+                    className="gap-1.5 rounded-xl px-4 text-xs font-semibold"
+                    disabled={accessActionKey === "save"}
+                    onClick={() => {
+                      void runAccessAction("save", () => adminApi.updateStudentCourseAccess(selectedManagedAccess.studentId, selectedManagedAccess.courseId, {
+                        courseTitle: selectedManagedAccess.courseTitle,
+                        expiresAt: accessDraft.expiresAt ? new Date(accessDraft.expiresAt).toISOString() : null,
+                        isEnabled: accessDraft.isEnabled,
+                        isUnlimitedViews: accessDraft.isUnlimitedViews,
+                      }));
+                    }}
+                  >
+                    {accessActionKey === "save" ? <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Saving…</> : <><Save className="h-3.5 w-3.5" /> Save Access</>}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          ) : null}
         </DialogContent>
       </Dialog>
 
