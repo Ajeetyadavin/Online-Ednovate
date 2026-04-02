@@ -1,9 +1,10 @@
+import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import { Mail, Phone, MapPin, Facebook, Instagram, Youtube, Twitter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
-import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
+import { resolveApiUrl, resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 
 const normalizeLogoUrl = (url?: string) => {
   return resolveUploadAssetUrl(url, "/ednovate-logo.svg");
@@ -12,6 +13,47 @@ const normalizeLogoUrl = (url?: string) => {
 const Footer = () => {
   const { settings } = useSiteSettings();
   const logoUrl = normalizeLogoUrl(settings.logo);
+  const [isBackendConnected, setIsBackendConnected] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const checkHealth = async () => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 5000);
+
+      try {
+        const response = await fetch(resolveApiUrl("/api/health"), {
+          method: "GET",
+          cache: "no-store",
+          signal: controller.signal,
+        });
+
+        if (!mounted) return;
+
+        if (!response.ok) {
+          setIsBackendConnected(false);
+          return;
+        }
+
+        const payload = await response.json().catch(() => null);
+        setIsBackendConnected(payload?.status === "ok");
+      } catch {
+        if (mounted) setIsBackendConnected(false);
+      } finally {
+        window.clearTimeout(timeout);
+      }
+    };
+
+    checkHealth();
+    const intervalId = window.setInterval(checkHealth, 30000);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(intervalId);
+    };
+  }, []);
+
   return (
     <footer id="footer" className="relative mt-6 md:mt-8">
       <div className="bg-primary text-primary-foreground relative overflow-hidden">
@@ -123,6 +165,17 @@ const Footer = () => {
             </div>
           </div>
         </div>
+      </div>
+      <div
+        className="absolute bottom-2 right-2"
+        title={isBackendConnected ? "Backend connected" : "Backend disconnected"}
+        aria-label={isBackendConnected ? "Backend connected" : "Backend disconnected"}
+      >
+        <span
+          className={`block h-2.5 w-2.5 rounded-full shadow-[0_0_10px_2px_rgba(0,0,0,0.2)] ${
+            isBackendConnected ? "bg-emerald-400 shadow-emerald-400/90" : "bg-red-500 shadow-red-500/90"
+          }`}
+        />
       </div>
     </footer>
   );
