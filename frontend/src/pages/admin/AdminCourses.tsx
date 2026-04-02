@@ -2633,7 +2633,6 @@ export default function AdminCourses() {
                     {/* ── PRICING TAB ── */}
                     {dialogTab === "pricing" && (
                       <div className="space-y-5">
-                        {/* Active combinations banner */}
                         {(form.masterCombinationRows || []).length > 0 && (
                           <div className="flex items-center gap-3 rounded-2xl border-2 border-emerald-300 bg-emerald-50 px-5 py-4 shadow-sm">
                             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 shadow-md">
@@ -2641,170 +2640,244 @@ export default function AdminCourses() {
                             </div>
                             <div className="flex-1">
                               <p className="text-sm font-bold text-emerald-900">Price Combinations Active</p>
-                              <p className="text-xs text-emerald-700">{(form.masterCombinationRows || []).filter(r => r.isActive !== false).length} combination(s) configured</p>
+                              <p className="text-xs text-emerald-700">
+                                {(form.masterCombinationRows || []).filter((row) => row.isActive !== false).length} combination(s) configured
+                              </p>
                             </div>
-                            <a href="/admin/masters" target="_blank" className="text-xs text-emerald-600 hover:underline font-semibold flex items-center gap-1"><Settings className="h-3.5 w-3.5" /> Masters</a>
+                            <a href="/admin/masters" target="_blank" className="text-xs font-semibold text-emerald-600 hover:underline">
+                              Masters
+                            </a>
                           </div>
                         )}
 
-
-
-                        {/* Master combination builder */}
                         <div className="rounded-2xl border border-blue-200 bg-white shadow-sm overflow-hidden">
                           <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 px-5 py-3">
                             <div className="flex items-center gap-2">
-                              <div className="h-5 w-5 rounded-md bg-blue-600 flex items-center justify-center shrink-0"><DollarSign className="h-3 w-3 text-white" /></div>
+                              <div className="h-5 w-5 rounded-md bg-blue-600 flex items-center justify-center shrink-0">
+                                <DollarSign className="h-3 w-3 text-white" />
+                              </div>
                               <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Master Price Combinations</p>
                             </div>
-                              <div className="flex items-center gap-2">
-                                <button
-                                  type="button"
-                                  onClick={() => sf({ masterCombinationsEnabled: !form.masterCombinationsEnabled })}
-                                  className={`h-7 px-3 rounded-lg text-xs font-semibold border transition-all ${
-                                    form.masterCombinationsEnabled
-                                      ? "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
-                                      : "bg-white border-slate-300 text-slate-600 hover:bg-orange-50 hover:border-orange-400 hover:text-orange-700"
-                                  }`}
-                                >
-                                  {form.masterCombinationsEnabled ? "✓ Enabled" : "Disabled"}
-                                </button>
-                                <a href="/admin/masters" target="_blank" className="text-[10px] text-blue-600 hover:underline flex items-center gap-1"><Settings className="h-3 w-3" /> Configure Masters</a>
-                              </div>
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => sf({ masterCombinationsEnabled: !form.masterCombinationsEnabled })}
+                                className={`h-7 rounded-lg border px-3 text-xs font-semibold transition-all ${
+                                  form.masterCombinationsEnabled
+                                    ? "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
+                                    : "bg-white border-slate-300 text-slate-600 hover:bg-orange-50 hover:border-orange-400 hover:text-orange-700"
+                                }`}
+                              >
+                                {form.masterCombinationsEnabled ? "Enabled" : "Disabled"}
+                              </button>
+                              <a href="/admin/masters" target="_blank" className="text-[10px] text-blue-600 hover:underline">
+                                Configure Masters
+                              </a>
+                            </div>
                           </div>
+
                           {!form.masterCombinationsEnabled && (
                             <div className="p-5 space-y-4">
-                              <p className="text-xs text-slate-500">Master Price Combinations is <strong>disabled</strong>. Your course will use the base price set below. Click <strong>Disabled</strong> above to enable combinations.</p>
+                              <p className="text-xs text-slate-500">Master combinations are disabled. Base course price will be used.</p>
                               <div className="grid grid-cols-2 gap-4">
                                 <div className="space-y-1.5">
-                                  <Label>Sell Price (₹) *</Label>
-                                  <Input className={`${fieldCls} font-bold text-emerald-700`} type="number" placeholder="3999" value={form.price || ""} onChange={(e) => sf({ price: Number(e.target.value) || 0 })} />
+                                  <Label>Sell Price (₹)</Label>
+                                  <Input
+                                    className={`${fieldCls} font-bold text-emerald-700`}
+                                    type="number"
+                                    value={form.price || ""}
+                                    onChange={(e) => sf({ price: Number(e.target.value) || 0 })}
+                                  />
                                 </div>
                                 <div className="space-y-1.5">
                                   <Label>Original / MRP (₹)</Label>
-                                  <Input className={`${fieldCls} text-slate-500`} type="number" placeholder="5999" value={form.originalPrice || ""} onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })} />
+                                  <Input
+                                    className={`${fieldCls} text-slate-500`}
+                                    type="number"
+                                    value={form.originalPrice || ""}
+                                    onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })}
+                                  />
                                 </div>
                               </div>
                             </div>
                           )}
+
                           {form.masterCombinationsEnabled && (
-                          <div className="p-5 space-y-4">
-                            <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
-                              <p className="text-xs font-semibold text-emerald-800">Base / Fallback Price</p>
-                              <div className="grid grid-cols-2 gap-3">
-                                <div className="space-y-1.5">
-                                  <Label>Sell Price (₹)</Label>
-                                  <Input className={`${fieldCls} font-bold text-emerald-700`} type="number" placeholder="3999" value={form.price || ""} onChange={(e) => sf({ price: Number(e.target.value) || 0 })} />
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label>Original / MRP (₹)</Label>
-                                  <Input className={`${fieldCls} text-slate-500`} type="number" placeholder="5999" value={form.originalPrice || ""} onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })} />
+                            <div className="p-5 space-y-4">
+                              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 space-y-3">
+                                <p className="text-xs font-semibold text-emerald-800">Base / Fallback Price</p>
+                                <div className="grid grid-cols-2 gap-3">
+                                  <div className="space-y-1.5">
+                                    <Label>Sell Price (₹)</Label>
+                                    <Input
+                                      className={`${fieldCls} font-bold text-emerald-700`}
+                                      type="number"
+                                      value={form.price || ""}
+                                      onChange={(e) => sf({ price: Number(e.target.value) || 0 })}
+                                    />
+                                  </div>
+                                  <div className="space-y-1.5">
+                                    <Label>Original / MRP (₹)</Label>
+                                    <Input
+                                      className={`${fieldCls} text-slate-500`}
+                                      type="number"
+                                      value={form.originalPrice || ""}
+                                      onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })}
+                                    />
+                                  </div>
                                 </div>
                               </div>
-                              <p className="text-[10px] text-emerald-600">Used as fallback price when no combination matches.</p>
-                            </div>
-                            <p className="text-xs text-slate-500">Choose which dimensions to price by. Each must have active options in Masters.</p>
-                            <div className="grid grid-cols-3 gap-3">
-                              {[
-                                { key: "combinationUseView" as const, label: "View Mode", count: activeMasterViewModes.length },
-                                { key: "combinationUseValidity" as const, label: "Validity", count: activeMasterValidityOptions.length },
-                                { key: "combinationUseAttempt" as const, label: "Attempt", count: activeMasterAttemptOptions.length },
-                                { key: "combinationUseMode" as const, label: "Lecture Mode", count: activeMasterDeliveryModes.length },
-                              ].map(({ key, label, count }) => (
-                                <label key={key} className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 transition-all ${form[key] ? "border-blue-400 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}>
-                                  <input 
-                                    type="checkbox" 
-                                    checked={Boolean(form[key])} 
-                                    onChange={(e) => {
-                                      if (key === "combinationUseAttempt" && e.target.checked) {
-                                        sf({ combinationUseAttempt: true, combinationUseValidity: false });
-                                      } else if (key === "combinationUseValidity" && e.target.checked) {
-                                        sf({ combinationUseValidity: true, combinationUseAttempt: false });
-                                      } else {
-                                        sf({ [key]: e.target.checked });
-                                      }
-                                    }} 
-                                    className="h-4 w-4 rounded border-slate-300 accent-blue-600" 
-                                  />
-                                  <div>
-                                    <p className="text-xs font-bold text-slate-700">{label}</p>
-                                    <p className={`text-[10px] font-semibold ${count > 0 ? "text-emerald-600" : "text-red-500"}`}>{count} active</p>
-                                  </div>
-                                </label>
-                              ))}
-                            </div>
-                            <div className="flex flex-wrap gap-2">
-                              <Button type="button" className="h-9 gap-2 rounded-xl bg-blue-600 text-xs font-semibold shadow hover:bg-blue-700" onClick={openCourseCombinationSelector}>
-                                <Settings className="h-3.5 w-3.5" /> Select &amp; Generate
-                              </Button>
+
+                              <div className="grid grid-cols-2 gap-3">
+                                {[
+                                  { key: "combinationUseView" as const, label: "View Mode", count: activeMasterViewModes.length },
+                                  { key: "combinationUseValidity" as const, label: "Validity", count: activeMasterValidityOptions.length },
+                                  { key: "combinationUseAttempt" as const, label: "Attempt", count: activeMasterAttemptOptions.length },
+                                  { key: "combinationUseMode" as const, label: "Lecture Mode", count: activeMasterDeliveryModes.length },
+                                ].map(({ key, label, count }) => (
+                                  <label key={key} className={`flex cursor-pointer items-center gap-3 rounded-xl border-2 p-3 ${form[key] ? "border-blue-400 bg-blue-50" : "border-slate-200"}`}>
+                                    <input
+                                      type="checkbox"
+                                      checked={Boolean(form[key])}
+                                      onChange={(e) => {
+                                        if (key === "combinationUseAttempt" && e.target.checked) {
+                                          sf({ combinationUseAttempt: true, combinationUseValidity: false });
+                                        } else if (key === "combinationUseValidity" && e.target.checked) {
+                                          sf({ combinationUseValidity: true, combinationUseAttempt: false });
+                                        } else {
+                                          sf({ [key]: e.target.checked });
+                                        }
+                                      }}
+                                      className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                                    />
+                                    <div>
+                                      <p className="text-xs font-bold text-slate-700">{label}</p>
+                                      <p className={`text-[10px] font-semibold ${count > 0 ? "text-emerald-600" : "text-red-500"}`}>{count} active</p>
+                                    </div>
+                                  </label>
+                                ))}
+                              </div>
+
+                              <div className="flex flex-wrap gap-2">
+                                <Button type="button" className="h-9 gap-2 rounded-xl bg-blue-600 text-xs font-semibold shadow hover:bg-blue-700" onClick={openCourseCombinationSelector}>
+                                  <Settings className="h-3.5 w-3.5" /> Select &amp; Generate
+                                </Button>
+                                {(form.masterCombinationRows || []).length > 0 && (
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-9 rounded-xl text-xs"
+                                    onClick={() => sf({ masterCombinationRows: (form.masterCombinationRows || []).filter((row) => row.isActive !== false) })}
+                                  >
+                                    Clean Inactive
+                                  </Button>
+                                )}
+                              </div>
+
                               {(form.masterCombinationRows || []).length > 0 && (
-                                <Button type="button" variant="outline" className="h-9 rounded-xl text-xs" onClick={() => sf({ masterCombinationRows: (form.masterCombinationRows || []).filter((row) => row.isActive !== false) })}>Clean Inactive</Button>
+                                <div className="space-y-2 border-t border-blue-100 pt-2">
+                                  <p className="text-xs font-semibold text-slate-700">Pricing Grid ({(form.masterCombinationRows || []).length} rows)</p>
+                                  <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                                    {(form.masterCombinationRows || []).map((combo, index) => (
+                                      <div
+                                        key={`${combo.id}-${index}`}
+                                        className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 ${combo.isActive !== false ? "border-blue-100 bg-blue-50/60" : "border-slate-100 bg-slate-50 opacity-50"}`}
+                                      >
+                                        <input
+                                          type="checkbox"
+                                          checked={combo.isActive !== false}
+                                          onChange={(ev) => {
+                                            const rows = [...(form.masterCombinationRows || [])];
+                                            rows[index] = { ...combo, isActive: ev.target.checked };
+                                            sf({ masterCombinationRows: rows });
+                                          }}
+                                          className="h-3.5 w-3.5 shrink-0 rounded accent-blue-600"
+                                        />
+                                        <Input
+                                          className="h-7 w-24 shrink-0 rounded-lg border-slate-200 text-[10px] font-bold text-emerald-700"
+                                          type="number"
+                                          min={0}
+                                          value={Number(combo.price || 0)}
+                                          onChange={(ev) => {
+                                            const rows = [...(form.masterCombinationRows || [])];
+                                            rows[index] = { ...combo, price: Number(ev.target.value) || 0 };
+                                            sf({ masterCombinationRows: rows });
+                                          }}
+                                        />
+                                        <Input
+                                          className="h-7 w-24 shrink-0 rounded-lg border-slate-200 text-[10px] text-slate-400"
+                                          type="number"
+                                          min={0}
+                                          value={Number(combo.originalPrice || 0)}
+                                          onChange={(ev) => {
+                                            const rows = [...(form.masterCombinationRows || [])];
+                                            const value = Number(ev.target.value) || 0;
+                                            rows[index] = { ...combo, originalPrice: value > 0 ? value : null };
+                                            sf({ masterCombinationRows: rows });
+                                          }}
+                                        />
+                                        <button
+                                          type="button"
+                                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600"
+                                          onClick={() => sf({ masterCombinationRows: (form.masterCombinationRows || []).filter((_, i) => i !== index) })}
+                                        >
+                                          <X className="h-3.5 w-3.5" />
+                                        </button>
+                                      </div>
+                                    ))}
+                                  </div>
+                                  <Button
+                                    type="button"
+                                    variant="outline"
+                                    className="h-8 rounded-xl border-dashed text-xs"
+                                    onClick={() => {
+                                      const rows = [...(form.masterCombinationRows || [])];
+                                      rows.push({
+                                        id: `c-combo-${Date.now()}-${rows.length + 1}`,
+                                        label: "",
+                                        viewModeId: form.combinationUseView ? (activeMasterViewModes[0]?.id || null) : null,
+                                        validityOptionId: form.combinationUseValidity ? (activeMasterValidityOptions[0]?.id || null) : null,
+                                        attemptOptionId: form.combinationUseAttempt ? (activeMasterAttemptOptions[0]?.id || null) : null,
+                                        deliveryModeId: form.combinationUseMode ? (activeMasterDeliveryModes[0]?.id || null) : null,
+                                        price: 0,
+                                        originalPrice: null,
+                                        isActive: true,
+                                        sortOrder: rows.length + 1,
+                                      });
+                                      sf({ masterCombinationRows: rows });
+                                    }}
+                                  >
+                                    <Plus className="h-3.5 w-3.5" /> Add Row
+                                  </Button>
+                                </div>
                               )}
                             </div>
-
-                            {/* Combinations list */}
-                            {(form.masterCombinationRows || []).length > 0 && (
-                              <div className="space-y-2 pt-2 border-t border-blue-100">
-                                <p className="text-xs font-semibold text-slate-700">Pricing Grid ({(form.masterCombinationRows || []).length} rows)</p>
-                                <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
-                                  {(form.masterCombinationRows || []).map((combo, index) => (
-                                    <div key={`${combo.id}-${index}`} className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 transition-all ${combo.isActive !== false ? "border-blue-100 bg-blue-50/60" : "border-slate-100 bg-slate-50 opacity-50"}`}>
-                                      <input type="checkbox" checked={combo.isActive !== false} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, isActive: ev.target.checked }; sf({ masterCombinationRows: r }); }} className="h-3.5 w-3.5 rounded accent-blue-600 shrink-0" />
-                                      {form.combinationUseView && (
-                                        <select className="text-[10px] h-7 rounded-lg border border-slate-200 px-2 flex-1" value={combo.viewModeId || ""} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, viewModeId: ev.target.value || null }; sf({ masterCombinationRows: r }); }}>
-                                          <option value="">View</option>
-                                          {activeMasterViewModes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                                        </select>
-                                      )}
-                                      {form.combinationUseValidity && (
-                                        <select className="text-[10px] h-7 rounded-lg border border-slate-200 px-2 flex-1" value={combo.validityOptionId || ""} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, validityOptionId: ev.target.value || null }; sf({ masterCombinationRows: r }); }}>
-                                          <option value="">Validity</option>
-                                          {activeMasterValidityOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                                        </select>
-                                      )}
-                                      {form.combinationUseAttempt && (
-                                        <select className="text-[10px] h-7 rounded-lg border border-slate-200 px-2 flex-1" value={combo.attemptOptionId || ""} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, attemptOptionId: ev.target.value || null }; sf({ masterCombinationRows: r }); }}>
-                                          <option value="">Attempt</option>
-                                          {activeMasterAttemptOptions.map((item) => <option key={item.id} value={item.id}>{item.label}</option>)}
-                                        </select>
-                                      )}
-                                      {form.combinationUseMode && (
-                                        <select className="text-[10px] h-7 rounded-lg border border-slate-200 px-2 flex-1" value={combo.deliveryModeId || ""} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, deliveryModeId: ev.target.value || null }; sf({ masterCombinationRows: r }); }}>
-                                          <option value="">Mode</option>
-                                          {activeMasterDeliveryModes.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}
-                                        </select>
-                                      )}
-                                      <Input className="text-[10px] h-7 w-24 rounded-lg border-slate-200 shrink-0 font-bold text-emerald-700" type="number" min={0} placeholder="Price" value={Number(combo.price || 0)} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; r[index] = { ...combo, price: Number(ev.target.value) || 0 }; sf({ masterCombinationRows: r }); }} />
-                                      <Input className="text-[10px] h-7 w-24 rounded-lg border-slate-200 shrink-0 text-slate-400" type="number" min={0} placeholder="MRP" value={Number(combo.originalPrice || 0)} onChange={(ev) => { const r = [...(form.masterCombinationRows || [])]; const v = Number(ev.target.value) || 0; r[index] = { ...combo, originalPrice: v > 0 ? v : null }; sf({ masterCombinationRows: r }); }} />
-                                      <button type="button" className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600 transition-colors" onClick={() => sf({ masterCombinationRows: (form.masterCombinationRows || []).filter((_, i) => i !== index) })}>
-                                        <X className="h-3.5 w-3.5" />
-                                      </button>
-                                    </div>
-                                  ))}
-                                </div>
-                                <Button type="button" variant="outline" className="h-8 text-xs rounded-xl gap-1.5 border-dashed" onClick={() => { const r = [...(form.masterCombinationRows || [])]; r.push({ id: `c-combo-${Date.now()}-${r.length+1}`, label: "", viewModeId: form.combinationUseView ? (activeMasterViewModes[0]?.id || null) : null, validityOptionId: form.combinationUseValidity ? (activeMasterValidityOptions[0]?.id || null) : null, deliveryModeId: form.combinationUseMode ? (activeMasterDeliveryModes[0]?.id || null) : null, price: 0, originalPrice: null, isActive: true, sortOrder: r.length+1 }); sf({ masterCombinationRows: r }); }}>
-                                  <Plus className="h-3.5 w-3.5" /> Add Row
-                                </Button>
-                              </div>
-                            )}
-                          </div>
+                          )}
                         </div>
 
                         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                           <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-slate-100 px-5 py-3">
-                            <div className="h-5 w-5 rounded-md bg-amber-500 flex items-center justify-center shrink-0"><BookOpen className="h-3 w-3 text-white" /></div>
+                            <div className="h-5 w-5 rounded-md bg-amber-500 flex items-center justify-center shrink-0">
+                              <BookOpen className="h-3 w-3 text-white" />
+                            </div>
                             <p className="text-xs font-bold text-orange-700 uppercase tracking-wider">Book Add-ons</p>
                           </div>
                           <div className="p-5 space-y-3">
                             {checkboxRow("Enable book selection add-ons", form.bookAddonEnabled || false, (v) => sf({ bookAddonEnabled: v }))}
                             {form.bookAddonEnabled && (
-                              <div className="rounded-xl bg-slate-50 border border-slate-200 p-4 space-y-3">
+                              <div className="rounded-xl border border-slate-200 bg-slate-50 p-4 space-y-3">
                                 {[
                                   { key: "enableEnotesAddon", label: "eNotes", priceKey: "enotesAddonPrice" },
                                   { key: "enablePhysicalBookAddon", label: "Physical Book", priceKey: "physicalBookAddonPrice" },
                                 ].map(({ key, label, priceKey }) => (
                                   <div key={key} className="flex items-center gap-4">
                                     <div className="w-32">{checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v }))}</div>
-                                    <Input className={`${fieldCls} flex-1`} type="number" placeholder={`${label} add-on price (₹)`} value={(form[priceKey as keyof CourseForm] as number) || 0} onChange={(e) => sf({ [priceKey]: Number(e.target.value) || 0 })} />
+                                    <Input
+                                      className={`${fieldCls} flex-1`}
+                                      type="number"
+                                      value={(form[priceKey as keyof CourseForm] as number) || 0}
+                                      onChange={(e) => sf({ [priceKey]: Number(e.target.value) || 0 })}
+                                    />
                                   </div>
                                 ))}
                               </div>
@@ -2827,57 +2900,37 @@ export default function AdminCourses() {
                             {form.aboutCourseEnabled && (
                               <div className="space-y-1.5">
                                 <Label>Course Description Text</Label>
-                                <textarea className="min-h-[200px] w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-rose-300/40 leading-relaxed" placeholder="Dear Students, this course covers…" value={form.aboutCourseText || ""} onChange={(e) => sf({ aboutCourseText: e.target.value })} />
-                                <p className="text-[10px] text-slate-400">Supports multi-line content.</p>
+                                <textarea
+                                  className="min-h-[200px] w-full resize-y rounded-xl border border-slate-200 bg-white px-4 py-3 text-sm leading-relaxed focus:outline-none focus:ring-2 focus:ring-rose-300/40"
+                                  value={form.aboutCourseText || ""}
+                                  onChange={(e) => sf({ aboutCourseText: e.target.value })}
+                                />
                               </div>
                             )}
                           </div>
-                        </div>
-                        <div className="flex items-center gap-3 rounded-2xl border border-blue-200 bg-blue-50/60 px-5 py-4">
-                          <FileText className="h-5 w-5 text-blue-500 shrink-0" />
-                          <p className="text-xs text-blue-700">To manage <strong>curriculum chapters and lessons</strong>, use the <strong>Video</strong> button from the course list after saving this form.</p>
-                              </div>
-                            )}
-                          </div>
-                          )}
                         </div>
 
                         <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                          <div className="flex items-center gap-2 bg-gradient-to-r from-orange-50 to-amber-50 border-b border-slate-100 px-5 py-3">
+                          <div className="flex items-center gap-2 bg-gradient-to-r from-violet-50 to-purple-50 border-b border-slate-100 px-5 py-3">
+                            <div className="h-5 w-5 rounded-md bg-violet-600 flex items-center justify-center shrink-0"><Video className="h-3 w-3 text-white" /></div>
+                            <p className="text-xs font-bold text-violet-700 uppercase tracking-wider">Demo Lecture Settings</p>
                           </div>
                           <div className="p-5 space-y-4">
-                            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-violet-200 bg-violet-50/50 px-4 py-3 hover:bg-violet-50 transition-colors">
-                              <input type="checkbox" className="h-4 w-4 rounded border-slate-300 accent-violet-600" checked={form.demoVideoVisible || false} onChange={(e) => sf({ demoVideoVisible: e.target.checked })} />
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">Show Demo Lecture on Course Page</p>
-                                <p className="text-xs text-slate-500">Allow students to preview a free lecture before purchasing</p>
-                              </div>
-                            </label>
-                            <label className="flex cursor-pointer items-center gap-3 rounded-xl border border-amber-200 bg-amber-50/60 px-4 py-3 hover:bg-amber-50 transition-colors">
-                              <input
-                                type="checkbox"
-                                className="h-4 w-4 rounded border-slate-300 accent-amber-600"
-                                checked={form.webPlayEnabled === true}
-                                onChange={(e) => sf({ webPlayEnabled: e.target.checked })}
-                              />
-                              <div>
-                                <p className="text-sm font-semibold text-slate-800">WebPlay (ON/OFF Toggle)</p>
-                                <p className="text-xs text-slate-500">When OFF, video will not play on website. An app install popup will be shown.</p>
-                              </div>
-                            </label>
+                            {checkboxRow("Show Demo Lecture on Course Page", form.demoVideoVisible || false, (v) => sf({ demoVideoVisible: v }))}
+                            {checkboxRow("WebPlay (ON/OFF Toggle)", form.webPlayEnabled === true, (v) => sf({ webPlayEnabled: v }))}
                             {form.demoVideoVisible && (
                               <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/40 p-4">
                                 <div className="grid grid-cols-2 gap-4">
                                   <div className="space-y-1.5">
                                     <Label>Demo Lecture Title</Label>
-                                    <Input className={fieldCls} placeholder="Introduction Lecture" value={form.demoVideoTitle || ""} onChange={(e) => sf({ demoVideoTitle: e.target.value })} />
+                                    <Input className={fieldCls} value={form.demoVideoTitle || ""} onChange={(e) => sf({ demoVideoTitle: e.target.value })} />
                                   </div>
                                   <div className="space-y-1.5">
                                     <Label>Video Source</Label>
                                     <div className="flex gap-2 pt-1">
                                       {(["youtube", "upload", "direct"] as const).map((src) => (
-                                        <label key={src} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold transition-all ${form.demoVideoSource === src ? "border-violet-400 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-600 hover:border-slate-300"}`}>
-                                          <input type="radio" name="videoSource" value={src} checked={form.demoVideoSource === src} onChange={() => sf({ demoVideoSource: src })} className="accent-violet-600 h-3 w-3" />
+                                        <label key={src} className={`flex cursor-pointer items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-semibold ${form.demoVideoSource === src ? "border-violet-400 bg-violet-50 text-violet-700" : "border-slate-200 text-slate-600"}`}>
+                                          <input type="radio" name="videoSource" value={src} checked={form.demoVideoSource === src} onChange={() => sf({ demoVideoSource: src })} className="h-3 w-3 accent-violet-600" />
                                           {src === "youtube" ? "YouTube" : src === "upload" ? "CDN" : "Direct"}
                                         </label>
                                       ))}
@@ -2886,47 +2939,21 @@ export default function AdminCourses() {
                                 </div>
                                 <div className="space-y-1.5">
                                   <Label>Description</Label>
-                                  <textarea className="h-16 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/30" value={form.demoVideoDescription || ""} onChange={(e) => sf({ demoVideoDescription: e.target.value })} placeholder="Brief description…" />
+                                  <textarea className="h-16 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-violet-400/30" value={form.demoVideoDescription || ""} onChange={(e) => sf({ demoVideoDescription: e.target.value })} />
                                 </div>
                                 <div className="space-y-1.5">
                                   <Label>{form.demoVideoSource === "youtube" ? "YouTube Video ID" : "Video URL"}</Label>
-                                  <Input className={fieldCls} placeholder={form.demoVideoSource === "youtube" ? "e.g., dQw4w9WgXcQ" : "https://…"} value={form.demoVideoUrl || ""} onChange={(e) => sf({ demoVideoUrl: e.target.value })} />
-                                  {form.demoVideoSource !== "youtube" && (
-                                    <div className="flex items-center gap-2">
-                                      <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl bg-violet-600 px-4 py-2 text-[11px] font-bold text-white shadow-md hover:bg-violet-700 transition-all">
-                                        {courseDemoVideoUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Video className="h-3.5 w-3.5" />}
-                                        {courseDemoVideoUploading ? `Uploading ${courseUploadPercent}%...` : "Upload Video File"}
-                                        <input type="file" accept="video/*" className="hidden" onChange={(e) => handleUploadCourseDemoVideo(e.target.files?.[0])} />
-                                      </label>
-                                      {courseDemoVideoUploading && <Button type="button" variant="outline" size="sm" className="h-8 rounded-xl border-red-200 px-3 text-[11px] text-red-600 hover:bg-red-50" onClick={handleCancelActiveUpload}>Cancel</Button>}
-                                    </div>
-                                  )}
-                                  {form.demoVideoSource === "youtube" && form.demoVideoUrl && <p className="text-[10px] text-slate-400">Preview: youtube.com/embed/{form.demoVideoUrl}</p>}
-                                </div>
-                                <div className="space-y-1.5">
-                                  <Label>Thumbnail URL (Optional)</Label>
-                                  <div className="flex items-start gap-3">
-                                    {form.demoVideoThumbnailUrl && <img src={form.demoVideoThumbnailUrl} alt="" className="h-14 rounded-xl object-cover ring-2 ring-violet-100 shadow" />}
-                                    <div className="flex-1 space-y-1.5">
-                                      <Input className={fieldCls} placeholder="https://…" value={form.demoVideoThumbnailUrl || ""} onChange={(e) => sf({ demoVideoThumbnailUrl: e.target.value })} />
-                                      <label className="flex w-fit cursor-pointer items-center gap-1.5 rounded-xl border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-600 hover:border-violet-400 hover:text-violet-600 transition-colors">
-                                        {courseDemoThumbUploading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Settings className="h-3.5 w-3.5" />}
-                                        {courseDemoThumbUploading ? "Uploading..." : "Upload Thumbnail"}
-                                        <input type="file" accept="image/*" className="hidden" onChange={(e) => handleUploadCourseDemoThumbnail(e.target.files?.[0])} />
-                                      </label>
-                                    </div>
-                                  </div>
+                                  <Input className={fieldCls} value={form.demoVideoUrl || ""} onChange={(e) => sf({ demoVideoUrl: e.target.value })} />
                                 </div>
                               </div>
                             )}
                           </div>
                         </div>
 
-                        {/* Sidebar + Ratings */}
                         <div className="grid grid-cols-2 gap-4">
                           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                             <div className="flex items-center gap-2 bg-gradient-to-r from-slate-50 to-gray-50 border-b border-slate-100 px-4 py-3">
-                              <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">📊 Sidebar Display</p>
+                              <p className="text-xs font-bold text-slate-600 uppercase tracking-wider">Sidebar Display</p>
                             </div>
                             <div className="p-4 space-y-2">
                               <div className="space-y-1.5 mb-3">
@@ -2934,27 +2961,36 @@ export default function AdminCourses() {
                                 <Input className={fieldCls} type="number" min={0} value={form.enrollmentCount || 0} onChange={(e) => sf({ enrollmentCount: Number(e.target.value) || 0 })} />
                               </div>
                               <div className="grid grid-cols-2 gap-1.5 text-[11px]">
-                                {[["showEnrollmentCount","Enrolled"],["showMetaLectures","Lectures"],["showMetaHours","Hours"],["showMetaValidity","Validity"],["showMetaResources","Resources"],["showMetaViews","Views"],["showMetaPerHour","₹/hr"],["showMetaLanguage","Language"]].map(([key, label]) => checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v })))}
+                                {[
+                                  ["showEnrollmentCount", "Enrolled"],
+                                  ["showMetaLectures", "Lectures"],
+                                  ["showMetaHours", "Hours"],
+                                  ["showMetaValidity", "Validity"],
+                                  ["showMetaResources", "Resources"],
+                                  ["showMetaViews", "Views"],
+                                  ["showMetaPerHour", "Per Hour"],
+                                  ["showMetaLanguage", "Language"],
+                                ].map(([key, label]) => checkboxRow(label, Boolean(form[key as keyof CourseForm]), (v) => sf({ [key]: v })))}
                               </div>
                             </div>
                           </div>
                           <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
                             <div className="flex items-center gap-2 bg-gradient-to-r from-amber-50 to-yellow-50 border-b border-slate-100 px-4 py-3">
-                              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">⭐ Ratings & Reviews</p>
+                              <p className="text-xs font-bold text-amber-700 uppercase tracking-wider">Ratings &amp; Reviews</p>
                             </div>
                             <div className="p-4 space-y-3">
                               {checkboxRow("Show Ratings tab", form.ratingsEnabled !== false, (v) => sf({ ratingsEnabled: v }))}
                               {checkboxRow("Show Reviews tab", form.reviewsEnabled !== false, (v) => sf({ reviewsEnabled: v }))}
                               {form.ratingsEnabled && (
                                 <div className="grid grid-cols-2 gap-2 pt-1">
-                                  <div className="space-y-1"><Label>Rating (0–5)</Label><Input className={fieldCls} type="number" step={0.1} min={0} max={5} value={form.ratingValue || 0} onChange={(e) => sf({ ratingValue: Number(e.target.value) || 0 })} /></div>
+                                  <div className="space-y-1"><Label>Rating (0-5)</Label><Input className={fieldCls} type="number" step={0.1} min={0} max={5} value={form.ratingValue || 0} onChange={(e) => sf({ ratingValue: Number(e.target.value) || 0 })} /></div>
                                   <div className="space-y-1"><Label>Count</Label><Input className={fieldCls} type="number" min={0} value={form.ratingCount || 0} onChange={(e) => sf({ ratingCount: Number(e.target.value) || 0 })} /></div>
                                 </div>
                               )}
                               {form.reviewsEnabled && (
                                 <div className="space-y-1.5">
                                   <Label>Reviews (one per line)</Label>
-                                  <textarea className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-300/40" placeholder="Name | 5 | Great course | 2 weeks ago" value={form.reviewsText || ""} onChange={(e) => sf({ reviewsText: e.target.value })} />
+                                  <textarea className="h-24 w-full resize-none rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-amber-300/40" value={form.reviewsText || ""} onChange={(e) => sf({ reviewsText: e.target.value })} />
                                 </div>
                               )}
                             </div>

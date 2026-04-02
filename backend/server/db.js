@@ -386,6 +386,21 @@ export async function ensureSchema() {
   `);
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS student_otp_codes (
+      id BIGSERIAL PRIMARY KEY,
+      mobile TEXT NOT NULL,
+      purpose TEXT NOT NULL DEFAULT 'auth',
+      otp_hash TEXT NOT NULL,
+      expires_at TIMESTAMPTZ NOT NULL,
+      consumed_at TIMESTAMPTZ,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_otp_codes_mobile ON student_otp_codes(mobile)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_otp_codes_expiry ON student_otp_codes(expires_at DESC)");
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS student_video_activity (
       id BIGSERIAL PRIMARY KEY,
       student_id BIGINT NOT NULL,

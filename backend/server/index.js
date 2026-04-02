@@ -1112,6 +1112,98 @@ const isSmtpConnectivityError = (error) => {
   );
 };
 
+const normalizeMobile10 = (value) => String(value || "").replace(/\D/g, "").slice(-10);
+
+const getOtpConfig = async () => {
+  const settings = sanitizePlatformSettings(await getPlatformSettings());
+  const smsOtp =
+    settings?.siteSettings && typeof settings.siteSettings === "object" && settings.siteSettings.smsOtp && typeof settings.siteSettings.smsOtp === "object"
+      ? settings.siteSettings.smsOtp
+      : {};
+
+  return {
+    enabled: smsOtp.enabled === true,
+    apiUrl: String(smsOtp.apiUrl || "").trim(),
+    apiKey: String(smsOtp.apiKey || "").trim(),
+    senderId: String(smsOtp.senderId || "").trim(),
+    templateId: String(smsOtp.templateId || "").trim(),
+    entityId: String(smsOtp.entityId || "").trim(),
+    route: String(smsOtp.route || "").trim(),
+    countryCode: String(smsOtp.countryCode || "91").replace(/\D/g, "") || "91",
+    otpTtlSeconds: Math.max(60, Math.min(900, Number(smsOtp.otpTtlSeconds || 300))),
+    messageTemplate:
+      String(smsOtp.messageTemplate || "").trim()
+      || "Your OTP for {{platformName}} is {{otp}}. It is valid for {{minutes}} minutes.",
+    platformName: String(settings?.siteSettings?.platformName || "Ednovate").trim() || "Ednovate",
+  };
+};
+
+const renderOtpMessage = (template, values) =>
+  String(template || "").replace(/\{\{\s*([a-zA-Z0-9_]+)\s*\}\}/g, (_match, key) => {
+    const next = values?.[key];
+    return next === undefined || next === null ? "" : String(next);
+  });
+
+const sendTimesMobileOtp = async ({ mobile, otp, config }) => {
+  if (!config.enabled) {
+    return { sent: false, reason: "TimesMobile OTP is disabled in Settings." };
+  }
+  if (!config.apiUrl || !config.apiKey || !config.senderId) {
+    return { sent: false, reason: "TimesMobile API URL, API Key and Sender ID are required." };
+  }
+
+  const minutes = Math.max(1, Math.round(Number(config.otpTtlSeconds || 300) / 60));
+  const message = renderOtpMessage(config.messageTemplate, {
+    otp,
+    minutes,
+    platformName: config.platformName || "Ednovate",
+    mobile,
+  });
+
+  const fullMobile = `${config.countryCode}${mobile}`;
+  const form = new URLSearchParams();
+  form.set("to", fullMobile);
+  form.set("mobile", fullMobile);
+  form.set("phone", fullMobile);
+  form.set("sender", config.senderId);
+  form.set("senderid", config.senderId);
+  form.set("from", config.senderId);
+  form.set("message", message);
+  form.set("text", message);
+  if (config.templateId) {
+    form.set("template_id", config.templateId);
+    form.set("templateId", config.templateId);
+  }
+  if (config.entityId) {
+    form.set("entity_id", config.entityId);
+    form.set("entityId", config.entityId);
+  }
+  if (config.route) {
+    form.set("route", config.route);
+  }
+
+  const response = await fetch(config.apiUrl, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+      Authorization: `Bearer ${config.apiKey}`,
+      "x-api-key": config.apiKey,
+      "api-key": config.apiKey,
+    },
+    body: form.toString(),
+  });
+
+  const raw = await response.text().catch(() => "");
+  if (!response.ok) {
+    return {
+      sent: false,
+      reason: raw || `TimesMobile request failed with status ${response.status}`,
+    };
+  }
+
+  return { sent: true, raw };
+};
+
 const getResendConfig = () => {
   const apiKey = String(process.env.RESEND_API_KEY || "").trim();
   const fromEmail = String(process.env.RESEND_FROM_EMAIL || "").trim().toLowerCase();
@@ -2531,6 +2623,190 @@ app.post("/api/auth/student/login", async (request, response) => {
     });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Login failed" });
+  }
+});
+
+app.post("/api/auth/student/otp/send", async (request, response) => {
+  try {
+    const mobile = normalizeMobile10(request.body?.mobile || request.body?.mobileNo || "");
+    if (!/^\d{10}$/.test(mobile)) {
+      response.status(400).json({ message: "Please enter a valid 10-digit mobile number" });
+      return;
+    }
+
+    const config = await getOtpConfig();
+    const otp = String(Math.floor(100000 + Math.random() * 900000));
+    const otpHash = hashPassword(otp);
+    const expiresAt = new Date(Date.now() + Number(config.otpTtlSeconds || 300) * 1000);
+
+    const smsResult = await sendTimesMobileOtp({ mobile, otp, config });
+    if (!smsResult.sent) {
+      response.status(400).json({ message: smsResult.reason || "Failed to send OTP" });
+      return;
+    }
+
+    await pool.query(
+      `
+      DELETE FROM student_otp_codes
+      WHERE mobile = $1
+        AND purpose = 'auth'
+        AND consumed_at IS NULL
+      `,
+      [mobile],
+    );
+
+    await pool.query(
+      `
+      INSERT INTO student_otp_codes (mobile, purpose, otp_hash, expires_at)
+      VALUES ($1,'auth',$2,$3)
+      `,
+      [mobile, otpHash, expiresAt.toISOString()],
+    );
+
+    response.json({ ok: true, message: "OTP sent successfully." });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to send OTP" });
+  }
+});
+
+app.post("/api/auth/student/otp/verify", async (request, response) => {
+  try {
+    const mobile = normalizeMobile10(request.body?.mobile || request.body?.mobileNo || "");
+    const otp = String(request.body?.otp || "").trim();
+    const login = request.body?.login === true;
+
+    if (!/^\d{10}$/.test(mobile)) {
+      response.status(400).json({ message: "Invalid mobile number." });
+      return;
+    }
+    if (!/^\d{4,8}$/.test(otp)) {
+      response.status(400).json({ message: "Invalid OTP." });
+      return;
+    }
+
+    const otpResult = await pool.query(
+      `
+      SELECT id, otp_hash, expires_at
+      FROM student_otp_codes
+      WHERE mobile = $1
+        AND purpose = 'auth'
+        AND consumed_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [mobile],
+    );
+
+    const otpRow = otpResult.rows[0];
+    if (!otpRow) {
+      response.status(400).json({ message: "OTP not found. Please resend OTP." });
+      return;
+    }
+
+    if (new Date(otpRow.expires_at).getTime() < Date.now()) {
+      response.status(400).json({ message: "OTP expired. Please resend OTP." });
+      return;
+    }
+
+    if (String(otpRow.otp_hash || "") !== hashPassword(otp)) {
+      response.status(400).json({ message: "Invalid OTP." });
+      return;
+    }
+
+    await pool.query("UPDATE student_otp_codes SET consumed_at = NOW() WHERE id = $1", [otpRow.id]);
+
+    if (!login) {
+      response.json({ ok: true, message: "OTP verified successfully." });
+      return;
+    }
+
+    const studentResult = await pool.query(
+      "SELECT * FROM students WHERE mobile = $1 LIMIT 1",
+      [mobile],
+    );
+    const student = studentResult.rows[0];
+    if (!student) {
+      response.status(404).json({ message: "Account not found for this mobile number." });
+      return;
+    }
+    if (student.status === "Inactive") {
+      response.status(403).json({ message: "Student account is inactive" });
+      return;
+    }
+
+    const token = randomUUID();
+    const ipAddress = getIpAddress(request);
+    const userAgent = String(request.headers["user-agent"] || "");
+
+    await pool.query(
+      `
+      UPDATE auth_sessions
+      SET is_active = FALSE,
+          revoked_reason = 'logged_in_elsewhere',
+          revoked_at = NOW(),
+          replaced_by_token = $2
+      WHERE student_id = $1 AND is_active = TRUE
+      `,
+      [student.id, token],
+    );
+
+    await pool.query(
+      "INSERT INTO auth_sessions (token, student_id, role, expires_at, is_active, login_ip, login_user_agent) VALUES ($1,$2,'student',$3,TRUE,$4,$5)",
+      [token, student.id, new Date(Date.now() + 1000 * 60 * 60 * 24 * 7), ipAddress, userAgent],
+    );
+
+    await pool.query(
+      "INSERT INTO student_login_logs (student_id, ip_address, user_agent, source) VALUES ($1,$2,$3,$4)",
+      [student.id, ipAddress, userAgent, "student_otp_login"],
+    );
+
+    response.json({
+      ok: true,
+      message: "OTP verified successfully.",
+      token,
+      user: mapStudentSelf(student),
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to verify OTP" });
+  }
+});
+
+app.post("/api/auth/student/reset-password-mobile", async (request, response) => {
+  try {
+    const mobile = normalizeMobile10(request.body?.mobile || request.body?.mobileNo || "");
+    const password = String(request.body?.password || "").trim();
+
+    if (!/^\d{10}$/.test(mobile)) {
+      response.status(400).json({ message: "Invalid mobile number." });
+      return;
+    }
+    if (password.length < 6) {
+      response.status(400).json({ message: "Password must be at least 6 characters." });
+      return;
+    }
+
+    const existing = await pool.query("SELECT id, email, name FROM students WHERE mobile = $1 LIMIT 1", [mobile]);
+    const student = existing.rows[0];
+    if (!student) {
+      response.status(404).json({ message: "Account not found for this mobile number." });
+      return;
+    }
+
+    await pool.query("UPDATE students SET password = $2, updated_at = NOW() WHERE id = $1", [student.id, hashPassword(password)]);
+
+    void sendAutomatedMail({
+      eventKey: "password_reset",
+      toEmail: student.email,
+      variables: {
+        studentName: student.name || "Student",
+        changedAt: new Date().toLocaleString("en-IN"),
+      },
+      fallbackSubject: "Password changed",
+    }).catch(() => {});
+
+    response.json({ ok: true, message: "Password reset successful. Please login with your new password." });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to reset password" });
   }
 });
 

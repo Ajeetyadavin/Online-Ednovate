@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, Mail, Save, Globe, Sparkles, CreditCard, Zap, GripVertical, ArrowUp, ArrowDown, Eye, EyeOff, SlidersHorizontal } from "lucide-react";
+import { CheckCircle, Mail, Save, Globe, Sparkles, CreditCard, Zap, GripVertical, ArrowUp, ArrowDown, Eye, EyeOff, SlidersHorizontal, MessageSquare } from "lucide-react";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import { adminApi } from "@/services/adminApi";
 import {
@@ -28,6 +28,19 @@ type SmtpSettings = {
   fromName: string;
   fromEmail: string;
   replyTo: string;
+};
+
+type SmsOtpSettings = {
+  enabled: boolean;
+  apiUrl: string;
+  apiKey: string;
+  senderId: string;
+  templateId: string;
+  entityId: string;
+  route: string;
+  countryCode: string;
+  otpTtlSeconds: string;
+  messageTemplate: string;
 };
 
 type PaymentGatewaySettings = {
@@ -171,6 +184,18 @@ export default function AdminSettings() {
       fromEmail: "",
       replyTo: "",
     } as SmtpSettings,
+    smsOtp: {
+      enabled: false,
+      apiUrl: "",
+      apiKey: "",
+      senderId: "",
+      templateId: "",
+      entityId: "",
+      route: "",
+      countryCode: "91",
+      otpTtlSeconds: "300",
+      messageTemplate: "Your OTP for {{platformName}} is {{otp}}. It is valid for {{minutes}} minutes.",
+    } as SmsOtpSettings,
     paymentGateways: defaultPaymentGateways(),
     emailAutomationEnabled: true,
     emailTemplates: defaultEmailTemplates(),
@@ -216,6 +241,11 @@ export default function AdminSettings() {
             : site.smtp && typeof site.smtp === "object"
               ? site.smtp
               : {}
+        ) as Record<string, unknown>;
+        const smsOtpRaw = (
+          site.smsOtp && typeof site.smsOtp === "object"
+            ? site.smsOtp
+            : {}
         ) as Record<string, unknown>;
         const emailAutomationRaw = ((response?.settings?.emailAutomation && typeof response.settings.emailAutomation === "object"
           ? response.settings.emailAutomation
@@ -270,6 +300,20 @@ export default function AdminSettings() {
             fromName: String(smtpRaw.fromName || "Ednovate"),
             fromEmail: String(smtpRaw.fromEmail || ""),
             replyTo: String(smtpRaw.replyTo || ""),
+          },
+          smsOtp: {
+            enabled: smsOtpRaw.enabled === true,
+            apiUrl: String(smsOtpRaw.apiUrl || ""),
+            apiKey: String(smsOtpRaw.apiKey || ""),
+            senderId: String(smsOtpRaw.senderId || ""),
+            templateId: String(smsOtpRaw.templateId || ""),
+            entityId: String(smsOtpRaw.entityId || ""),
+            route: String(smsOtpRaw.route || ""),
+            countryCode: String(smsOtpRaw.countryCode || "91") || "91",
+            otpTtlSeconds: String(smsOtpRaw.otpTtlSeconds || "300") || "300",
+            messageTemplate:
+              String(smsOtpRaw.messageTemplate || "").trim()
+              || "Your OTP for {{platformName}} is {{otp}}. It is valid for {{minutes}} minutes.",
           },
           paymentGateways: {
             cod: {
@@ -368,6 +412,16 @@ export default function AdminSettings() {
       ...prev,
       smtp: {
         ...prev.smtp,
+        [field]: value,
+      },
+    }));
+  };
+
+  const handleSmsOtpChange = (field: keyof SmsOtpSettings, value: string | boolean) => {
+    setSettings((prev) => ({
+      ...prev,
+      smsOtp: {
+        ...prev.smsOtp,
         [field]: value,
       },
     }));
@@ -555,6 +609,18 @@ export default function AdminSettings() {
           fromEmail: settings.smtp.fromEmail,
           replyTo: settings.smtp.replyTo,
         },
+        smsOtp: {
+          enabled: settings.smsOtp.enabled,
+          apiUrl: settings.smsOtp.apiUrl,
+          apiKey: settings.smsOtp.apiKey,
+          senderId: settings.smsOtp.senderId,
+          templateId: settings.smsOtp.templateId,
+          entityId: settings.smsOtp.entityId,
+          route: settings.smsOtp.route,
+          countryCode: settings.smsOtp.countryCode,
+          otpTtlSeconds: Number(settings.smsOtp.otpTtlSeconds || 300),
+          messageTemplate: settings.smsOtp.messageTemplate,
+        },
         paymentGateways: settings.paymentGateways,
         adminSidebar: settings.adminSidebar,
       },
@@ -632,6 +698,18 @@ export default function AdminSettings() {
           fromEmail: settings.smtp.fromEmail,
           replyTo: settings.smtp.replyTo,
         },
+        smsOtp: {
+          enabled: settings.smsOtp.enabled,
+          apiUrl: settings.smsOtp.apiUrl,
+          apiKey: settings.smsOtp.apiKey,
+          senderId: settings.smsOtp.senderId,
+          templateId: settings.smsOtp.templateId,
+          entityId: settings.smsOtp.entityId,
+          route: settings.smsOtp.route,
+          countryCode: settings.smsOtp.countryCode,
+          otpTtlSeconds: Number(settings.smsOtp.otpTtlSeconds || 300),
+          messageTemplate: settings.smsOtp.messageTemplate,
+        },
         paymentGateways: settings.paymentGateways,
         adminSidebar: settings.adminSidebar,
       },
@@ -700,7 +778,7 @@ export default function AdminSettings() {
       )}
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-5 mb-6">
+        <TabsList className="grid w-full grid-cols-6 mb-6">
           <TabsTrigger value="general" className="gap-2">
             <Globe className="w-4 h-4" />
             General
@@ -712,6 +790,10 @@ export default function AdminSettings() {
           <TabsTrigger value="email" className="gap-2">
             <Mail className="w-4 h-4" />
             Email
+          </TabsTrigger>
+          <TabsTrigger value="sms" className="gap-2">
+            <MessageSquare className="w-4 h-4" />
+            SMS OTP
           </TabsTrigger>
           <TabsTrigger value="payment" className="gap-2">
             <CreditCard className="w-4 h-4" />
@@ -1013,6 +1095,128 @@ export default function AdminSettings() {
                   </div>
                 );
               })}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="sms" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <MessageSquare className="w-5 h-5" /> TimesMobile OTP Setup
+              </CardTitle>
+              <CardDescription>
+                Add TimesMobile API credentials for login/forgot-password OTP delivery.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-center justify-between p-4 rounded-lg bg-blue-50 border border-blue-200">
+                <div className="space-y-1">
+                  <Label htmlFor="smsOtpEnabled" className="text-gray-900 font-medium">Enable OTP via TimesMobile</Label>
+                  <p className="text-sm text-gray-600">When ON, OTP is sent via TimesMobile API.</p>
+                </div>
+                <Switch
+                  id="smsOtpEnabled"
+                  checked={settings.smsOtp.enabled}
+                  onCheckedChange={(value) => handleSmsOtpChange("enabled", value)}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2 md:col-span-2">
+                  <Label htmlFor="smsOtpApiUrl">API URL</Label>
+                  <Input
+                    id="smsOtpApiUrl"
+                    placeholder="https://your-timesmobile-endpoint"
+                    value={settings.smsOtp.apiUrl}
+                    onChange={(e) => handleSmsOtpChange("apiUrl", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="smsOtpApiKey">API Key</Label>
+                  <Input
+                    id="smsOtpApiKey"
+                    type="password"
+                    placeholder="TimesMobile API Key"
+                    value={settings.smsOtp.apiKey}
+                    onChange={(e) => handleSmsOtpChange("apiKey", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="smsOtpSenderId">Sender ID</Label>
+                  <Input
+                    id="smsOtpSenderId"
+                    placeholder="SENDER"
+                    value={settings.smsOtp.senderId}
+                    onChange={(e) => handleSmsOtpChange("senderId", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="smsOtpTemplateId">Template ID</Label>
+                  <Input
+                    id="smsOtpTemplateId"
+                    placeholder="Template ID"
+                    value={settings.smsOtp.templateId}
+                    onChange={(e) => handleSmsOtpChange("templateId", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="smsOtpEntityId">Entity ID</Label>
+                  <Input
+                    id="smsOtpEntityId"
+                    placeholder="Entity ID"
+                    value={settings.smsOtp.entityId}
+                    onChange={(e) => handleSmsOtpChange("entityId", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="smsOtpRoute">Route (optional)</Label>
+                  <Input
+                    id="smsOtpRoute"
+                    placeholder="Transactional / Route code"
+                    value={settings.smsOtp.route}
+                    onChange={(e) => handleSmsOtpChange("route", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="smsOtpCountryCode">Country Code</Label>
+                  <Input
+                    id="smsOtpCountryCode"
+                    placeholder="91"
+                    value={settings.smsOtp.countryCode}
+                    onChange={(e) => handleSmsOtpChange("countryCode", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="smsOtpTtl">OTP Validity (seconds)</Label>
+                  <Input
+                    id="smsOtpTtl"
+                    type="number"
+                    min={60}
+                    max={900}
+                    value={settings.smsOtp.otpTtlSeconds}
+                    onChange={(e) => handleSmsOtpChange("otpTtlSeconds", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2 md:col-span-2">
+                  <Label htmlFor="smsOtpTemplate">SMS Message Template</Label>
+                  <Textarea
+                    id="smsOtpTemplate"
+                    rows={3}
+                    value={settings.smsOtp.messageTemplate}
+                    onChange={(e) => handleSmsOtpChange("messageTemplate", e.target.value)}
+                  />
+                  <p className="text-xs text-gray-500">Use placeholders: {'{otp}'}, {'{minutes}'}, {'{platformName}'}, {'{mobile}'}</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
         </TabsContent>

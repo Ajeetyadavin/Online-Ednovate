@@ -54,7 +54,6 @@ interface StoredAuthUser extends AuthUserProfile {
 }
 
 const USERS_STORAGE_KEY = "ednovate_auth_users";
-const OTP_STORAGE_KEY = "ednovate_auth_otps";
 export const SESSION_TOKEN_KEY = "ednovate_session_token";
 
 const parseJson = <T,>(key: string, fallback: T): T => {
@@ -275,11 +274,17 @@ export const sendLoginOtpApi = async (mobileNo: string): Promise<AuthActionResul
     return { ok: false, message: "Please enter a valid mobile number." };
   }
 
-  const otpMap = parseJson<Record<string, string>>(OTP_STORAGE_KEY, {});
-  otpMap[mobile] = "123456";
-  localStorage.setItem(OTP_STORAGE_KEY, JSON.stringify(otpMap));
-
-  return { ok: true, message: "OTP sent successfully." };
+  try {
+    const response = await fetch("/api/auth/student/otp/send", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mobile }),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to send OTP.");
+    return { ok: parsed.ok, message: parsed.message || (parsed.ok ? "OTP sent successfully." : "Failed to send OTP.") };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to send OTP." };
+  }
 };
 
 export const verifyLoginOtpApi = async (
@@ -296,25 +301,41 @@ export const verifyLoginOtpApi = async (
     return { ok: false, message: "Invalid OTP." };
   }
 
-  const users = getUsers();
-  let user = users.find((item) => item.mobile === mobile);
-  if (!user) {
-    user = {
-      studentId: generateStudentId(),
-      name: "Student",
-      email: `${mobile}@student.local`,
-      mobile,
-      password: "",
-    };
-    users.push(user);
-    saveUsers(users);
-  }
+  try {
+    const response = await fetch("/api/auth/student/otp/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mobile, otp: enteredOtp, login: true }),
+    });
+    const parsed = await parseResponseMessage(response, "Invalid OTP.");
+    if (!parsed.ok) {
+      return { ok: false, message: parsed.message };
+    }
 
-  return {
-    ok: true,
-    message: "OTP verified successfully.",
-    data: { studentId: user.studentId },
-  };
+    const payload = parsed.payload as {
+      token?: string;
+      user?: { studentId?: string; student_id?: string; id?: string | number };
+    };
+
+    const token = String(payload.token || "");
+    const studentId = String(payload.user?.studentId || payload.user?.student_id || payload.user?.id || "");
+
+    if (token) {
+      localStorage.setItem(SESSION_TOKEN_KEY, token);
+    }
+
+    if (!studentId) {
+      return { ok: false, message: "Invalid OTP login response." };
+    }
+
+    return {
+      ok: true,
+      message: parsed.message || "OTP verified successfully.",
+      data: { studentId },
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Invalid OTP." };
+  }
 };
 
 export const verifyStoredOtpApi = async (
@@ -331,10 +352,17 @@ export const verifyStoredOtpApi = async (
     return { ok: false, message: "Invalid OTP." };
   }
 
-  return {
-    ok: true,
-    message: "OTP verified successfully.",
-  };
+  try {
+    const response = await fetch("/api/auth/student/otp/verify", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mobile, otp: enteredOtp, login: false }),
+    });
+    const parsed = await parseResponseMessage(response, "Invalid OTP.");
+    return { ok: parsed.ok, message: parsed.message || (parsed.ok ? "OTP verified successfully." : "Invalid OTP.") };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Invalid OTP." };
+  }
 };
 
 export const resetPasswordByMobileApi = async (
@@ -350,23 +378,24 @@ export const resetPasswordByMobileApi = async (
     return { ok: false, message: "Password must be at least 6 characters." };
   }
 
-  const users = getUsers();
-  const userIndex = users.findIndex((item) => item.mobile === mobile);
-  if (userIndex === -1) {
-    return { ok: false, message: "Account not found for this mobile number." };
+  try {
+    const response = await fetch("/api/auth/student/reset-password-mobile", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mobile, password: password.trim() }),
+    });
+    const parsed = await parseResponseMessage(response, "Password reset failed.");
+    return {
+      ok: parsed.ok,
+      message:
+        parsed.message ||
+        (parsed.ok
+          ? "Password reset successful. Please login with your new password."
+          : "Password reset failed."),
+    };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Password reset failed." };
   }
-
-  users[userIndex] = {
-    ...users[userIndex],
-    password: password.trim(),
-  };
-
-  saveUsers(users);
-
-  return {
-    ok: true,
-    message: "Password reset successful. Please login with your new password.",
-  };
 };
 
 export const fetchProfileApi = async (
