@@ -1,8 +1,8 @@
 {
   "framework": "vite",
-  "installCommand": "npm install --prefix frontend",
-  "buildCommand": "npm run build --prefix frontend",
-  "outputDirectory": "frontend/dist",
+  "installCommand": "if [ -f frontend/package.json ]; then npm install --prefix frontend; else npm install; fi",
+  "buildCommand": "if [ -f frontend/package.json ]; then npm run build --prefix frontend && rm -rf dist && cp -R frontend/dist dist; else npm run build; fi",
+  "outputDirectory": "dist",
   "rewrites": [
     {
       "source": "/(.*)",
