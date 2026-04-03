@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 import { FacultyProfile } from "@/services/adminApi";
@@ -10,6 +10,23 @@ const FacultySection = () => {
   const textColor = settings.homepageContent.faculty.textColor || "#0F172A";
   const [faculty, setFaculty] = useState<FacultyProfile[]>([]);
   const [loading, setLoading] = useState(true);
+
+  const sortedFaculty = useMemo(() => {
+    const getSecondWord = (name: string) => {
+      const parts = String(name || "")
+        .trim()
+        .toLowerCase()
+        .split(/\s+/)
+        .filter(Boolean);
+      return parts[1] || parts[0] || "";
+    };
+
+    return [...faculty].sort((a, b) => {
+      const secondWordCompare = getSecondWord(a.name).localeCompare(getSecondWord(b.name), undefined, { sensitivity: "base" });
+      if (secondWordCompare !== 0) return secondWordCompare;
+      return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+    });
+  }, [faculty]);
 
   // Check if section is visible
   if (!settings.sections.faculty) {
@@ -41,7 +58,7 @@ const FacultySection = () => {
     );
   }
 
-  if (faculty.length === 0) return null;
+  if (sortedFaculty.length === 0) return null;
 
   return (
     <section className="relative py-16 md:py-20 overflow-hidden" style={{ background: `linear-gradient(135deg, ${backgroundColor}, #ffffff)`, color: textColor }} aria-label="Faculty section">
@@ -72,7 +89,7 @@ const FacultySection = () => {
           {/* ── RIGHT: FLOATING CIRCLES GRID ─────────────── */}
           <div className="flex-1">
             <div className="flex flex-wrap gap-6 items-center">
-              {faculty.map((member, index) => (
+              {sortedFaculty.map((member, index) => (
                 <Link
                   key={member.id}
                   to={`/faculty/${member.id}`}

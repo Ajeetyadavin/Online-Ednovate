@@ -363,7 +363,8 @@ const AppContent = () => (
                   <Route path="/admin/login" element={<AdminAuthProvider><AdminLogin /></AdminAuthProvider>} />
                   <Route path="/admin/*" element={<AdminAuthProvider><AdminLayout /></AdminAuthProvider>}>
                     <Route path="dashboard" element={<AdminDashboard />} />
-                    <Route path="courses" element={<AdminCourses />} />
+                    <Route path="courses" element={<AdminCourses mode="courses" />} />
+                    <Route path="packages" element={<AdminCourses mode="packages" />} />
                     <Route path="course-content" element={<AdminCourseContent />} />
                     <Route path="bunny-video" element={<AdminBunnyVideo />} />
                     <Route path="categories" element={<AdminMasters />} />

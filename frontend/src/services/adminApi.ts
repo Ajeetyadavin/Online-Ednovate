@@ -116,7 +116,8 @@ export interface PlatformSettingsPayload {
   };
   emailAutomation?: {
     enabled: boolean;
-    templates: Record<string, { enabled: boolean; subject: string; body: string }>;
+    adminRecipients?: string[];
+    templates: Record<string, { enabled: boolean; subject: string; body: string; sendToAdmin?: boolean }>;
   };
   siteSettings?: Record<string, unknown>;
   homepage?: {

@@ -80,6 +80,19 @@ const parseReviewsText = (value: string) =>
   }).filter((x): x is { name: string; rating: number; comment: string; date: string } => Boolean(x));
 
 const decodeDemoVideoValue = (value: unknown) => decodeVideoUrl(String(value || "")).trim();
+const combinationTupleKey = (item: {
+  viewModeId?: string | null;
+  validityOptionId?: string | null;
+  attemptOptionId?: string | null;
+  deliveryModeId?: string | null;
+  languageId?: string | null;
+}) => [
+  String(item.viewModeId || "").trim() || "any",
+  String(item.validityOptionId || "").trim() || "any",
+  String(item.attemptOptionId || "").trim() || "any",
+  String(item.deliveryModeId || "").trim() || "any",
+  String(item.languageId || "").trim() || "any",
+].join("|");
 
 type CourseForm = {
   id: string; title: string; category: string; subcategory: string; price: number; originalPrice: number; taxPercentage: number;
@@ -101,6 +114,7 @@ type CourseForm = {
   showMetaLectures?: boolean; showMetaHours?: boolean; showMetaValidity?: boolean;
   showMetaResources?: boolean; showMetaViews?: boolean; showMetaPerHour?: boolean; showMetaLanguage?: boolean;
   masterCombinationsEnabled?: boolean;
+  defaultSelectedCombinationId?: string;
   masterCombinationRows?: CourseMasterPricingCombination[];
   combinationUseView?: boolean;
   combinationUseValidity?: boolean;
@@ -152,6 +166,7 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
   showMetaViews: c.showMetaViews !== false, showMetaPerHour: c.showMetaPerHour !== false,
   showMetaLanguage: c.showMetaLanguage !== false,
   masterCombinationsEnabled: Array.isArray(c.masterConfig?.combinations) && c.masterConfig.combinations.length > 0,
+  defaultSelectedCombinationId: String(c.masterConfig?.defaultSelectedCombinationId || "").trim(),
   masterCombinationRows: Array.isArray(c.masterConfig?.combinations)
     ? c.masterConfig.combinations
         .map((item, index) => ({
@@ -194,6 +209,7 @@ const BLANK_FORM: CourseForm = {
   enrollmentCount: 0, showEnrollmentCount: true, showMetaLectures: true, showMetaHours: true,
   showMetaValidity: true, showMetaResources: true, showMetaViews: true, showMetaPerHour: true, showMetaLanguage: true,
   masterCombinationsEnabled: false,
+  defaultSelectedCombinationId: "",
   masterCombinationRows: [],
   combinationUseView: true,
   combinationUseValidity: true,
@@ -210,11 +226,13 @@ type VideoUploadState = {
   message?: string;
 };
 
+export type AdminCoursesMode = "courses" | "packages";
+
 /* ─── small reusable bits ─────────────────────────────────────── */
 const Label = ({ children }: { children: React.ReactNode }) => (
   <label className="text-[11px] font-bold uppercase tracking-wider text-slate-500">{children}</label>
 );
-const fieldCls = "h-10 rounded-xl border border-slate-200 bg-white text-sm font-medium text-slate-700 placeholder:text-slate-400 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 shadow-sm hover:border-slate-300";
+const fieldCls = "h-8 rounded-lg border border-slate-200 bg-white text-xs font-medium text-slate-700 placeholder:text-slate-400 px-2 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 shadow-sm hover:border-slate-300";
 const checkboxRow = (label: string, checked: boolean, onChange: (v: boolean) => void) => (
   <label className="flex cursor-pointer items-center gap-2.5">
     <input type="checkbox" checked={checked} onChange={(e) => onChange(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-primary" />
@@ -223,8 +241,11 @@ const checkboxRow = (label: string, checked: boolean, onChange: (v: boolean) => 
 );
 
 /* ─── Main Component ─────────────────────────────────────────── */
-export default function AdminCourses() {
+export default function AdminCourses({ mode = "courses" }: { mode?: AdminCoursesMode }) {
   const { courses, categories, setCurriculumForCourse, toggleCourseVisibility, upsertCourse, deleteCourse } = usePlatformData();
+  const isCoursesMode = mode === "courses";
+  const pageTitle = isCoursesMode ? "Courses" : "Packages";
+  const pageCountLabel = isCoursesMode ? "courses" : "packages";
   const [searchTerm, setSearchTerm] = useState("");
   const [courseFilter, setCourseFilter] = useState("all");
   const [levelFilter, setLevelFilter] = useState("all");
@@ -272,6 +293,8 @@ export default function AdminCourses() {
   const [pkgPrice, setPkgPrice] = useState(0);
   const [pkgOriginalPrice, setPkgOriginalPrice] = useState(0);
   const [pkgTaxPct, setPkgTaxPct] = useState(0);
+  const [pkgMasterCombinationsEnabled, setPkgMasterCombinationsEnabled] = useState(false);
+  const [pkgDefaultSelectedCombinationId, setPkgDefaultSelectedCombinationId] = useState("");
   const [pkgMasterCombinationRows, setPkgMasterCombinationRows] = useState<CourseMasterPricingCombination[]>([]);
   const [pkgCombinationUseView, setPkgCombinationUseView] = useState(true);
   const [pkgCombinationUseValidity, setPkgCombinationUseValidity] = useState(true);
@@ -383,6 +406,74 @@ export default function AdminCourses() {
     [masterAttemptOptions],
   );
 
+  const getCombinationLabel = useCallback((combo: CourseMasterPricingCombination, fallbackIndex = 0) => {
+    const explicit = String(combo.label || "").trim();
+    if (explicit) return explicit;
+    const parts = [
+      combo.viewModeId ? masterViewModeMap[String(combo.viewModeId)]?.name : null,
+      combo.validityOptionId ? masterValidityMap[String(combo.validityOptionId)]?.label : null,
+      combo.attemptOptionId ? masterAttemptMap[String(combo.attemptOptionId)]?.label : null,
+      combo.deliveryModeId ? masterDeliveryModeMap[String(combo.deliveryModeId)]?.name : null,
+      combo.languageId ? masterLanguageMap[String(combo.languageId)]?.name : null,
+    ].filter((part): part is string => Boolean(part));
+    if (parts.length > 0) return parts.join(" | ");
+    return `Combination ${fallbackIndex + 1}`;
+  }, [masterAttemptMap, masterDeliveryModeMap, masterLanguageMap, masterValidityMap, masterViewModeMap]);
+
+  useEffect(() => {
+    const activeRows = (form.masterCombinationRows || []).filter((row) => row.isActive !== false);
+    if (form.masterCombinationsEnabled === false || activeRows.length === 0) {
+      if (String(form.defaultSelectedCombinationId || "").trim()) {
+        sf({ defaultSelectedCombinationId: "" });
+      }
+      return;
+    }
+    const currentDefaultId = String(form.defaultSelectedCombinationId || "").trim();
+    if (currentDefaultId && activeRows.some((row) => String(row.id) === currentDefaultId)) return;
+    sf({ defaultSelectedCombinationId: String(activeRows[0].id || "").trim() });
+  }, [form.masterCombinationsEnabled, form.masterCombinationRows, form.defaultSelectedCombinationId]);
+
+  useEffect(() => {
+    const activeRows = (pkgMasterCombinationRows || []).filter((row) => row.isActive !== false);
+    if (!pkgMasterCombinationsEnabled || activeRows.length === 0) {
+      if (String(pkgDefaultSelectedCombinationId || "").trim()) {
+        setPkgDefaultSelectedCombinationId("");
+      }
+      return;
+    }
+    const currentDefaultId = String(pkgDefaultSelectedCombinationId || "").trim();
+    if (currentDefaultId && activeRows.some((row) => String(row.id) === currentDefaultId)) return;
+    setPkgDefaultSelectedCombinationId(String(activeRows[0].id || "").trim());
+  }, [pkgMasterCombinationsEnabled, pkgMasterCombinationRows, pkgDefaultSelectedCombinationId]);
+
+  const hasDuplicateCombinationTuple = (
+    rows: CourseMasterPricingCombination[],
+    candidate: CourseMasterPricingCombination,
+    ignoreIndex: number,
+  ) => rows.some((row, rowIndex) => rowIndex !== ignoreIndex && combinationTupleKey(row) === combinationTupleKey(candidate));
+
+  const updateCourseCombinationRow = (index: number, patch: Partial<CourseMasterPricingCombination>) => {
+    const rows = [...(form.masterCombinationRows || [])];
+    const nextRow = { ...rows[index], ...patch };
+    if (hasDuplicateCombinationTuple(rows, nextRow, index)) {
+      alert("Duplicate combination is not allowed.");
+      return;
+    }
+    rows[index] = nextRow;
+    sf({ masterCombinationRows: rows });
+  };
+
+  const updatePackageCombinationRow = (index: number, patch: Partial<CourseMasterPricingCombination>) => {
+    const rows = [...pkgMasterCombinationRows];
+    const nextRow = { ...rows[index], ...patch };
+    if (hasDuplicateCombinationTuple(rows, nextRow, index)) {
+      alert("Duplicate combination is not allowed.");
+      return;
+    }
+    rows[index] = nextRow;
+    setPkgMasterCombinationRows(rows);
+  };
+
   const buildCombinationRows = useCallback((
     options: {
       useView: boolean;
@@ -399,28 +490,44 @@ export default function AdminCourses() {
     basePrice?: number,
     baseOriginalPrice?: number,
   ): CourseMasterPricingCombination[] => {
+    const normalizeId = (value: unknown) => String(value || "").trim();
+    const toSelectedSet = (values?: string[]) => new Set(
+      Array.isArray(values) ? values.map((value) => normalizeId(value)).filter(Boolean) : [],
+    );
+    const selectedViewIds = toSelectedSet(options.selectedViewModeIds);
+    const selectedValidityIds = toSelectedSet(options.selectedValidityOptionIds);
+    const selectedAttemptIds = toSelectedSet(options.selectedAttemptOptionIds);
+    const selectedDeliveryIds = toSelectedSet(options.selectedDeliveryModeIds);
+    const comboKey = (
+      viewModeId: string | null | undefined,
+      validityOptionId: string | null | undefined,
+      attemptOptionId: string | null | undefined,
+      deliveryModeId: string | null | undefined,
+      languageId: string | null | undefined,
+    ) => `${normalizeId(viewModeId) || "any"}|${normalizeId(validityOptionId) || "any"}|${normalizeId(attemptOptionId) || "any"}|${normalizeId(deliveryModeId) || "any"}|${normalizeId(languageId) || "any"}`;
+
     const sourceViews = options.useView
       ? activeMasterViewModes.filter((item) => {
-        if (!Array.isArray(options.selectedViewModeIds) || options.selectedViewModeIds.length === 0) return true;
-        return options.selectedViewModeIds.includes(item.id);
+        if (selectedViewIds.size === 0) return true;
+        return selectedViewIds.has(normalizeId(item.id));
       })
       : [];
     const sourceValidity = options.useValidity
       ? activeMasterValidityOptions.filter((item) => {
-        if (!Array.isArray(options.selectedValidityOptionIds) || options.selectedValidityOptionIds.length === 0) return true;
-        return options.selectedValidityOptionIds.includes(item.id);
+        if (selectedValidityIds.size === 0) return true;
+        return selectedValidityIds.has(normalizeId(item.id));
       })
       : [];
     const sourceModes = options.useMode
       ? activeMasterDeliveryModes.filter((item) => {
-        if (!Array.isArray(options.selectedDeliveryModeIds) || options.selectedDeliveryModeIds.length === 0) return true;
-        return options.selectedDeliveryModeIds.includes(item.id);
+        if (selectedDeliveryIds.size === 0) return true;
+        return selectedDeliveryIds.has(normalizeId(item.id));
       })
       : [];
     const sourceAttempts = options.useAttempt
       ? activeMasterAttemptOptions.filter((item) => {
-        if (!Array.isArray(options.selectedAttemptOptionIds) || options.selectedAttemptOptionIds.length === 0) return true;
-        return options.selectedAttemptOptionIds.includes(item.id);
+        if (selectedAttemptIds.size === 0) return true;
+        return selectedAttemptIds.has(normalizeId(item.id));
       })
       : [];
 
@@ -439,7 +546,7 @@ export default function AdminCourses() {
 
     const existingMap = new Map(
       existingRows.map((item) => [
-        `${item.viewModeId || "any"}|${item.validityOptionId || "any"}|${item.deliveryModeId || "any"}|${item.languageId || "any"}`,
+        comboKey(item.viewModeId, item.validityOptionId, item.attemptOptionId, item.deliveryModeId, item.languageId),
         item,
       ]),
     );
@@ -451,7 +558,7 @@ export default function AdminCourses() {
       for (const validityOptionId of validities) {
         for (const attemptOptionId of attempts) {
         for (const deliveryModeId of modes) {
-          const key = `${viewModeId || "any"}|${validityOptionId || "any"}|${attemptOptionId || "any"}|${deliveryModeId || "any"}|any`;
+          const key = comboKey(viewModeId, validityOptionId, attemptOptionId, deliveryModeId, null);
             const previous = existingMap.get(key);
           
             // Calculate price multipliers based on selected view/validity
@@ -716,30 +823,35 @@ export default function AdminCourses() {
     window.dispatchEvent(new CustomEvent("curriculum-updated", { detail: { courseId, updatedAt: Date.now() } }));
   }, [courseCurricula, setCurriculumForCourse]);
 
+  const scopedCourses = useMemo(
+    () => courses.filter((item) => (isCoursesMode ? !item.isCombo : item.isCombo)),
+    [courses, isCoursesMode],
+  );
+
   const courseFilterOptions = useMemo(() => {
-    const used = new Set(courses.map((item) => String(item.category || "")).filter(Boolean));
+    const used = new Set(scopedCourses.map((item) => String(item.category || "")).filter(Boolean));
     return parentCategories
       .filter((item) => used.has(item.id))
       .map((item) => ({ id: item.id, name: item.name }));
-  }, [courses, parentCategories]);
+  }, [scopedCourses, parentCategories]);
 
   const levelFilterOptions = useMemo(() => {
-    const pool = courses.filter((item) => courseFilter === "all" || item.category === courseFilter);
+    const pool = scopedCourses.filter((item) => courseFilter === "all" || item.category === courseFilter);
     const uniqueLevelIds = Array.from(new Set(pool.map((item) => String(item.subcategory || "")).filter(Boolean)));
     return uniqueLevelIds.map((id) => ({ id, name: categoriesById[id]?.name || id }));
-  }, [courses, categoriesById, courseFilter]);
+  }, [scopedCourses, categoriesById, courseFilter]);
 
   const subjectFilterOptions = useMemo(() => {
-    const pool = courses.filter((item) => {
+    const pool = scopedCourses.filter((item) => {
       if (courseFilter !== "all" && item.category !== courseFilter) return false;
       if (levelFilter !== "all" && String(item.subcategory || "") !== levelFilter) return false;
       return true;
     });
     return Array.from(new Set(pool.map((item) => String(item.subject || "").trim()).filter(Boolean))).sort((a, b) => a.localeCompare(b));
-  }, [courses, courseFilter, levelFilter]);
+  }, [scopedCourses, courseFilter, levelFilter]);
 
   const chapterFilterOptions = useMemo(() => {
-    const pool = courses.filter((item) => {
+    const pool = scopedCourses.filter((item) => {
       if (courseFilter !== "all" && item.category !== courseFilter) return false;
       if (levelFilter !== "all" && String(item.subcategory || "") !== levelFilter) return false;
       if (subjectFilter !== "all" && String(item.subject || "").trim() !== subjectFilter) return false;
@@ -757,7 +869,7 @@ export default function AdminCourses() {
         }),
       ),
     ).sort((a, b) => a.localeCompare(b));
-  }, [courses, courseFilter, levelFilter, subjectFilter]);
+  }, [scopedCourses, courseFilter, levelFilter, subjectFilter]);
 
   useEffect(() => {
     if (courseFilter === "all") return;
@@ -784,7 +896,7 @@ export default function AdminCourses() {
   }, [chapterFilter, chapterFilterOptions]);
 
   const filteredCourses = useMemo(() =>
-    courses
+    scopedCourses
       .filter((c) => {
         const text = searchTerm.toLowerCase();
         const matchesSearch = c.title.toLowerCase().includes(text)
@@ -805,7 +917,7 @@ export default function AdminCourses() {
         return true;
       })
       .sort((a, b) => sortOrder === "asc" ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title)),
-  [courses, categoriesById, searchTerm, sortOrder, courseFilter, levelFilter, subjectFilter, chapterFilter]);
+  [scopedCourses, categoriesById, searchTerm, sortOrder, courseFilter, levelFilter, subjectFilter, chapterFilter]);
 
   const suggestedFaculty = useMemo(() => {
     const query = form.professor.trim().toLowerCase();
@@ -1117,6 +1229,24 @@ export default function AdminCourses() {
       .filter((item) => item.isActive !== false && Boolean(item.viewModeId || item.validityOptionId || item.attemptOptionId || item.deliveryModeId || item.languageId));
 
     const hasMasterCombinationPricing = selectedMasterCombinationsWithPricing.length > 0;
+    if (hasMasterCombinationPricing) {
+      const seen = new Set<string>();
+      const hasDuplicate = selectedMasterCombinationsWithPricing.some((item) => {
+        const key = combinationTupleKey(item);
+        if (seen.has(key)) return true;
+        seen.add(key);
+        return false;
+      });
+      if (hasDuplicate) {
+        alert("Duplicate master combinations are not allowed. Please keep each combination unique.");
+        return;
+      }
+    }
+    const selectedCourseComboIds = selectedMasterCombinationsWithPricing.map((item) => item.id);
+    const requestedCourseDefaultComboId = String(form.defaultSelectedCombinationId || "").trim();
+    const resolvedCourseDefaultComboId = hasMasterCombinationPricing
+      ? (selectedCourseComboIds.includes(requestedCourseDefaultComboId) ? requestedCourseDefaultComboId : String(selectedCourseComboIds[0] || ""))
+      : "";
 
     if (selectedMasterCombinationsWithPricing.some((item) => Number(item.price || 0) <= 0)) {
       alert("Selected master combinations must have valid price greater than 0");
@@ -1245,6 +1375,7 @@ export default function AdminCourses() {
       showMetaPerHour: form.showMetaPerHour !== false, showMetaLanguage: form.showMetaLanguage !== false,
       masterConfig: {
         combinationIds: selectedMasterCombinationsWithPricing.map((item) => item.id),
+        defaultSelectedCombinationId: resolvedCourseDefaultComboId || undefined,
         combinationPrices: Object.fromEntries(
           selectedMasterCombinationsWithPricing.map((item) => [item.id, {
             price: Number(item.price || 0),
@@ -1336,6 +1467,8 @@ export default function AdminCourses() {
     setPkgEditingId(null); setPkgTab("courses");
     setPkgTitle(""); setPkgThumbnail(""); setPkgCategory(firstCat); setPkgSubcategory(firstSub);
     setPkgPrice(0); setPkgOriginalPrice(0); setPkgTaxPct(0);
+    setPkgMasterCombinationsEnabled(false);
+    setPkgDefaultSelectedCombinationId("");
     setPkgMasterCombinationRows([]);
       setPkgCombinationUseView(true); setPkgCombinationUseValidity(true); setPkgCombinationUseMode(false); setPkgCombinationUseAttempt(false);
     setPkgSelectedViewModeIds([]); setPkgSelectedValidityIds([]); setPkgSelectedAttemptIds([]); setPkgSelectedDeliveryModeIds([]);
@@ -1362,6 +1495,10 @@ export default function AdminCourses() {
     setPkgCategory(course.category || ""); setPkgSubcategory(course.subcategory || "");
     setPkgPrice(course.price); setPkgOriginalPrice(course.originalPrice);
     setPkgTaxPct(Number(course.taxPercentage || 0));
+    setPkgMasterCombinationsEnabled(
+      Array.isArray(course.masterConfig?.combinations) && course.masterConfig.combinations.length > 0,
+    );
+    setPkgDefaultSelectedCombinationId(String(course.masterConfig?.defaultSelectedCombinationId || "").trim());
     setPkgMasterCombinationRows(
       Array.isArray(course.masterConfig?.combinations)
         ? course.masterConfig.combinations
@@ -1536,7 +1673,7 @@ export default function AdminCourses() {
   const handleSavePackage = async () => {
     if (!pkgTitle.trim()) { alert("Package name is required"); return; }
     if (pkgCourseIds.length < 2) { alert("Select at least 2 courses for a package"); return; }
-    const hasValidPkgComboPrice = (pkgMasterCombinationRows || []).some(
+    const hasValidPkgComboPrice = pkgMasterCombinationsEnabled && (pkgMasterCombinationRows || []).some(
       (row) => row.isActive !== false
         && Number(row.price || 0) > 0
         && Boolean(row.viewModeId || row.validityOptionId || row.attemptOptionId || row.deliveryModeId || row.languageId),
@@ -1556,7 +1693,7 @@ export default function AdminCourses() {
         if (pkgEnotesEnabled) bookAddons.push({ id: "enotes", label: "eNotes", price: Math.max(0, pkgEnotesPrice), enabled: true });
         if (pkgPhysBookEnabled) bookAddons.push({ id: "physical-book", label: "Physical Book", price: Math.max(0, pkgPhysBookPrice), enabled: true });
       }
-      const normalizedPkgCombos = (pkgMasterCombinationRows || [])
+      const normalizedPkgCombos = (pkgMasterCombinationsEnabled ? (pkgMasterCombinationRows || []) : [])
         .map((item, index) => ({
           id: String(item.id || `pkg-combo-${index + 1}`),
           label: String(item.label || "").trim(),
@@ -1571,6 +1708,25 @@ export default function AdminCourses() {
           sortOrder: Number(item.sortOrder || index + 1),
         }))
         .filter((item) => item.isActive !== false && item.price > 0 && Boolean(item.viewModeId || item.validityOptionId || item.attemptOptionId || item.deliveryModeId || item.languageId));
+
+      const normalizedPkgComboIds = normalizedPkgCombos.map((item) => item.id);
+      if (normalizedPkgCombos.length > 0) {
+        const seen = new Set<string>();
+        const hasDuplicate = normalizedPkgCombos.some((item) => {
+          const key = combinationTupleKey(item);
+          if (seen.has(key)) return true;
+          seen.add(key);
+          return false;
+        });
+        if (hasDuplicate) {
+          alert("Duplicate master combinations are not allowed. Please keep each combination unique.");
+          return;
+        }
+      }
+      const requestedPkgDefaultComboId = String(pkgDefaultSelectedCombinationId || "").trim();
+      const resolvedPkgDefaultComboId = normalizedPkgCombos.length > 0
+        ? (normalizedPkgComboIds.includes(requestedPkgDefaultComboId) ? requestedPkgDefaultComboId : String(normalizedPkgComboIds[0] || ""))
+        : "";
 
 
       const comboBasedPrice = normalizedPkgCombos.length > 0 ? Number(normalizedPkgCombos[0].price || 0) : 0;
@@ -1641,6 +1797,7 @@ export default function AdminCourses() {
         demoVideoThumbnailUrl: String(pkgDemoVideoThumbnailUrl || "").trim(),
         masterConfig: {
           combinationIds: normalizedPkgCombos.map((item) => item.id),
+          defaultSelectedCombinationId: resolvedPkgDefaultComboId || undefined,
           combinationPrices: Object.fromEntries(normalizedPkgCombos.map((item) => [item.id, {
             price: Number(item.price || 0),
             originalPrice: item.originalPrice === null || item.originalPrice === undefined ? null : Number(item.originalPrice || 0),
@@ -1679,10 +1836,10 @@ export default function AdminCourses() {
             originalPrice: item.originalPrice === null || item.originalPrice === undefined ? null : Number(item.originalPrice || 0),
           })),
           combinationBasis: {
-            useView: pkgCombinationUseView,
-            useValidity: pkgCombinationUseValidity,
-            useAttempt: pkgCombinationUseAttempt,
-            useMode: pkgCombinationUseMode,
+            useView: pkgMasterCombinationsEnabled ? pkgCombinationUseView : false,
+            useValidity: pkgMasterCombinationsEnabled ? pkgCombinationUseValidity : false,
+            useAttempt: pkgMasterCombinationsEnabled ? pkgCombinationUseAttempt : false,
+            useMode: pkgMasterCombinationsEnabled ? pkgCombinationUseMode : false,
           },
         },
       };
@@ -1700,7 +1857,7 @@ export default function AdminCourses() {
     { key: "content",  label: "Content",  icon: FileText },
   ];
 
-  const selectCls = "h-10 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs font-medium text-slate-700 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 shadow-sm hover:border-slate-300";
+  const selectCls = "h-8 w-full rounded-lg border border-slate-200 bg-white px-2 text-xs font-medium text-slate-700 focus:border-primary focus:ring-2 focus:ring-primary/20 transition-all duration-200 shadow-sm hover:border-slate-300";
 
   return (
     <div className="space-y-5 font-['Inter']">
@@ -1708,11 +1865,11 @@ export default function AdminCourses() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3">
           <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-gradient-to-br from-primary to-primary/70 shadow-lg shadow-primary/25">
-            <BookOpen className="h-6 w-6 text-white" />
+            {isCoursesMode ? <BookOpen className="h-6 w-6 text-white" /> : <Layers className="h-6 w-6 text-white" />}
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">Courses</h1>
-            <p className="mt-0.5 text-xs text-slate-500">{filteredCourses.length} courses total</p>
+            <h1 className="text-2xl font-bold text-slate-900">{pageTitle}</h1>
+            <p className="mt-0.5 text-xs text-slate-500">{filteredCourses.length} {pageCountLabel} total</p>
           </div>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -1732,7 +1889,7 @@ export default function AdminCourses() {
           </div>
           <div className="relative">
             <Search className="absolute left-3 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-slate-400" />
-            <Input className="h-9 w-52 rounded-xl border-slate-200 pl-9 text-xs" placeholder="Search courses…" value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
+            <Input className="h-9 w-52 rounded-xl border-slate-200 pl-9 text-xs" placeholder={isCoursesMode ? "Search courses..." : "Search packages..."} value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)} />
           </div>
           <Button
             type="button"
@@ -1756,7 +1913,7 @@ export default function AdminCourses() {
                   setChapterFilter("all");
                 }}
               >
-                <option value="all">All Courses</option>
+                <option value="all">{isCoursesMode ? "All Courses" : "All Packages"}</option>
                 {courseFilterOptions.map((item) => (
                   <option key={item.id} value={item.id}>{item.name}</option>
                 ))}
@@ -1817,16 +1974,20 @@ export default function AdminCourses() {
             </>
           )}
           <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-            <DialogTrigger asChild>
-              <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-lg shadow-primary/20" onClick={openCreateDialog}>
-                <Plus className="h-3.5 w-3.5" /> Add Course
-              </Button>
-            </DialogTrigger>
+            {isCoursesMode && (
+              <DialogTrigger asChild>
+                <Button size="sm" className="h-9 gap-1.5 rounded-xl px-4 text-xs font-semibold shadow-lg shadow-primary/20" onClick={openCreateDialog}>
+                  <Plus className="h-3.5 w-3.5" /> Add Course
+                </Button>
+              </DialogTrigger>
+            )}
 
             {/* ─── Package Builder Button + Dialog ─────────── */}
-            <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl border-violet-200 bg-violet-50 px-4 text-xs font-semibold text-violet-700 hover:bg-violet-100 hover:border-violet-300" onClick={openCreatePackage}>
-              <Layers className="h-3.5 w-3.5" /> Create Package
-            </Button>
+            {mode === "packages" && (
+              <Button size="sm" variant="outline" className="h-9 gap-1.5 rounded-xl border-violet-200 bg-violet-50 px-4 text-xs font-semibold text-violet-700 hover:bg-violet-100 hover:border-violet-300" onClick={openCreatePackage}>
+                <Layers className="h-3.5 w-3.5" /> Create Package
+              </Button>
+            )}
 
             {/* Package Builder Dialog */}
             <Dialog open={pkgOpen} onOpenChange={setPkgOpen}>
@@ -1999,13 +2160,29 @@ export default function AdminCourses() {
                   {/* ── PRICING TAB ── */}
                   {pkgTab === "pricing" && (
                     <div className="space-y-4">
+                      <div className="rounded-xl border border-slate-200 p-4">
+                        <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                          <div className="space-y-1.5">
+                            <Label>Tax (%)</Label>
+                            <Input
+                              className={fieldCls}
+                              type="number"
+                              min={0}
+                              step={0.01}
+                              placeholder="0"
+                              value={pkgTaxPct || ""}
+                              onChange={(e) => setPkgTaxPct(Math.max(0, Number(e.target.value) || 0))}
+                            />
+                          </div>
+                        </div>
+                      </div>
+
                       {/* Base price */}
                       <div className="rounded-xl border border-slate-200 p-4 space-y-3">
                         <p className="text-xs font-bold text-slate-800">Base Price</p>
-                        <div className="grid grid-cols-3 gap-3">
-                          <div className="space-y-1.5"><Label>Package Price (₹) *</Label><Input className={fieldCls} type="number" placeholder="24999" value={pkgPrice || ""} onChange={(e) => setPkgPrice(Number(e.target.value) || 0)} /></div>
-                          <div className="space-y-1.5"><Label>Original / MRP (₹)</Label><Input className={fieldCls} type="number" placeholder="Auto from retail" value={pkgOriginalPrice || ""} onChange={(e) => setPkgOriginalPrice(Number(e.target.value) || 0)} /></div>
-                          <div className="space-y-1.5"><Label>Tax (%)</Label><Input className={fieldCls} type="number" min={0} step={0.01} placeholder="0" value={pkgTaxPct || ""} onChange={(e) => setPkgTaxPct(Math.max(0, Number(e.target.value) || 0))} /></div>
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="space-y-1.5"><Label>Package Price (₹) *</Label><Input className={fieldCls} type="number" placeholder="24999" value={pkgPrice || ""} disabled={pkgMasterCombinationsEnabled} onChange={(e) => setPkgPrice(Number(e.target.value) || 0)} /></div>
+                          <div className="space-y-1.5"><Label>Original / MRP (₹)</Label><Input className={fieldCls} type="number" placeholder="Auto from retail" value={pkgOriginalPrice || ""} disabled={pkgMasterCombinationsEnabled} onChange={(e) => setPkgOriginalPrice(Number(e.target.value) || 0)} /></div>
                         </div>
                         {pkgPrice > 0 && (
                           <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] space-y-1">
@@ -2015,16 +2192,43 @@ export default function AdminCourses() {
                           </div>
                         )}
                       </div>
-                      <div className="rounded-xl border border-orange-200 bg-orange-50/40 p-4 space-y-3">
-                        <p className="text-xs font-bold text-orange-800">Package Price Combinations</p>
-                        <p className="text-[11px] text-orange-700">Master se options aayenge. Yahan tick karke select karein kis base par bechna hai, phir possibilities generate karke price set karein.</p>
-                        <div className="rounded-lg border border-orange-100 bg-white p-3 space-y-3">
-                          <div className="flex items-center justify-between">
-                            <p className="text-[11px] font-semibold text-slate-700">Sell Based On</p>
-                            <a href="/admin/masters" target="_blank" className="text-[10px] text-primary hover:underline flex items-center gap-1">
-                              <Settings className="h-3 w-3" /> Configure Masters
+                      <div className="rounded-2xl border border-blue-200 bg-white shadow-sm overflow-hidden">
+                        <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 px-5 py-3">
+                          <div className="flex items-center gap-2">
+                            <div className="h-5 w-5 rounded-md bg-blue-600 flex items-center justify-center shrink-0">
+                              <DollarSign className="h-3 w-3 text-white" />
+                            </div>
+                            <p className="text-xs font-bold text-blue-700 uppercase tracking-wider">Master Price Combinations</p>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setPkgMasterCombinationsEnabled(!pkgMasterCombinationsEnabled)}
+                              className={`h-7 rounded-lg border px-3 text-xs font-semibold transition-all ${
+                                pkgMasterCombinationsEnabled
+                                  ? "bg-emerald-600 border-emerald-600 text-white hover:bg-emerald-700"
+                                  : "bg-white border-slate-300 text-slate-600 hover:bg-orange-50 hover:border-orange-400 hover:text-orange-700"
+                              }`}
+                            >
+                              {pkgMasterCombinationsEnabled ? "Enabled" : "Disabled"}
+                            </button>
+                            <a href="/admin/masters" target="_blank" className="text-[10px] text-blue-600 hover:underline">
+                              Configure Masters
                             </a>
                           </div>
+                        </div>
+
+                        {!pkgMasterCombinationsEnabled && (
+                          <div className="p-5 space-y-4">
+                            <p className="text-xs text-slate-500">Master combinations are disabled. Base package price will be used.</p>
+                          </div>
+                        )}
+
+                        {pkgMasterCombinationsEnabled && (
+                          <div className="p-5 space-y-4">
+                            <div className="flex items-center justify-between">
+                              <p className="text-[11px] font-semibold text-slate-700">Sell Based On</p>
+                            </div>
                           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
                             <label className={`flex cursor-pointer items-center gap-2.5 rounded-lg border p-2.5 transition-all ${pkgCombinationUseView ? 'border-primary bg-primary/5' : 'border-slate-200 hover:border-slate-300'}`}>
                               <input type="checkbox" checked={pkgCombinationUseView} onChange={(e) => setPkgCombinationUseView(e.target.checked)} className="h-4 w-4 rounded border-slate-300 accent-primary" />
@@ -2066,158 +2270,198 @@ export default function AdminCourses() {
                           <div className="flex flex-wrap gap-2 pt-1">
                             <Button
                               type="button"
-                              variant="outline"
-                              className="h-9"
+                              className="h-9 gap-2 rounded-xl bg-blue-600 text-xs font-semibold shadow hover:bg-blue-700"
                               onClick={() => openPackageCombinationSelector()}
                             >
-                              Generate Possibilities
+                              <Settings className="h-3.5 w-3.5" /> Select &amp; Generate
                             </Button>
                             <Button
                               type="button"
                               variant="outline"
-                              className="h-9"
+                              className="h-9 rounded-xl text-xs"
                               onClick={() => setPkgMasterCombinationRows((prev) => prev.filter((row) => row.isActive !== false))}
                             >
-                              Remove Inactive
+                              Clean Inactive
                             </Button>
                           </div>
-                        </div>
-                        <div className="space-y-2">
-                          {pkgMasterCombinationRows.map((combo, index) => (
-                            <div key={`${combo.id}-${index}`} className="grid gap-2 rounded-lg border border-orange-100 bg-white p-3 md:grid-cols-[90px_1fr_1fr_1fr_120px_120px_auto]">
-                              <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 text-[11px] font-semibold text-slate-700">
-                                <input
-                                  type="checkbox"
-                                  checked={combo.isActive !== false}
-                                  onChange={(event) => {
-                                    const nextRows = [...pkgMasterCombinationRows];
-                                    nextRows[index] = { ...combo, isActive: event.target.checked };
-                                    setPkgMasterCombinationRows(nextRows);
-                                  }}
-                                  className="h-4 w-4 rounded border-slate-300 accent-primary"
-                                />
-                                Active
-                              </label>
+                          {pkgMasterCombinationRows.length > 0 && (
+                            <div className="space-y-1.5">
+                              <Label>Default Selected Combination</Label>
                               <select
                                 className={selectCls}
-                                value={combo.viewModeId || ""}
-                                disabled={!pkgCombinationUseView}
-                                onChange={(event) => {
-                                  const nextRows = [...pkgMasterCombinationRows];
-                                  nextRows[index] = { ...combo, viewModeId: event.target.value || null };
-                                  setPkgMasterCombinationRows(nextRows);
-                                }}
+                                value={String(pkgDefaultSelectedCombinationId || "")}
+                                onChange={(event) => setPkgDefaultSelectedCombinationId(event.target.value)}
                               >
-                                <option value="">{pkgCombinationUseView ? "View" : "Not used"}</option>
-                                {activeMasterViewModes.map((item) => (
-                                  <option key={item.id} value={item.id}>{item.name}</option>
-                                ))}
+                                {pkgMasterCombinationRows
+                                  .filter((row) => row.isActive !== false)
+                                  .map((row, index) => (
+                                    <option key={row.id} value={row.id}>
+                                      {getCombinationLabel(row, index)}
+                                    </option>
+                                  ))}
                               </select>
-                              <select
-                                className={selectCls}
-                                value={combo.validityOptionId || ""}
-                                disabled={!pkgCombinationUseValidity}
-                                onChange={(event) => {
-                                  const nextRows = [...pkgMasterCombinationRows];
-                                  nextRows[index] = { ...combo, validityOptionId: event.target.value || null };
-                                  setPkgMasterCombinationRows(nextRows);
-                                }}
-                              >
-                                <option value="">{pkgCombinationUseValidity ? "Validity" : "Not used"}</option>
-                                {activeMasterValidityOptions.map((item) => (
-                                  <option key={item.id} value={item.id}>{item.label}</option>
-                                ))}
-                              </select>
-                              <select
-                                className={selectCls}
-                                value={combo.attemptOptionId || ""}
-                                disabled={!pkgCombinationUseAttempt}
-                                onChange={(event) => {
-                                  const nextRows = [...pkgMasterCombinationRows];
-                                  nextRows[index] = { ...combo, attemptOptionId: event.target.value || null };
-                                  setPkgMasterCombinationRows(nextRows);
-                                }}
-                              >
-                                <option value="">{pkgCombinationUseAttempt ? "Attempt" : "Not used"}</option>
-                                {activeMasterAttemptOptions.map((item) => (
-                                  <option key={item.id} value={item.id}>{item.label}</option>
-                                ))}
-                              </select>
-                              <select
-                                className={selectCls}
-                                value={combo.deliveryModeId || ""}
-                                disabled={!pkgCombinationUseMode}
-                                onChange={(event) => {
-                                  const nextRows = [...pkgMasterCombinationRows];
-                                  nextRows[index] = { ...combo, deliveryModeId: event.target.value || null };
-                                  setPkgMasterCombinationRows(nextRows);
-                                }}
-                              >
-                                <option value="">{pkgCombinationUseMode ? "Lecture mode" : "Not used"}</option>
-                                {activeMasterDeliveryModes.map((item) => (
-                                  <option key={item.id} value={item.id}>{item.name}</option>
-                                ))}
-                              </select>
-                              <Input
-                                className={fieldCls}
-                                type="number"
-                                min={0}
-                                placeholder="Price"
-                                value={Number(combo.price || 0)}
-                                onChange={(event) => {
-                                  const nextRows = [...pkgMasterCombinationRows];
-                                  nextRows[index] = { ...combo, price: Number(event.target.value) || 0 };
-                                  setPkgMasterCombinationRows(nextRows);
-                                }}
-                              />
-                              <Input
-                                className={fieldCls}
-                                type="number"
-                                min={0}
-                                placeholder="Original"
-                                value={Number(combo.originalPrice || 0)}
-                                onChange={(event) => {
-                                  const nextRows = [...pkgMasterCombinationRows];
-                                  const nextOriginal = Number(event.target.value) || 0;
-                                  nextRows[index] = { ...combo, originalPrice: nextOriginal > 0 ? nextOriginal : null };
-                                  setPkgMasterCombinationRows(nextRows);
-                                }}
-                              />
-                              <Button
-                                type="button"
-                                variant="outline"
-                                className="h-9"
-                                onClick={() => setPkgMasterCombinationRows((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
-                              >
-                                Remove
-                              </Button>
                             </div>
-                          ))}
+                          )}
+                          {pkgMasterCombinationRows.length > 0 && (
+                          <div className="space-y-2 border-t border-blue-100 pt-2">
+                            <p className="text-xs font-semibold text-slate-700">Pricing Grid ({pkgMasterCombinationRows.length} rows)</p>
+                            <div className="rounded-xl border border-blue-100 bg-white overflow-hidden">
+                              <div className="w-full">
+                                <div className="sticky top-0 z-10 hidden grid-cols-[70px_minmax(80px,1fr)_minmax(90px,1fr)_minmax(80px,1fr)_minmax(100px,1fr)_80px_80px_60px] gap-1 border-b border-blue-100 bg-blue-50/95 px-2 py-2 text-[10px] font-bold uppercase tracking-wide text-blue-700 backdrop-blur md:grid">
+                                  <span>Active</span>
+                                  <span>View</span>
+                                  <span>Validity</span>
+                                  <span>Attempt</span>
+                                  <span>Lecture Mode</span>
+                                  <span>Price</span>
+                                  <span>Original</span>
+                                  <span>Action</span>
+                                </div>
+                                <div className="max-h-72 space-y-1 overflow-y-auto p-1.5">
+                                  {pkgMasterCombinationRows.map((combo, index) => (
+                                    <div
+                                      key={`${combo.id}-${index}`}
+                                      className={`grid gap-1 rounded-lg border p-2 md:grid-cols-[70px_minmax(80px,1fr)_minmax(90px,1fr)_minmax(80px,1fr)_minmax(100px,1fr)_80px_80px_60px] ${combo.isActive !== false ? "border-blue-100 bg-blue-50/60" : "border-slate-100 bg-slate-50 opacity-60"}`}
+                                    >
+                                      <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 text-[11px] font-semibold text-slate-700">
+                                        <input
+                                          type="checkbox"
+                                          checked={combo.isActive !== false}
+                                          onChange={(event) => {
+                                            const nextRows = [...pkgMasterCombinationRows];
+                                            nextRows[index] = { ...combo, isActive: event.target.checked };
+                                            setPkgMasterCombinationRows(nextRows);
+                                          }}
+                                          className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                                        />
+                                        Active
+                                      </label>
+                                      <select
+                                        className={selectCls}
+                                        value={combo.viewModeId || ""}
+                                        disabled={!pkgCombinationUseView}
+                                        onChange={(event) => {
+                                          const nextRows = [...pkgMasterCombinationRows];
+                                          nextRows[index] = { ...combo, viewModeId: event.target.value || null };
+                                          setPkgMasterCombinationRows(nextRows);
+                                        }}
+                                      >
+                                        <option value="">{pkgCombinationUseView ? "View" : "Not used"}</option>
+                                        {activeMasterViewModes.map((item) => (
+                                          <option key={item.id} value={item.id}>{item.name}</option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        className={selectCls}
+                                        value={combo.validityOptionId || ""}
+                                        disabled={!pkgCombinationUseValidity}
+                                        onChange={(event) => {
+                                          const nextRows = [...pkgMasterCombinationRows];
+                                          nextRows[index] = { ...combo, validityOptionId: event.target.value || null };
+                                          setPkgMasterCombinationRows(nextRows);
+                                        }}
+                                      >
+                                        <option value="">{pkgCombinationUseValidity ? "Validity" : "Not used"}</option>
+                                        {activeMasterValidityOptions.map((item) => (
+                                          <option key={item.id} value={item.id}>{item.label}</option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        className={selectCls}
+                                        value={combo.attemptOptionId || ""}
+                                        disabled={!pkgCombinationUseAttempt}
+                                        onChange={(event) => {
+                                          const nextRows = [...pkgMasterCombinationRows];
+                                          nextRows[index] = { ...combo, attemptOptionId: event.target.value || null };
+                                          setPkgMasterCombinationRows(nextRows);
+                                        }}
+                                      >
+                                        <option value="">{pkgCombinationUseAttempt ? "Attempt" : "Not used"}</option>
+                                        {activeMasterAttemptOptions.map((item) => (
+                                          <option key={item.id} value={item.id}>{item.label}</option>
+                                        ))}
+                                      </select>
+                                      <select
+                                        className={selectCls}
+                                        value={combo.deliveryModeId || ""}
+                                        disabled={!pkgCombinationUseMode}
+                                        onChange={(event) => {
+                                          const nextRows = [...pkgMasterCombinationRows];
+                                          nextRows[index] = { ...combo, deliveryModeId: event.target.value || null };
+                                          setPkgMasterCombinationRows(nextRows);
+                                        }}
+                                      >
+                                        <option value="">{pkgCombinationUseMode ? "Lecture mode" : "Not used"}</option>
+                                        {activeMasterDeliveryModes.map((item) => (
+                                          <option key={item.id} value={item.id}>{item.name}</option>
+                                        ))}
+                                      </select>
+                                      <Input
+                                        className={fieldCls}
+                                        type="number"
+                                        min={0}
+                                        placeholder="Price"
+                                        value={Number(combo.price || 0)}
+                                        onChange={(event) => {
+                                          const nextRows = [...pkgMasterCombinationRows];
+                                          nextRows[index] = { ...combo, price: Number(event.target.value) || 0 };
+                                          setPkgMasterCombinationRows(nextRows);
+                                        }}
+                                      />
+                                      <Input
+                                        className={fieldCls}
+                                        type="number"
+                                        min={0}
+                                        placeholder="Original"
+                                        value={Number(combo.originalPrice || 0)}
+                                        onChange={(event) => {
+                                          const nextRows = [...pkgMasterCombinationRows];
+                                          const nextOriginal = Number(event.target.value) || 0;
+                                          nextRows[index] = { ...combo, originalPrice: nextOriginal > 0 ? nextOriginal : null };
+                                          setPkgMasterCombinationRows(nextRows);
+                                        }}
+                                      />
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="h-9"
+                                        onClick={() => setPkgMasterCombinationRows((prev) => prev.filter((_, rowIndex) => rowIndex !== index))}
+                                      >
+                                        Remove
+                                      </Button>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                          )}
+                          <Button
+                            type="button"
+                            variant="outline"
+                            className="h-8 rounded-xl border-dashed text-xs"
+                            onClick={() => {
+                              setPkgMasterCombinationRows((prev) => [
+                                ...prev,
+                                {
+                                  id: `pkg-combo-${Date.now()}-${prev.length + 1}`,
+                                  label: "",
+                                  viewModeId: pkgCombinationUseView ? (activeMasterViewModes[0]?.id || null) : null,
+                                  validityOptionId: pkgCombinationUseValidity ? (activeMasterValidityOptions[0]?.id || null) : null,
+                                  attemptOptionId: pkgCombinationUseAttempt ? (activeMasterAttemptOptions[0]?.id || null) : null,
+                                  deliveryModeId: pkgCombinationUseMode ? (activeMasterDeliveryModes[0]?.id || null) : null,
+                                  price: 0,
+                                  originalPrice: null,
+                                  isActive: true,
+                                  sortOrder: prev.length + 1,
+                                },
+                              ]);
+                            }}
+                          >
+                            <Plus className="h-3.5 w-3.5" /> Add Row
+                          </Button>
                         </div>
-                        <Button
-                          type="button"
-                          variant="outline"
-                          className="h-9"
-                          onClick={() => {
-                            setPkgMasterCombinationRows((prev) => [
-                              ...prev,
-                              {
-                                id: `pkg-combo-${Date.now()}-${prev.length + 1}`,
-                                label: "",
-                                viewModeId: pkgCombinationUseView ? (activeMasterViewModes[0]?.id || null) : null,
-                                validityOptionId: pkgCombinationUseValidity ? (activeMasterValidityOptions[0]?.id || null) : null,
-                                attemptOptionId: pkgCombinationUseAttempt ? (activeMasterAttemptOptions[0]?.id || null) : null,
-                                deliveryModeId: pkgCombinationUseMode ? (activeMasterDeliveryModes[0]?.id || null) : null,
-                                price: 0,
-                                originalPrice: null,
-                                isActive: true,
-                                sortOrder: prev.length + 1,
-                              },
-                            ]);
-                          }}
-                        >
-                          Add Combination
-                        </Button>
+                        )}
                       </div>
                       {/* Book addons */}
                       <div className="rounded-xl border border-slate-200 p-4 space-y-3">
@@ -2597,58 +2841,28 @@ export default function AdminCourses() {
                           </div>
                         </div>
 
-                        {/* Base Pricing */}
-                        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
-                          <div className="flex items-center gap-2 bg-gradient-to-r from-emerald-50 to-teal-50 border-b border-slate-100 px-5 py-3">
-                            <div className="h-5 w-5 rounded-md bg-emerald-600 flex items-center justify-center shrink-0"><DollarSign className="h-3 w-3 text-white" /></div>
-                            <p className="text-xs font-bold text-emerald-700 uppercase tracking-wider">Base Pricing</p>
-                          </div>
-                          <div className="p-5">
-                            <div className="grid grid-cols-3 gap-4">
-                              <div className="space-y-1.5">
-                                <Label>Sell Price (₹) *</Label>
-                                <Input className={`${fieldCls} font-bold text-emerald-700`} type="number" placeholder="3999" value={form.price || ""} disabled={Boolean(form.deliveryModePricingEnabled)} onChange={(e) => sf({ price: Number(e.target.value) || 0 })} />
-                                {form.deliveryModePricingEnabled && <p className="text-[10px] text-slate-400">Set via mode pricing</p>}
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label>Original / MRP (₹)</Label>
-                                <Input className={`${fieldCls} text-slate-500 line-through-placeholder`} type="number" placeholder="5999" value={form.originalPrice || ""} disabled={Boolean(form.deliveryModePricingEnabled)} onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })} />
-                              </div>
-                              <div className="space-y-1.5">
-                                <Label>Tax (%)</Label>
-                                <Input className={fieldCls} type="number" min={0} step={0.01} placeholder="18" value={form.taxPercentage || ""} onChange={(e) => sf({ taxPercentage: Math.max(0, Number(e.target.value) || 0) })} />
-                              </div>
-                            </div>
-                            {form.price > 0 && form.originalPrice > form.price && (
-                              <div className="mt-3 flex items-center gap-2 rounded-xl bg-emerald-50 border border-emerald-200 px-4 py-2.5">
-                                <span className="text-xs text-emerald-700">Student saves:</span>
-                                <span className="text-sm font-extrabold text-emerald-700">₹{(form.originalPrice - form.price).toLocaleString()} ({Math.round(((form.originalPrice - form.price) / form.originalPrice) * 100)}% off)</span>
-                              </div>
-                            )}
-                          </div>
-                        </div>
                       </div>
                     )}
 
                     {/* ── PRICING TAB ── */}
                     {dialogTab === "pricing" && (
                       <div className="space-y-5">
-                        {(form.masterCombinationRows || []).length > 0 && (
-                          <div className="flex items-center gap-3 rounded-2xl border-2 border-emerald-300 bg-emerald-50 px-5 py-4 shadow-sm">
-                            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 shadow-md">
-                              <CheckCircle2 className="h-5 w-5 text-white" />
+                        <div className="rounded-xl border border-slate-200 p-4">
+                          <div className="grid grid-cols-1 gap-3 md:grid-cols-3">
+                            <div className="space-y-1.5">
+                              <Label>Tax (%)</Label>
+                              <Input
+                                className={fieldCls}
+                                type="number"
+                                min={0}
+                                step={0.01}
+                                placeholder="18"
+                                value={form.taxPercentage || ""}
+                                onChange={(e) => sf({ taxPercentage: Math.max(0, Number(e.target.value) || 0) })}
+                              />
                             </div>
-                            <div className="flex-1">
-                              <p className="text-sm font-bold text-emerald-900">Price Combinations Active</p>
-                              <p className="text-xs text-emerald-700">
-                                {(form.masterCombinationRows || []).filter((row) => row.isActive !== false).length} combination(s) configured
-                              </p>
-                            </div>
-                            <a href="/admin/masters" target="_blank" className="text-xs font-semibold text-emerald-600 hover:underline">
-                              Masters
-                            </a>
                           </div>
-                        )}
+                        </div>
 
                         <div className="rounded-2xl border border-blue-200 bg-white shadow-sm overflow-hidden">
                           <div className="flex items-center justify-between bg-gradient-to-r from-blue-50 to-indigo-50 border-b border-blue-100 px-5 py-3">
@@ -2713,6 +2927,7 @@ export default function AdminCourses() {
                                       className={`${fieldCls} font-bold text-emerald-700`}
                                       type="number"
                                       value={form.price || ""}
+                                      disabled
                                       onChange={(e) => sf({ price: Number(e.target.value) || 0 })}
                                     />
                                   </div>
@@ -2722,6 +2937,7 @@ export default function AdminCourses() {
                                       className={`${fieldCls} text-slate-500`}
                                       type="number"
                                       value={form.originalPrice || ""}
+                                      disabled
                                       onChange={(e) => sf({ originalPrice: Number(e.target.value) || 0 })}
                                     />
                                   </div>
@@ -2775,28 +2991,123 @@ export default function AdminCourses() {
                               </div>
 
                               {(form.masterCombinationRows || []).length > 0 && (
+                                <div className="space-y-1.5">
+                                  <Label>Default Selected Combination</Label>
+                                  <select
+                                    className={selectCls}
+                                    value={String(form.defaultSelectedCombinationId || "")}
+                                    onChange={(event) => sf({ defaultSelectedCombinationId: event.target.value })}
+                                  >
+                                    {(form.masterCombinationRows || [])
+                                      .filter((row) => row.isActive !== false)
+                                      .map((row, index) => (
+                                        <option key={row.id} value={row.id}>
+                                          {getCombinationLabel(row, index)}
+                                        </option>
+                                      ))}
+                                  </select>
+                                </div>
+                              )}
+
+                              {(form.masterCombinationRows || []).length > 0 && (
                                 <div className="space-y-2 border-t border-blue-100 pt-2">
                                   <p className="text-xs font-semibold text-slate-700">Pricing Grid ({(form.masterCombinationRows || []).length} rows)</p>
-                                  <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
-                                    {(form.masterCombinationRows || []).map((combo, index) => (
-                                      <div
-                                        key={`${combo.id}-${index}`}
-                                        className={`flex items-center gap-2 rounded-xl border px-3 py-2.5 ${combo.isActive !== false ? "border-blue-100 bg-blue-50/60" : "border-slate-100 bg-slate-50 opacity-50"}`}
-                                      >
-                                        <input
-                                          type="checkbox"
-                                          checked={combo.isActive !== false}
-                                          onChange={(ev) => {
+                                  <div className="rounded-xl border border-blue-100 bg-white overflow-hidden">
+                                    <div className="w-full">
+                                      <div className="sticky top-0 z-10 hidden grid-cols-[70px_minmax(80px,1fr)_minmax(90px,1fr)_minmax(80px,1fr)_minmax(100px,1fr)_80px_80px_60px] gap-1 border-b border-blue-100 bg-blue-50/95 px-2 py-2 text-[10px] font-bold uppercase tracking-wide text-blue-700 backdrop-blur md:grid">
+                                        <span>Active</span>
+                                        <span>View</span>
+                                        <span>Validity</span>
+                                        <span>Attempt</span>
+                                        <span>Lecture Mode</span>
+                                        <span>Price</span>
+                                        <span>Original</span>
+                                        <span>Action</span>
+                                      </div>
+                                      <div className="max-h-72 space-y-1 overflow-y-auto p-1.5">
+                                        {(form.masterCombinationRows || []).map((combo, index) => (
+                                          <div
+                                            key={`${combo.id}-${index}`}
+                                            className={`grid gap-1 rounded-lg border p-2 md:grid-cols-[70px_minmax(80px,1fr)_minmax(90px,1fr)_minmax(80px,1fr)_minmax(100px,1fr)_80px_80px_60px] ${combo.isActive !== false ? "border-blue-100 bg-blue-50/60" : "border-slate-100 bg-slate-50 opacity-60"}`}
+                                          >
+                                        <label className="flex items-center gap-2 rounded-lg border border-slate-200 px-2 text-[11px] font-semibold text-slate-700">
+                                          <input
+                                            type="checkbox"
+                                            checked={combo.isActive !== false}
+                                            onChange={(ev) => {
+                                              const rows = [...(form.masterCombinationRows || [])];
+                                              rows[index] = { ...combo, isActive: ev.target.checked };
+                                              sf({ masterCombinationRows: rows });
+                                            }}
+                                            className="h-4 w-4 rounded border-slate-300 accent-blue-600"
+                                          />
+                                          Active
+                                        </label>
+                                        <select
+                                          className={selectCls}
+                                          value={combo.viewModeId || ""}
+                                          disabled={!form.combinationUseView}
+                                          onChange={(event) => {
                                             const rows = [...(form.masterCombinationRows || [])];
-                                            rows[index] = { ...combo, isActive: ev.target.checked };
+                                            rows[index] = { ...combo, viewModeId: event.target.value || null };
                                             sf({ masterCombinationRows: rows });
                                           }}
-                                          className="h-3.5 w-3.5 shrink-0 rounded accent-blue-600"
-                                        />
+                                        >
+                                          <option value="">{form.combinationUseView ? "View" : "Not used"}</option>
+                                          {activeMasterViewModes.map((item) => (
+                                            <option key={item.id} value={item.id}>{item.name}</option>
+                                          ))}
+                                        </select>
+                                        <select
+                                          className={selectCls}
+                                          value={combo.validityOptionId || ""}
+                                          disabled={!form.combinationUseValidity}
+                                          onChange={(event) => {
+                                            const rows = [...(form.masterCombinationRows || [])];
+                                            rows[index] = { ...combo, validityOptionId: event.target.value || null };
+                                            sf({ masterCombinationRows: rows });
+                                          }}
+                                        >
+                                          <option value="">{form.combinationUseValidity ? "Validity" : "Not used"}</option>
+                                          {activeMasterValidityOptions.map((item) => (
+                                            <option key={item.id} value={item.id}>{item.label}</option>
+                                          ))}
+                                        </select>
+                                        <select
+                                          className={selectCls}
+                                          value={combo.attemptOptionId || ""}
+                                          disabled={!form.combinationUseAttempt}
+                                          onChange={(event) => {
+                                            const rows = [...(form.masterCombinationRows || [])];
+                                            rows[index] = { ...combo, attemptOptionId: event.target.value || null };
+                                            sf({ masterCombinationRows: rows });
+                                          }}
+                                        >
+                                          <option value="">{form.combinationUseAttempt ? "Attempt" : "Not used"}</option>
+                                          {activeMasterAttemptOptions.map((item) => (
+                                            <option key={item.id} value={item.id}>{item.label}</option>
+                                          ))}
+                                        </select>
+                                        <select
+                                          className={selectCls}
+                                          value={combo.deliveryModeId || ""}
+                                          disabled={!form.combinationUseMode}
+                                          onChange={(event) => {
+                                            const rows = [...(form.masterCombinationRows || [])];
+                                            rows[index] = { ...combo, deliveryModeId: event.target.value || null };
+                                            sf({ masterCombinationRows: rows });
+                                          }}
+                                        >
+                                          <option value="">{form.combinationUseMode ? "Lecture mode" : "Not used"}</option>
+                                          {activeMasterDeliveryModes.map((item) => (
+                                            <option key={item.id} value={item.id}>{item.name}</option>
+                                          ))}
+                                        </select>
                                         <Input
-                                          className="h-7 w-24 shrink-0 rounded-lg border-slate-200 text-[10px] font-bold text-emerald-700"
+                                          className={fieldCls}
                                           type="number"
                                           min={0}
+                                          placeholder="Price"
                                           value={Number(combo.price || 0)}
                                           onChange={(ev) => {
                                             const rows = [...(form.masterCombinationRows || [])];
@@ -2805,9 +3116,10 @@ export default function AdminCourses() {
                                           }}
                                         />
                                         <Input
-                                          className="h-7 w-24 shrink-0 rounded-lg border-slate-200 text-[10px] text-slate-400"
+                                          className={fieldCls}
                                           type="number"
                                           min={0}
+                                          placeholder="Original"
                                           value={Number(combo.originalPrice || 0)}
                                           onChange={(ev) => {
                                             const rows = [...(form.masterCombinationRows || [])];
@@ -2816,15 +3128,18 @@ export default function AdminCourses() {
                                             sf({ masterCombinationRows: rows });
                                           }}
                                         />
-                                        <button
+                                        <Button
                                           type="button"
-                                          className="flex h-6 w-6 shrink-0 items-center justify-center rounded-lg text-red-400 hover:bg-red-50 hover:text-red-600"
+                                          variant="outline"
+                                          className="h-9"
                                           onClick={() => sf({ masterCombinationRows: (form.masterCombinationRows || []).filter((_, i) => i !== index) })}
                                         >
-                                          <X className="h-3.5 w-3.5" />
-                                        </button>
+                                          Remove
+                                        </Button>
+                                          </div>
+                                        ))}
                                       </div>
-                                    ))}
+                                    </div>
                                   </div>
                                   <Button
                                     type="button"
@@ -3340,10 +3655,10 @@ export default function AdminCourses() {
       {filteredCourses.length === 0 ? (
         <div className="flex flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-200 bg-slate-50/50 py-20 text-center">
           <div className="mb-3 flex h-16 w-16 items-center justify-center rounded-full bg-slate-100">
-            <BookOpen className="h-8 w-8 text-slate-300" />
+            {isCoursesMode ? <BookOpen className="h-8 w-8 text-slate-300" /> : <Layers className="h-8 w-8 text-slate-300" />}
           </div>
-          <p className="text-sm font-semibold text-slate-600">No courses found</p>
-          <p className="mt-1 text-xs text-slate-400">Add a course or adjust your search</p>
+          <p className="text-sm font-semibold text-slate-600">{isCoursesMode ? "No courses found" : "No packages found"}</p>
+          <p className="mt-1 text-xs text-slate-400">{isCoursesMode ? "Add a course or adjust your search" : "Create a package or adjust your search"}</p>
         </div>
       ) : viewMode === "grid" ? (
         /* ── GRID VIEW ── */
@@ -3386,8 +3701,8 @@ export default function AdminCourses() {
                   <button type="button" onClick={() => handleToggleVisibility(course.id)} title={course.isVisible ? "Hide" : "Publish"} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-slate-200 hover:text-slate-800">
                     {course.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                   </button>
-                  <button type="button" onClick={() => course.isCombo ? openEditPackage(course) : openEditDialog(course)} title="Edit" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-primary/10 hover:text-primary">
-                    {course.isCombo ? <Layers className="h-3.5 w-3.5" /> : <Edit2 className="h-3.5 w-3.5" />}
+                  <button type="button" onClick={() => isCoursesMode ? openEditDialog(course) : openEditPackage(course)} title="Edit" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-primary/10 hover:text-primary">
+                    {isCoursesMode ? <Edit2 className="h-3.5 w-3.5" /> : <Layers className="h-3.5 w-3.5" />}
                   </button>
                   <button type="button" onClick={() => handleDuplicateCourse(course)} title="Duplicate" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-500 transition-colors hover:bg-blue-50 hover:text-blue-600">
                     <Copy className="h-3.5 w-3.5" />
@@ -3447,8 +3762,8 @@ export default function AdminCourses() {
                     <button type="button" onClick={() => handleToggleVisibility(course.id)} title={course.isVisible ? "Hide" : "Publish"} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100 hover:text-slate-700">
                       {course.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                     </button>
-                    <button type="button" onClick={() => course.isCombo ? openEditPackage(course) : openEditDialog(course)} title="Edit" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-primary/10 hover:text-primary">
-                      {course.isCombo ? <Layers className="h-3.5 w-3.5" /> : <Edit2 className="h-3.5 w-3.5" />}
+                    <button type="button" onClick={() => isCoursesMode ? openEditDialog(course) : openEditPackage(course)} title="Edit" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-primary/10 hover:text-primary">
+                      {isCoursesMode ? <Edit2 className="h-3.5 w-3.5" /> : <Layers className="h-3.5 w-3.5" />}
                     </button>
                     <button type="button" onClick={() => handleDuplicateCourse(course)} title="Duplicate" className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-blue-50 hover:text-blue-600">
                       <Copy className="h-3.5 w-3.5" />

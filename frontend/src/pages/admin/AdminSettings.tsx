@@ -109,6 +109,7 @@ type EmailTemplate = {
   enabled: boolean;
   subject: string;
   body: string;
+  sendToAdmin: boolean;
 };
 
 const defaultEmailTemplates = (): Record<TemplateKey, EmailTemplate> => ({
@@ -116,33 +117,49 @@ const defaultEmailTemplates = (): Record<TemplateKey, EmailTemplate> => ({
     enabled: true,
     subject: "Purchase confirmation - {{platformName}}",
     body: "Hello {{studentName}},\n\nYour purchase {{orderId}} is confirmed.\nItems: {{itemsSummary}}\nAmount: {{amount}}\n\nThanks,\n{{platformName}}",
+    sendToAdmin: false,
   },
   user_login: {
     enabled: true,
     subject: "Login alert - {{platformName}}",
     body: "Hello {{studentName}},\n\nA new login was detected on {{loginAt}} from IP {{ipAddress}}.\n\n{{platformName}}",
+    sendToAdmin: false,
   },
   course_complete: {
     enabled: true,
     subject: "Course milestone reached - {{platformName}}",
     body: "Hello {{studentName}},\n\nYou completed {{lessonTitle}} in {{courseTitle}}.\n\n{{platformName}}",
+    sendToAdmin: false,
   },
   user_notification: {
     enabled: true,
     subject: "Notification from {{platformName}}",
     body: "Hello {{studentName}},\n\n{{notificationMessage}}\n\n{{platformName}}",
+    sendToAdmin: false,
   },
   password_reset: {
     enabled: true,
     subject: "Password changed - {{platformName}}",
     body: "Hello {{studentName}},\n\nYour password was changed on {{changedAt}}.\n\n{{platformName}}",
+    sendToAdmin: false,
   },
   new_account: {
     enabled: true,
     subject: "Welcome to {{platformName}}",
     body: "Hello {{studentName}},\n\nYour account is ready.\n\n{{platformName}}",
+    sendToAdmin: false,
   },
 });
+
+const parseAdminRecipients = (value: string) =>
+  Array.from(
+    new Set(
+      String(value || "")
+        .split(/[\n,;]+/)
+        .map((item) => item.trim().toLowerCase())
+        .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)),
+    ),
+  );
 
 const templateMeta: Array<{ key: TemplateKey; title: string; description: string }> = [
   { key: "user_purchase", title: "User Purchase", description: "Send email when a user purchases a course/package" },
@@ -198,6 +215,7 @@ export default function AdminSettings() {
     } as SmsOtpSettings,
     paymentGateways: defaultPaymentGateways(),
     emailAutomationEnabled: true,
+    emailAdminRecipients: "",
     emailTemplates: defaultEmailTemplates(),
     adminSidebar: buildDefaultAdminSidebarConfig() as AdminSidebarItemConfig[],
   });
@@ -342,6 +360,9 @@ export default function AdminSettings() {
             },
           },
           emailAutomationEnabled: emailAutomationRaw.enabled !== false,
+          emailAdminRecipients: Array.isArray(emailAutomationRaw.adminRecipients)
+            ? emailAutomationRaw.adminRecipients.map((item) => String(item || "").trim()).filter(Boolean).join(", ")
+            : "",
           emailTemplates: {
             user_purchase: {
               ...defaultTemplates.user_purchase,
@@ -637,6 +658,7 @@ export default function AdminSettings() {
       },
       emailAutomation: {
         enabled: settings.emailAutomationEnabled,
+        adminRecipients: parseAdminRecipients(settings.emailAdminRecipients),
         templates: settings.emailTemplates,
       },
     };
@@ -726,6 +748,7 @@ export default function AdminSettings() {
       },
       emailAutomation: {
         enabled: settings.emailAutomationEnabled,
+        adminRecipients: parseAdminRecipients(settings.emailAdminRecipients),
         templates: settings.emailTemplates,
       },
     };
@@ -758,57 +781,71 @@ export default function AdminSettings() {
   };
 
   return (
-    <div className="space-y-6 max-w-4xl">
-      <div>
-        <h1 className="text-3xl font-bold text-gray-900">Settings</h1>
-        <p className="text-gray-600 mt-1">Configure your platform</p>
+    <div className="max-w-4xl space-y-6">
+      {/* Header */}
+      <div className="rounded-2xl border border-gray-200 bg-white p-6">
+        <div className="flex flex-wrap items-center justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-semibold tracking-tight text-gray-900">Platform Settings</h1>
+            <p className="mt-1 text-sm text-gray-600">Manage your platform configuration, integrations &amp; appearance</p>
+          </div>
+          <button
+            type="button"
+            onClick={handleSave}
+            disabled={isSaving}
+            className="inline-flex items-center gap-2 rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-60"
+          >
+            <Save className="w-4 h-4" />
+            {isSaving ? "Saving..." : "Save Settings"}
+          </button>
+        </div>
       </div>
 
       {saved && (
-        <Alert className="bg-green-50 border-green-200">
-          <CheckCircle className="h-4 w-4 text-green-600" />
-          <AlertDescription className="text-green-800">Settings saved successfully!</AlertDescription>
+        <Alert className="bg-emerald-50 border-emerald-300">
+          <CheckCircle className="h-4 w-4 text-emerald-600" />
+          <AlertDescription className="text-emerald-800 font-medium">Settings saved successfully!</AlertDescription>
         </Alert>
       )}
 
       {error && (
-        <Alert className="bg-red-50 border-red-200">
-          <AlertDescription className="text-red-800">{error}</AlertDescription>
+        <Alert className="bg-red-50 border-red-300">
+          <AlertDescription className="text-red-800 font-medium">{error}</AlertDescription>
         </Alert>
       )}
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-6 mb-6">
-          <TabsTrigger value="general" className="gap-2">
-            <Globe className="w-4 h-4" />
+        <TabsList className="grid w-full grid-cols-6 mb-6 rounded-lg border border-gray-200 bg-gray-50 p-1">
+          <TabsTrigger value="general" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
+            <Globe className="w-3.5 h-3.5" />
             General
           </TabsTrigger>
-          <TabsTrigger value="features" className="gap-2">
-            <Sparkles className="w-4 h-4" />
+          <TabsTrigger value="features" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
+            <Sparkles className="w-3.5 h-3.5" />
             Features
           </TabsTrigger>
-          <TabsTrigger value="email" className="gap-2">
-            <Mail className="w-4 h-4" />
+          <TabsTrigger value="email" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
+            <Mail className="w-3.5 h-3.5" />
             Email
           </TabsTrigger>
-          <TabsTrigger value="sms" className="gap-2">
-            <MessageSquare className="w-4 h-4" />
+          <TabsTrigger value="sms" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
+            <MessageSquare className="w-3.5 h-3.5" />
             SMS OTP
           </TabsTrigger>
-          <TabsTrigger value="payment" className="gap-2">
-            <CreditCard className="w-4 h-4" />
+          <TabsTrigger value="payment" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
+            <CreditCard className="w-3.5 h-3.5" />
             Payment
           </TabsTrigger>
-          <TabsTrigger value="sidebar" className="gap-2">
-            <SlidersHorizontal className="w-4 h-4" />
+          <TabsTrigger value="sidebar" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
+            <SlidersHorizontal className="w-3.5 h-3.5" />
             Sidebar
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="general" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Platform Information</CardTitle>
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="flex items-center gap-2 text-gray-900"><Globe className="w-4 h-4" />Platform Information</CardTitle>
               <CardDescription>Basic details about your platform</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -837,9 +874,9 @@ export default function AdminSettings() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Legal & Compliance</CardTitle>
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="text-gray-900">Legal &amp; Compliance</CardTitle>
               <CardDescription>Terms, privacy, and compliance settings</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -856,8 +893,8 @@ export default function AdminSettings() {
         </TabsContent>
 
         <TabsContent value="features" className="space-y-6">
-          <Card>
-            <CardHeader>
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
                   <CardTitle>Features & Services</CardTitle>
@@ -869,54 +906,52 @@ export default function AdminSettings() {
                 </Button>
               </div>
             </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 border border-gray-200">
-                <div className="space-y-1">
-                  <Label htmlFor="enableNotifications" className="text-gray-900 font-medium">Email Notifications</Label>
+            <CardContent className="space-y-3 p-5">
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="enableNotifications" className="text-gray-900 font-medium cursor-pointer">📧 Email Notifications</Label>
                   <p className="text-sm text-gray-600">Send email updates to users</p>
                 </div>
                 <Switch id="enableNotifications" checked={settings.enableNotifications} onCheckedChange={(value) => handleInputChange("enableNotifications", value)} />
               </div>
-              <div className="flex items-center justify-between p-4 rounded-lg bg-gray-50 border border-gray-200">
-                <div className="space-y-1">
-                  <Label htmlFor="enableEmailVerification" className="text-gray-900 font-medium">Email Verification</Label>
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="enableEmailVerification" className="text-gray-900 font-medium cursor-pointer">✅ Email Verification</Label>
                   <p className="text-sm text-gray-600">Require email verification on signup</p>
                 </div>
                 <Switch id="enableEmailVerification" checked={settings.enableEmailVerification} onCheckedChange={(value) => handleInputChange("enableEmailVerification", value)} />
               </div>
-              <div className="flex items-center justify-between p-4 rounded-lg bg-red-50 border border-red-200">
-                <div className="space-y-1">
-                  <Label htmlFor="maintenanceMode" className="text-gray-900 font-medium">Maintenance Mode</Label>
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="maintenanceMode" className="text-gray-900 font-medium cursor-pointer">🔧 Maintenance Mode</Label>
                   <p className="text-sm text-gray-600">Temporarily disable user access</p>
                 </div>
                 <Switch id="maintenanceMode" checked={settings.maintenanceMode} onCheckedChange={(value) => handleInputChange("maintenanceMode", value)} />
               </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg bg-orange-50 border border-orange-200">
-                <div className="space-y-1">
-                  <Label htmlFor="antiInspectEnabled" className="text-gray-900 font-medium">Inspect Protection</Label>
-                  <p className="text-sm text-gray-600">Block common DevTools shortcuts on public pages and lock UI when DevTools is detected</p>
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="antiInspectEnabled" className="text-gray-900 font-medium cursor-pointer">🛡️ Inspect Protection</Label>
+                  <p className="text-sm text-gray-600">Block DevTools shortcuts &amp; lock UI when DevTools detected</p>
                 </div>
                 <Switch id="antiInspectEnabled" checked={settings.antiInspectEnabled} onCheckedChange={(value) => handleInputChange("antiInspectEnabled", value)} />
               </div>
-
-              <div className="flex items-center justify-between p-4 rounded-lg bg-orange-50 border border-orange-200">
-                <div className="space-y-1">
-                  <Label htmlFor="disableCopyPaste" className="text-gray-900 font-medium">Disable Copy/Paste</Label>
-                  <p className="text-sm text-gray-600">Disable right click, copy, cut, paste, and text selection on public pages</p>
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="disableCopyPaste" className="text-gray-900 font-medium cursor-pointer">🚫 Disable Copy/Paste</Label>
+                  <p className="text-sm text-gray-600">Disable right-click, copy, cut, paste &amp; text selection on public pages</p>
                 </div>
                 <Switch id="disableCopyPaste" checked={settings.disableCopyPaste} onCheckedChange={(value) => handleInputChange("disableCopyPaste", value)} />
               </div>
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Bunny Stream API Configuration</CardTitle>
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="flex items-center gap-2 text-gray-900">🐰 Bunny Stream API</CardTitle>
               <CardDescription>Configure Bunny Stream for professional video hosting and delivery</CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-purple-50 border border-purple-200">
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
                 <div className="space-y-1">
                   <Label htmlFor="bunnyStreamEnabled" className="text-gray-900 font-medium">Enable Bunny Stream</Label>
                   <p className="text-sm text-gray-600">Use Bunny Stream API for video management and delivery</p>
@@ -951,9 +986,9 @@ export default function AdminSettings() {
         </TabsContent>
 
         <TabsContent value="email" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="flex items-center gap-2 text-gray-900">
                 <Mail className="w-5 h-5" /> SMTP Mail Setup
               </CardTitle>
               <CardDescription>
@@ -961,7 +996,7 @@ export default function AdminSettings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
                 <div className="space-y-1">
                   <Label htmlFor="smtpEnabled" className="text-gray-900 font-medium">Enable SMTP</Label>
                   <p className="text-sm text-gray-600">Turn on SMTP to send automated emails</p>
@@ -1032,7 +1067,7 @@ export default function AdminSettings() {
                 </div>
                 {smtpTestResult && (
                   <Alert className={smtpTestResult.type === "success" ? "bg-green-50 border-green-200" : "bg-red-50 border-red-200"}>
-                    <AlertDescription className={smtpTestResult.type === "success" ? "text-green-800" : "text-red-800"}>
+                    <AlertDescription className={smtpTestResult.type === "success" ? "text-gray-900" : "text-red-800"}>
                       {smtpTestResult.message}
                     </AlertDescription>
                   </Alert>
@@ -1041,11 +1076,11 @@ export default function AdminSettings() {
             </CardContent>
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Email Templates & Event Control</CardTitle>
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="flex items-center gap-2 text-gray-900">📨 Email Templates &amp; Event Control</CardTitle>
               <CardDescription>
-                Configure template text per event and turn any event OFF to stop its emails (for example, login email).
+                Configure template text per event and turn any event OFF to stop its emails.
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
@@ -1061,6 +1096,18 @@ export default function AdminSettings() {
                 />
               </div>
 
+              <div className="grid gap-2">
+                <Label htmlFor="emailAdminRecipients">Admin Recipient Emails</Label>
+                <Textarea
+                  id="emailAdminRecipients"
+                  rows={2}
+                  placeholder="admin1@domain.com, admin2@domain.com"
+                  value={settings.emailAdminRecipients}
+                  onChange={(event) => handleInputChange("emailAdminRecipients", event.target.value)}
+                />
+                <p className="text-xs text-gray-500">These emails will receive selected event notifications when you enable "Also send to admins" for that event.</p>
+              </div>
+
               {templateMeta.map((meta) => {
                 const template = settings.emailTemplates[meta.key];
                 return (
@@ -1070,10 +1117,22 @@ export default function AdminSettings() {
                         <Label className="text-gray-900 font-semibold">{meta.title}</Label>
                         <p className="text-xs text-gray-500">{meta.description}</p>
                       </div>
-                      <Switch
-                        checked={template.enabled}
-                        onCheckedChange={(value) => handleTemplateChange(meta.key, "enabled", value)}
-                      />
+                      <div className="flex items-center gap-5">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Enable</span>
+                          <Switch
+                            checked={template.enabled}
+                            onCheckedChange={(value) => handleTemplateChange(meta.key, "enabled", value)}
+                          />
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-gray-500">Also send to admins</span>
+                          <Switch
+                            checked={template.sendToAdmin === true}
+                            onCheckedChange={(value) => handleTemplateChange(meta.key, "sendToAdmin", value)}
+                          />
+                        </div>
+                      </div>
                     </div>
                     <div className="grid gap-2">
                       <Label htmlFor={`${meta.key}Subject`}>Subject</Label>
@@ -1100,9 +1159,9 @@ export default function AdminSettings() {
         </TabsContent>
 
         <TabsContent value="sms" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="flex items-center gap-2 text-gray-900">
                 <MessageSquare className="w-5 h-5" /> TimesMobile OTP Setup
               </CardTitle>
               <CardDescription>
@@ -1110,7 +1169,7 @@ export default function AdminSettings() {
               </CardDescription>
             </CardHeader>
             <CardContent className="space-y-4">
-              <div className="flex items-center justify-between p-4 rounded-lg bg-blue-50 border border-blue-200">
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
                 <div className="space-y-1">
                   <Label htmlFor="smsOtpEnabled" className="text-gray-900 font-medium">Enable OTP via TimesMobile</Label>
                   <p className="text-sm text-gray-600">When ON, OTP is sent via TimesMobile API.</p>
@@ -1222,9 +1281,9 @@ export default function AdminSettings() {
         </TabsContent>
 
         <TabsContent value="payment" className="space-y-6">
-          <Card>
-            <CardHeader>
-              <CardTitle>Payment Gateway Configuration</CardTitle>
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="flex items-center gap-2 text-gray-900"><CreditCard className="w-4 h-4" />Payment Gateway Configuration</CardTitle>
               <CardDescription>
                 Turn gateways ON/OFF and configure API credentials. Checkout will show only enabled methods.
               </CardDescription>
@@ -1407,14 +1466,14 @@ export default function AdminSettings() {
         </TabsContent>
 
         <TabsContent value="sidebar" className="space-y-6">
-          <Card>
-            <CardHeader>
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <div>
-                  <CardTitle>Sidebar Menu Manager</CardTitle>
-                  <CardDescription>Hide/show menu items, rename labels, and drag to reorder menu positions.</CardDescription>
+                  <CardTitle className="flex items-center gap-2 text-gray-900"><SlidersHorizontal className="w-4 h-4" />Sidebar Menu Manager</CardTitle>
+                  <CardDescription>Hide/show menu items, rename labels, and drag to reorder positions.</CardDescription>
                 </div>
-                <Button type="button" variant="outline" onClick={resetSidebarToDefault}>Reset Default</Button>
+                <Button type="button" variant="outline" className="border-slate-300 hover:bg-slate-100" onClick={resetSidebarToDefault}>Reset Default</Button>
               </div>
             </CardHeader>
             <CardContent className="space-y-3">
@@ -1430,11 +1489,11 @@ export default function AdminSettings() {
                   }}
                   onDrop={(event) => handleSidebarDrop(event, item.id)}
                   className={`flex flex-wrap items-center gap-3 rounded-xl border bg-white p-3 transition-colors ${
-                    dragOverSidebarItemId === item.id ? "border-orange-300 bg-orange-50/50" : "border-gray-200"
+                    dragOverSidebarItemId === item.id ? "border-gray-300 bg-gray-50" : "border-gray-200"
                   }`}
                 >
                   {item.id === "settings" ? (
-                    <div className="w-full rounded-lg border border-blue-200 bg-blue-50 px-3 py-1.5 text-xs font-medium text-blue-700">
+                    <div className="w-full rounded-lg border border-gray-200 bg-gray-50 px-3 py-1.5 text-xs font-medium text-gray-700">
                       Settings menu locked: always ON and always visible for recovery.
                     </div>
                   ) : null}
@@ -1509,15 +1568,15 @@ export default function AdminSettings() {
         </TabsContent>
       </Tabs>
 
-      <div className="flex justify-end gap-3 pt-4 border-t border-gray-200">
-        <Button variant="outline">Cancel</Button>
-        <Button type="button" variant="outline" className="gap-2" onClick={handleActivateAllFeatures}>
+      <div className="sticky bottom-0 z-10 flex justify-end gap-3 rounded-b-2xl border-t border-gray-200 bg-white px-1 py-4">
+        <Button variant="outline" className="border-gray-300 hover:bg-gray-100">Cancel</Button>
+        <Button type="button" variant="outline" className="gap-2 border-gray-300 text-gray-700 hover:bg-gray-50" onClick={handleActivateAllFeatures}>
           <Zap className="w-4 h-4" />
-          Activate All Features
+          Activate All
         </Button>
-        <Button onClick={handleSave} disabled={isSaving} className="gap-2 bg-gradient-to-r from-purple-600 to-blue-600 hover:from-purple-700 hover:to-blue-700">
+        <Button onClick={handleSave} disabled={isSaving} className="gap-2 bg-gray-900 text-white hover:bg-gray-800">
           <Save className="w-4 h-4" />
-          {isSaving ? "Saving..." : "Save Settings"}
+          {isSaving ? 'Saving...' : 'Save Settings'}
         </Button>
       </div>
     </div>

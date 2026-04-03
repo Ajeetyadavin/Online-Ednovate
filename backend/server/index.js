@@ -75,6 +75,16 @@ const normalizeVideoQualityPreference = (value) => {
   return "auto";
 };
 
+const INT32_MAX = 2147483647;
+
+const toSafeInt = (value, fallback = 0, options = {}) => {
+  const min = Number.isFinite(Number(options.min)) ? Number(options.min) : 0;
+  const max = Number.isFinite(Number(options.max)) ? Number(options.max) : INT32_MAX;
+  const numeric = Number(value);
+  if (!Number.isFinite(numeric)) return fallback;
+  return Math.min(max, Math.max(min, Math.trunc(numeric)));
+};
+
 const mapStudentOrderLine = (row) => {
   const grossAmount = Math.max(0, Number(row.amount || 0));
   const storedTaxAmount = Math.max(0, Number(row.tax_amount || 0));
@@ -782,9 +792,9 @@ const parseMarketingCampaignPayload = (payload = {}, actor = "") => {
     targetLanguages: normalizeLowerList(payload.targetLanguages),
     startsAt: payload.startsAt ? new Date(payload.startsAt).toISOString() : null,
     endsAt: payload.endsAt ? new Date(payload.endsAt).toISOString() : null,
-    showDelaySeconds: Math.max(0, Number(payload.showDelaySeconds || 0)),
-    repeatAfterCloseMinutes: Math.max(0, Number(payload.repeatAfterCloseMinutes || 0)),
-    maxImpressionsPerUser: Math.max(0, Number(payload.maxImpressionsPerUser || 0)),
+    showDelaySeconds: toSafeInt(payload.showDelaySeconds, 0),
+    repeatAfterCloseMinutes: toSafeInt(payload.repeatAfterCloseMinutes, 0),
+    maxImpressionsPerUser: toSafeInt(payload.maxImpressionsPerUser, 0),
     isDismissible: payload.isDismissible !== false,
     isEnabled: payload.isEnabled !== false,
     actor,
@@ -960,12 +970,28 @@ const sanitizePlatformSettings = (payload) => {
   const emailAutomation = data.emailAutomation && typeof data.emailAutomation === "object" ? data.emailAutomation : {};
   const templates = emailAutomation.templates && typeof emailAutomation.templates === "object" ? emailAutomation.templates : {};
 
+  const normalizeEmailList = (value) => {
+    const raw = Array.isArray(value)
+      ? value
+      : typeof value === "string"
+        ? value.split(/[\n,;]+/)
+        : [];
+    return Array.from(
+      new Set(
+        raw
+          .map((item) => String(item || "").trim().toLowerCase())
+          .filter((item) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(item)),
+      ),
+    ).slice(0, 30);
+  };
+
   const toTemplate = (value, fallbackSubject, fallbackBody) => {
     const row = value && typeof value === "object" ? value : {};
     return {
       enabled: row.enabled !== false,
       subject: String(row.subject || fallbackSubject).trim() || fallbackSubject,
       body: String(row.body || fallbackBody).trim() || fallbackBody,
+      sendToAdmin: row.sendToAdmin === true,
     };
   };
 
@@ -996,6 +1022,7 @@ const sanitizePlatformSettings = (payload) => {
     },
     emailAutomation: {
       enabled: emailAutomation.enabled !== false,
+      adminRecipients: normalizeEmailList(emailAutomation.adminRecipients),
       templates: {
         user_purchase: toTemplate(
           templates.user_purchase,
@@ -1343,6 +1370,10 @@ const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSu
   };
 
   const to = String(toEmail).trim().toLowerCase();
+  const adminRecipients = template.sendToAdmin === true && Array.isArray(settings.emailAutomation?.adminRecipients)
+    ? settings.emailAutomation.adminRecipients
+    : [];
+  const bccRecipients = Array.from(new Set(adminRecipients.filter((email) => email && email !== to)));
   const subject = fillTemplate(template.subject || fallbackSubject, mergedVars);
   const text = fillTemplate(template.body || "", mergedVars);
 
@@ -1352,6 +1383,7 @@ const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSu
       mailOptions: {
         from: buildEmailFromField(smtp.fromName || platformName, smtp.fromEmail || smtp.username),
         to,
+        bcc: bccRecipients.length > 0 ? bccRecipients : undefined,
         replyTo: smtp.replyTo || undefined,
         subject,
         text,
@@ -1359,14 +1391,19 @@ const sendAutomatedMail = async ({ eventKey, toEmail, variables = {}, fallbackSu
     });
   } catch (error) {
     if (!isSmtpConnectivityError(error)) throw error;
-    await sendMailViaResend({
-      toEmail: to,
-      subject,
-      text,
-      html: "",
-      replyTo: smtp.replyTo,
-      fromName: smtp.fromName || platformName,
-    });
+    const resendRecipients = [to, ...bccRecipients];
+    await Promise.all(
+      resendRecipients.map((recipient) =>
+        sendMailViaResend({
+          toEmail: recipient,
+          subject,
+          text,
+          html: "",
+          replyTo: smtp.replyTo,
+          fromName: smtp.fromName || platformName,
+        }),
+      ),
+    );
   }
 
   return { sent: true };
@@ -6446,7 +6483,7 @@ app.post("/api/admin/faculty", requireAdminPermission("faculty", "create"), asyn
     const about = String(request.body?.about || "").trim();
     const courseIds = normalizeStringList(request.body?.courseIds);
     const isActive = request.body?.isActive !== false;
-    const sortOrder = Number(request.body?.sortOrder || Date.now());
+    const sortOrder = toSafeInt(request.body?.sortOrder, 0);
 
     if (!name) {
       response.status(400).json({ message: "Faculty name is required" });
@@ -6482,7 +6519,7 @@ app.put("/api/admin/faculty/:id", requireAdminPermission("faculty", "edit"), asy
     const about = String(request.body?.about || "").trim();
     const courseIds = normalizeStringList(request.body?.courseIds);
     const isActive = request.body?.isActive !== false;
-    const sortOrder = Number(request.body?.sortOrder || 0);
+    const sortOrder = toSafeInt(request.body?.sortOrder, 0);
 
     if (!name) {
       response.status(400).json({ message: "Faculty name is required" });

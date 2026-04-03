@@ -361,6 +361,7 @@ const normalizeCourse = (course: Partial<ManagedCourse>, index: number): Managed
   masterConfig: course.masterConfig && typeof course.masterConfig === "object"
     ? {
         ...course.masterConfig,
+        defaultSelectedCombinationId: String(course.masterConfig.defaultSelectedCombinationId || "").trim(),
         combinationIds: Array.isArray(course.masterConfig.combinationIds)
           ? course.masterConfig.combinationIds.map((id) => String(id).trim()).filter(Boolean)
           : [],

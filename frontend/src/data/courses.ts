@@ -74,6 +74,7 @@ export interface Course {
     levelId?: number | null;
     levelName?: string;
     combinationIds?: string[];
+    defaultSelectedCombinationId?: string;
     combinations?: Array<{
       id: string;
       label: string;

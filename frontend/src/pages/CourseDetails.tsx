@@ -411,6 +411,12 @@ const CourseDetails = () => {
       .filter((row) => Number(row.price) > 0 && (row.viewCount > 0 || row.validityDays > 0 || row.modeId || row.attemptOptionId));
   }, [resolvedMasterConfig]);
   const hasCombinationPricing = combinationRows.length > 0;
+  const defaultCombinationRow = useMemo(() => {
+    if (combinationRows.length === 0) return null;
+    const defaultId = String(resolvedMasterConfig?.defaultSelectedCombinationId || "").trim();
+    if (!defaultId) return combinationRows[0];
+    return combinationRows.find((row) => row.id === defaultId) || combinationRows[0];
+  }, [combinationRows, resolvedMasterConfig?.defaultSelectedCombinationId]);
 
   const viewOptions = useMemo(() => {
     const comboValues = combinationRows.map((row) => Number(row.viewCount || 0)).filter((value) => value >= 1);
@@ -560,6 +566,29 @@ const CourseDetails = () => {
     const defaults = stored.length > 0 ? stored : fallback ? [fallback] : deliveryModes[0]?.id ? [deliveryModes[0].id] : [];
     setSelectedDeliveryModeIds(defaults);
   }, [course.id, course.selectedDeliveryModeIds, course.selectedDeliveryModeId, deliveryModes]);
+
+  useEffect(() => {
+    if (!defaultCombinationRow) return;
+    if (useViewPricing && defaultCombinationRow.viewCount > 0) {
+      setSelectedViews(defaultCombinationRow.viewCount);
+    }
+    if (useValidityPricing && defaultCombinationRow.validityDays > 0) {
+      setSelectedValidityDays(defaultCombinationRow.validityDays);
+    }
+    if (useAttemptPricing && defaultCombinationRow.attemptOptionId) {
+      setSelectedAttemptOptionId(defaultCombinationRow.attemptOptionId);
+    }
+    if (useDeliveryModePricing && defaultCombinationRow.modeId) {
+      setSelectedDeliveryModeIds([defaultCombinationRow.modeId]);
+    }
+  }, [
+    course.id,
+    defaultCombinationRow,
+    useViewPricing,
+    useValidityPricing,
+    useAttemptPricing,
+    useDeliveryModePricing,
+  ]);
 
   useEffect(() => {
     if (combinationRows.length === 0) return;

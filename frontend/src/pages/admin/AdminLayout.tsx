@@ -72,6 +72,7 @@ const AdminLayout = () => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [sidebarConfig, setSidebarConfig] = useState(buildDefaultAdminSidebarConfig());
   const [homepageExpanded, setHomepageExpanded] = useState(false);
+  const [coursesExpanded, setCoursesExpanded] = useState(false);
   const [usersExpanded, setUsersExpanded] = useState(false);
   const location = useLocation();
 
@@ -116,7 +117,13 @@ const AdminLayout = () => {
   }, [location.pathname]);
 
   useEffect(() => {
-    if (["/admin/users", "/admin/subadmins"].some((path) => location.pathname.startsWith(path))) {
+    if (["/admin/courses", "/admin/packages"].some((path) => location.pathname.startsWith(path))) {
+      setCoursesExpanded(true);
+    }
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (["/admin/users", "/admin/subadmins", "/admin/faculty"].some((path) => location.pathname.startsWith(path))) {
       setUsersExpanded(true);
     }
   }, [location.pathname]);
@@ -143,10 +150,16 @@ const AdminLayout = () => {
   const isHomepageGroupActive = ["/admin/homepage", "/admin/header", "/admin/announcements"].some((path) =>
     location.pathname.startsWith(path),
   );
+  const coursesParentItem = allowedNavItems.find((item) => item.id === "courses") || null;
+  const coursesChildItems = allowedNavItems.filter((item) => item.id === "packages");
+  const showCoursesGroup = Boolean(coursesParentItem) || coursesChildItems.length > 0;
+  const isCoursesGroupActive = ["/admin/courses", "/admin/packages"].some((path) =>
+    location.pathname.startsWith(path),
+  );
   const usersParentItem = allowedNavItems.find((item) => item.id === "users") || null;
-  const usersChildItems = allowedNavItems.filter((item) => item.id === "subadmins");
+  const usersChildItems = allowedNavItems.filter((item) => item.id === "subadmins" || item.id === "faculty");
   const showUsersGroup = Boolean(usersParentItem) && usersChildItems.length > 0;
-  const isUsersGroupActive = ["/admin/users", "/admin/subadmins"].some((path) =>
+  const isUsersGroupActive = ["/admin/users", "/admin/subadmins", "/admin/faculty"].some((path) =>
     location.pathname.startsWith(path),
   );
   const currentModule =
@@ -181,7 +194,7 @@ const AdminLayout = () => {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-2">
           {allowedNavItems.map((item) => {
-            if (item.id === "header" || item.id === "announcements" || item.id === "subadmins") {
+            if (item.id === "header" || item.id === "announcements" || item.id === "subadmins" || item.id === "packages" || item.id === "faculty") {
               return null;
             }
 
@@ -233,6 +246,59 @@ const AdminLayout = () => {
               );
             }
 
+            if (item.id === "courses" && showCoursesGroup && coursesParentItem) {
+              const allCoursesChildren = [coursesParentItem, ...coursesChildItems];
+              return (
+                <div key={item.to} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setCoursesExpanded((prev) => !prev)}
+                    className={`flex w-full items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium ${
+                      isCoursesGroupActive
+                        ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
+                    }`}
+                  >
+                    <BookOpen className="w-5 h-5 flex-shrink-0" />
+                    {sidebarOpen && (
+                      <>
+                        <span className="truncate flex-1 text-left">{coursesParentItem.label}</span>
+                        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${coursesExpanded ? "rotate-180" : ""}`} />
+                      </>
+                    )}
+                  </button>
+
+                  {sidebarOpen && coursesExpanded && (
+                    <div className="ml-6 space-y-1 border-l border-orange-100 pl-3">
+                      {allCoursesChildren.map((childItem) => {
+                        const isActive = location.pathname === childItem.to;
+                        const Icon = iconMap[childItem.iconName] || LayoutDashboard;
+                        const childLabel = childItem.id === "courses"
+                          ? "Add Course"
+                          : childItem.id === "packages"
+                            ? "Create Package"
+                            : childItem.label;
+                        return (
+                          <NavLink
+                            key={childItem.to}
+                            to={childItem.to}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium ${
+                              isActive
+                                ? "bg-orange-50 text-orange-700"
+                                : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4 flex-shrink-0" />
+                            <span className="truncate">{childLabel}</span>
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             if (item.id === "users" && showUsersGroup && usersParentItem) {
               return (
                 <div key={item.to} className="space-y-1">
@@ -274,6 +340,11 @@ const AdminLayout = () => {
                       {usersChildItems.map((childItem) => {
                         const Icon = iconMap[childItem.iconName] || LayoutDashboard;
                         const isActive = location.pathname === childItem.to;
+                        const childLabel = childItem.id === "subadmins"
+                          ? "Admin"
+                          : childItem.id === "faculty"
+                            ? "Professor"
+                            : childItem.label;
                         return (
                           <NavLink
                             key={childItem.to}
@@ -285,7 +356,7 @@ const AdminLayout = () => {
                             }`}
                           >
                             <Icon className="w-4 h-4 flex-shrink-0" />
-                            <span className="truncate">Admin</span>
+                            <span className="truncate">{childLabel}</span>
                           </NavLink>
                         );
                       })}

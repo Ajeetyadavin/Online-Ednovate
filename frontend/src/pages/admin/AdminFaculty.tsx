@@ -16,7 +16,7 @@ interface FacultyFormState {
 }
 
 const createDefaultForm = (): FacultyFormState => ({
-  name: "", photoUrl: "", about: "", courseIds: [], isActive: true, sortOrder: Date.now(),
+  name: "", photoUrl: "", about: "", courseIds: [], isActive: true, sortOrder: 0,
 });
 
 const toCourseOptions = (courses: unknown[]): CourseOption[] =>
@@ -26,6 +26,16 @@ const toCourseOptions = (courses: unknown[]): CourseOption[] =>
     if (!id) return null;
     return { id, title: String(item.title || "Untitled"), thumbnail: String(item.thumbnail || item.image || "") };
   }).filter(Boolean) as CourseOption[];
+
+const getSecondWordKey = (name: string) => {
+  const parts = String(name || "")
+    .trim()
+    .toLowerCase()
+    .split(/\s+/)
+    .filter(Boolean);
+  if (parts.length >= 2) return parts[1];
+  return parts[0] || "";
+};
 
 /* ─── Field label ─────────────────────────────────────────── */
 const FL = ({ children }: { children: React.ReactNode }) => (
@@ -75,11 +85,26 @@ export default function AdminFaculty() {
 
   const resetForm = () => { setEditingId(null); setForm(createDefaultForm()); setShowForm(false); setCourseSearch(""); };
 
-  const sortedItems = useMemo(() => [...items].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0)), [items]);
+  const sortedItems = useMemo(() => {
+    return [...items].sort((a, b) => {
+      const nameSecondA = getSecondWordKey(a.name);
+      const nameSecondB = getSecondWordKey(b.name);
+      const secondCmp = nameSecondA.localeCompare(nameSecondB, undefined, { sensitivity: "base" });
+      if (secondCmp !== 0) return secondCmp;
+
+      const courseKeyA = (a.courses || []).map((course) => String(course.title || "").trim().toLowerCase()).filter(Boolean).join("|");
+      const courseKeyB = (b.courses || []).map((course) => String(course.title || "").trim().toLowerCase()).filter(Boolean).join("|");
+      const courseCmp = courseKeyA.localeCompare(courseKeyB, undefined, { sensitivity: "base" });
+      if (courseCmp !== 0) return courseCmp;
+
+      return String(a.name || "").localeCompare(String(b.name || ""), undefined, { sensitivity: "base" });
+    });
+  }, [items]);
 
   const filteredCourses = useMemo(() => {
     const q = courseSearch.trim().toLowerCase();
-    return q ? courses.filter((c) => c.title.toLowerCase().includes(q)) : courses;
+    const next = q ? courses.filter((c) => c.title.toLowerCase().includes(q)) : courses;
+    return [...next].sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
   }, [courses, courseSearch]);
 
   const handleSelectCourse = (courseId: string, checked: boolean) => {
@@ -278,12 +303,9 @@ export default function AdminFaculty() {
               </div>
             </div>
 
-            {/* Footer: sort, active, save */}
+            {/* Footer: auto-sort, active, save */}
             <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
-              <div className="flex items-center gap-2">
-                <FL>Sort Order</FL>
-                <Input type="number" className="h-8 w-20 rounded-xl border-slate-200 text-xs" value={form.sortOrder} onChange={(e) => setForm((prev) => ({ ...prev, sortOrder: Number(e.target.value || 0) }))} />
-              </div>
+              <p className="text-[11px] font-semibold text-slate-500">Auto sorted by name second word, then courses taught.</p>
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1.5">
                 <span className="text-xs font-semibold text-slate-600">Active</span>
                 <Switch checked={form.isActive} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, isActive: checked }))} />

@@ -870,17 +870,17 @@ export default function AdminCourseContent() {
             </PopoverTrigger>
             <PopoverContent className="w-[--radix-popover-trigger-width] rounded-xl border-slate-200 p-0 shadow-xl" align="start">
               <Command>
-                <CommandInput placeholder="Search course / subject / professor..." className="h-9 text-xs" value={coursePickerQuery} onValueChange={setCoursePickerQuery} />
+                <CommandInput placeholder="Search course / subject / professor..." className="h-9 text-xs border-b border-slate-200 bg-white text-slate-900 placeholder:text-slate-500" value={coursePickerQuery} onValueChange={setCoursePickerQuery} />
                 <CommandList>
-                  <CommandEmpty className="py-6 text-center text-xs text-slate-400">No course found for selected filters.</CommandEmpty>
+                  <CommandEmpty className="py-6 text-center text-xs font-medium text-slate-600">No course found for selected filters.</CommandEmpty>
                   <CommandGroup>
                     {filteredCoursePickerOptions.map((course) => (
                       <CommandItem key={course.id} value={`${course.title} ${course.id} ${course.subject || ""} ${course.professor || ""}`} onSelect={() => { setSelectedCourseId(course.id); setSelectedChapterId(null); setCoursePickerOpen(false); }}
-                        className="text-xs">
-                        <Check className={cn("mr-2 h-3.5 w-3.5", selectedCourseId === course.id ? "opacity-100 text-primary" : "opacity-0")} />
+                        className="text-xs px-4 py-2.5 cursor-pointer data-[selected]:bg-primary/10 data-[selected]:text-primary hover:bg-slate-100">
+                        <Check className={cn("mr-2 h-3.5 w-3.5", selectedCourseId === course.id ? "opacity-100 text-primary font-bold" : "opacity-0")} />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate font-semibold text-slate-800">{course.title}</p>
-                          <p className="truncate text-[11px] text-slate-500">
+                          <p className="truncate font-semibold text-slate-900">{course.title}</p>
+                          <p className="truncate text-[11px] text-slate-600">
                             {(categoriesById[String(course.category || "")]?.name || course.category || "General")} • {(categoriesById[String(course.subcategory || "")]?.name || course.subcategory || "Level")} • {course.subject || "No Subject"} • {course.professor || "No Professor"}
                           </p>
                         </div>
@@ -1309,16 +1309,16 @@ export default function AdminCourseContent() {
                     const alreadyInChapter = chapterVideoIds.has(String(video.id || "").trim());
                     const alreadyInOtherChapters = otherChapterVideoMap.get(String(video.id || "").trim()) || [];
                     return (
-                      <label key={video.id} className={`flex items-start gap-3 rounded-2xl border px-4 py-3 transition ${alreadyInChapter ? "border-blue-200 bg-blue-50/40" : checked ? "border-primary bg-primary/5" : alreadyInOtherChapters.length > 0 ? "border-amber-200 bg-amber-50/30" : "border-slate-200 bg-white hover:border-slate-300"}`}>
-                        <input type="checkbox" disabled={alreadyInChapter} className="mt-1 h-4 w-4 accent-primary disabled:cursor-not-allowed disabled:opacity-50" checked={checked} onChange={(event) => toggleCollectionVideoSelection(video.id, event.target.checked)} />
+                      <label key={video.id} className={`flex items-start gap-3 rounded-xl border px-4 py-3 transition cursor-pointer ${alreadyInChapter ? "border-blue-300 bg-blue-100/40 opacity-60 cursor-not-allowed" : checked ? "border-primary/60 bg-primary/12 shadow-sm ring-1 ring-primary/20" : alreadyInOtherChapters.length > 0 ? "border-amber-300 bg-amber-100/30 hover:border-amber-400" : "border-slate-200 bg-white hover:border-slate-300 hover:shadow-sm"}`}>
+                        <input type="checkbox" disabled={alreadyInChapter} className="mt-1 h-4 w-4 accent-primary disabled:cursor-not-allowed disabled:opacity-40" checked={checked} onChange={(event) => toggleCollectionVideoSelection(video.id, event.target.checked)} />
                         <div className="min-w-0 flex-1">
-                          <p className="truncate text-sm font-semibold text-slate-900">{video.title}</p>
-                          <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px] text-slate-500">
-                            <span>{formatSecondsToHms(Number(video.lengthSeconds || 0))}</span>
-                            <span>{video.status || "unknown"}</span>
-                            <span className="truncate">ID: {video.id}</span>
-                            {alreadyInChapter ? <span className="rounded-full bg-blue-100 px-2 py-0.5 font-semibold text-blue-700">Already added in this chapter</span> : null}
-                            {alreadyInOtherChapters.length > 0 ? <span className="rounded-full bg-amber-100 px-2 py-0.5 font-semibold text-amber-700">Also in: {alreadyInOtherChapters.join(", ")}</span> : null}
+                          <p className={`truncate text-sm font-semibold ${alreadyInChapter ? "text-slate-600" : checked ? "text-slate-900" : "text-slate-900"}`}>{video.title}</p>
+                          <div className="mt-1 flex flex-wrap items-center gap-3 text-[11px]">
+                            <span className={alreadyInChapter ? "text-slate-500" : checked ? "text-slate-700" : "text-slate-600"}>{formatSecondsToHms(Number(video.lengthSeconds || 0))}</span>
+                            <span className={alreadyInChapter ? "text-slate-500" : checked ? "text-slate-700" : "text-slate-600"}>{video.status || "unknown"}</span>
+                            <span className={`truncate ${alreadyInChapter ? "text-slate-500" : checked ? "text-slate-700" : "text-slate-600"}`}>ID: {video.id}</span>
+                            {alreadyInChapter ? <span className="rounded-full bg-blue-200/60 px-2 py-0.5 font-semibold text-blue-900">Already added in this chapter</span> : null}
+                            {alreadyInOtherChapters.length > 0 ? <span className="rounded-full bg-amber-200/50 px-2 py-0.5 font-semibold text-amber-900">Also in: {alreadyInOtherChapters.join(", ")}</span> : null}
                           </div>
                         </div>
                       </label>
