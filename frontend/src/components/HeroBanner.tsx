@@ -2,6 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { Link } from "react-router-dom";
 import { usePlatformData } from "@/context/PlatformDataContext";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 
 const HeroBanner = () => {
   const { banners } = usePlatformData();
@@ -53,7 +54,7 @@ const HeroBanner = () => {
                   }`}
                 >
                   <img
-                    src={slide.imageUrl}
+                    src={resolveUploadAssetUrl(slide.imageUrl, slide.imageUrl)}
                     alt={slide.title}
                     className="w-full h-full object-contain object-center bg-white"
                     loading={i === 0 ? "eager" : "lazy"}

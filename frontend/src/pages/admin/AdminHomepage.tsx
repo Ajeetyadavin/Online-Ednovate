@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { adminApi, fileToBase64 } from "@/services/adminApi";
 import { useSiteSettings, type SiteSettings } from "@/context/SiteSettingsContext";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -310,7 +311,7 @@ export default function AdminHomepage() {
               <div className="divide-y divide-slate-100">
                 {banners.map((banner) => (
                   <div key={banner.id} className="flex items-center gap-4 px-5 py-3.5 hover:bg-slate-50/70 transition-colors">
-                    <img src={banner.imageUrl} alt={banner.title} className="h-14 w-24 shrink-0 rounded-xl object-cover bg-slate-100" />
+                    <img src={resolveUploadAssetUrl(banner.imageUrl, banner.imageUrl)} alt={banner.title} className="h-14 w-24 shrink-0 rounded-xl object-cover bg-slate-100" />
                     <div className="min-w-0 flex-1">
                       <p className="font-semibold text-sm text-slate-900">{banner.title}</p>
                       <p className="text-[11px] text-slate-400 mt-0.5">Sort #{banner.sortOrder}</p>
