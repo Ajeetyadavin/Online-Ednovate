@@ -79,12 +79,7 @@ const PopularCourses = () => {
 
       <div className="container mx-auto px-4 relative z-10">
         <div ref={titleRef} className={`text-center mb-7 md:mb-9 reveal-up ${titleVisible ? "visible" : ""}`}>
-          <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full bg-primary/10 border border-primary/15 mb-3">
-            <Sparkles className="w-3.5 h-3.5 text-primary" />
-            <span className="text-primary text-xs font-extrabold uppercase tracking-widest">Explore</span>
-          </div>
-
-          <h2 className="text-2xl md:text-4xl font-black tracking-tight text-foreground">Popular Courses</h2>
+          <h2 className="text-2xl md:text-4xl font-black tracking-tight text-foreground">Explore Courses</h2>
           <p className="text-sm md:text-base text-muted-foreground max-w-xl mx-auto mt-2">
             Choose from our wide range of professional courses
           </p>

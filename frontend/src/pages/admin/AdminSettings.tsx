@@ -7,9 +7,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { CheckCircle, Mail, Save, Globe, Sparkles, CreditCard, Zap, GripVertical, ArrowUp, ArrowDown, Eye, EyeOff, SlidersHorizontal, MessageSquare } from "lucide-react";
+import { CheckCircle, Mail, Save, Globe, Sparkles, CreditCard, Zap, GripVertical, ArrowUp, ArrowDown, Eye, EyeOff, SlidersHorizontal, MessageSquare, Share2, PanelBottom, Upload, Loader2 } from "lucide-react";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
-import { adminApi } from "@/services/adminApi";
+import { adminApi, fileToBase64 } from "@/services/adminApi";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 import {
   ADMIN_SIDEBAR_STORAGE_KEY,
   buildDefaultAdminSidebarConfig,
@@ -172,6 +173,7 @@ const templateMeta: Array<{ key: TemplateKey; title: string; description: string
 
 export default function AdminSettings() {
   const siteSettings = useSiteSettings();
+  type SocialPlatform = "facebook" | "instagram" | "youtube" | "twitter" | "linkedin" | "whatsapp";
   const [settings, setSettings] = useState({
     platformName: "Ednovate",
     platformEmail: "info@ednovate.com",
@@ -218,6 +220,33 @@ export default function AdminSettings() {
     emailAdminRecipients: "",
     emailTemplates: defaultEmailTemplates(),
     adminSidebar: buildDefaultAdminSidebarConfig() as AdminSidebarItemConfig[],
+    socialLinks: {
+      facebook: "",
+      instagram: "",
+      youtube: "",
+      twitter: "",
+      linkedin: "",
+      whatsapp: "",
+    },
+    socialIconUrls: {
+      facebook: "",
+      instagram: "",
+      youtube: "",
+      twitter: "",
+      linkedin: "",
+      whatsapp: "",
+    },
+    footer: {
+      tagline: "India's trusted online learning platform for CA, CS, CMA and professional courses. Structured programs, expert mentorship, and outcomes that matter.",
+      address: "Mumbai, Maharashtra",
+      copyrightText: "© 2026 Ednovate. All rights reserved.",
+      privacyUrl: "#",
+      termsUrl: "#",
+      refundsUrl: "#",
+      showSubscribeForm: true,
+      showCoursesSection: true,
+      showQuickLinksSection: true,
+    },
   });
 
   const [saved, setSaved] = useState(false);
@@ -228,6 +257,7 @@ export default function AdminSettings() {
   const [smtpTestResult, setSmtpTestResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
   const [dragSidebarItemId, setDragSidebarItemId] = useState<string | null>(null);
   const [dragOverSidebarItemId, setDragOverSidebarItemId] = useState<string | null>(null);
+  const [uploadingSocialIconKey, setUploadingSocialIconKey] = useState<SocialPlatform | null>(null);
 
   useEffect(() => {
     if (siteSettings?.settings?.bunnyStreamApi) {
@@ -390,6 +420,42 @@ export default function AdminSettings() {
             },
           },
           adminSidebar,
+          socialLinks: (() => {
+            const sl = (site.socialLinks && typeof site.socialLinks === "object" ? site.socialLinks : {}) as Record<string, unknown>;
+            return {
+              facebook: String(sl.facebook || ""),
+              instagram: String(sl.instagram || ""),
+              youtube: String(sl.youtube || ""),
+              twitter: String(sl.twitter || ""),
+              linkedin: String(sl.linkedin || ""),
+              whatsapp: String(sl.whatsapp || ""),
+            };
+          })(),
+          socialIconUrls: (() => {
+            const si = (site.socialIconUrls && typeof site.socialIconUrls === "object" ? site.socialIconUrls : {}) as Record<string, unknown>;
+            return {
+              facebook: String(si.facebook || ""),
+              instagram: String(si.instagram || ""),
+              youtube: String(si.youtube || ""),
+              twitter: String(si.twitter || ""),
+              linkedin: String(si.linkedin || ""),
+              whatsapp: String(si.whatsapp || ""),
+            };
+          })(),
+          footer: (() => {
+            const ft = (site.footer && typeof site.footer === "object" ? site.footer : {}) as Record<string, unknown>;
+            return {
+              tagline: String(ft.tagline || "India's trusted online learning platform for CA, CS, CMA and professional courses. Structured programs, expert mentorship, and outcomes that matter."),
+              address: String(ft.address || "Mumbai, Maharashtra"),
+              copyrightText: String(ft.copyrightText || "\u00a9 2026 Ednovate. All rights reserved."),
+              privacyUrl: String(ft.privacyUrl || "#"),
+              termsUrl: String(ft.termsUrl || "#"),
+              refundsUrl: String(ft.refundsUrl || "#"),
+              showSubscribeForm: ft.showSubscribeForm !== false,
+              showCoursesSection: ft.showCoursesSection !== false,
+              showQuickLinksSection: ft.showQuickLinksSection !== false,
+            };
+          })(),
         }));
 
         localStorage.setItem(ADMIN_SIDEBAR_STORAGE_KEY, JSON.stringify(adminSidebar));
@@ -436,6 +502,27 @@ export default function AdminSettings() {
         [field]: value,
       },
     }));
+  };
+
+  const handleSocialIconUpload = async (platform: SocialPlatform, file?: File | null) => {
+    if (!file) return;
+    setError("");
+    setUploadingSocialIconKey(platform);
+    try {
+      const base64Data = await fileToBase64(file);
+      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "branding");
+      setSettings((prev) => ({
+        ...prev,
+        socialIconUrls: {
+          ...prev.socialIconUrls,
+          [platform]: uploaded.url,
+        },
+      }));
+    } catch (uploadError) {
+      setError(uploadError instanceof Error ? uploadError.message : "Failed to upload social icon");
+    } finally {
+      setUploadingSocialIconKey(null);
+    }
   };
 
   const handleSmsOtpChange = (field: keyof SmsOtpSettings, value: string | boolean) => {
@@ -644,6 +731,9 @@ export default function AdminSettings() {
         },
         paymentGateways: settings.paymentGateways,
         adminSidebar: settings.adminSidebar,
+        socialLinks: settings.socialLinks,
+        socialIconUrls: settings.socialIconUrls,
+        footer: settings.footer,
       },
       smtp: {
         enabled: settings.smtp.enabled,
@@ -671,6 +761,9 @@ export default function AdminSettings() {
           disableCopyPaste: settings.disableCopyPaste,
         },
         bunnyStreamApi: payload.bunnyStreamApi,
+        socialLinks: settings.socialLinks,
+        socialIconUrls: settings.socialIconUrls,
+        footer: settings.footer,
       });
       await adminApi.savePlatformSettings(payload);
       setSaved(true);
@@ -815,10 +908,14 @@ export default function AdminSettings() {
       )}
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-6 mb-6 rounded-lg border border-gray-200 bg-gray-50 p-1">
+        <TabsList className="grid w-full grid-cols-7 mb-6 rounded-lg border border-gray-200 bg-gray-50 p-1">
           <TabsTrigger value="general" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
             <Globe className="w-3.5 h-3.5" />
             General
+          </TabsTrigger>
+          <TabsTrigger value="footer" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
+            <PanelBottom className="w-3.5 h-3.5" />
+            Footer
           </TabsTrigger>
           <TabsTrigger value="features" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
             <Sparkles className="w-3.5 h-3.5" />
@@ -887,6 +984,178 @@ export default function AdminSettings() {
               <div className="grid gap-2">
                 <Label htmlFor="privacyUrl">Privacy Policy URL</Label>
                 <Input id="privacyUrl" value={settings.privacyUrl} onChange={(e) => handleInputChange("privacyUrl", e.target.value)} />
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="footer" className="space-y-6">
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="flex items-center gap-2 text-gray-900"><PanelBottom className="w-4 h-4" />Brand &amp; Tagline</CardTitle>
+              <CardDescription>Tagline text shown below the logo in the footer</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="footerTagline">Tagline / Description</Label>
+                <Textarea id="footerTagline" rows={3} value={settings.footer.tagline} onChange={(e) => setSettings((prev) => ({ ...prev, footer: { ...prev.footer, tagline: e.target.value } }))} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="text-gray-900">Section Visibility</CardTitle>
+              <CardDescription>Show or hide footer sections on the public site</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-3 p-5">
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="footerShowQuickLinks" className="text-gray-900 font-medium cursor-pointer">Quick Links</Label>
+                  <p className="text-sm text-gray-600">Show navigation links column in footer</p>
+                </div>
+                <Switch id="footerShowQuickLinks" checked={settings.footer.showQuickLinksSection} onCheckedChange={(v) => setSettings((prev) => ({ ...prev, footer: { ...prev.footer, showQuickLinksSection: v } }))} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="footerShowCourses" className="text-gray-900 font-medium cursor-pointer">Courses / Categories</Label>
+                  <p className="text-sm text-gray-600">Show course categories column in footer</p>
+                </div>
+                <Switch id="footerShowCourses" checked={settings.footer.showCoursesSection} onCheckedChange={(v) => setSettings((prev) => ({ ...prev, footer: { ...prev.footer, showCoursesSection: v } }))} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="footerShowSubscribe" className="text-gray-900 font-medium cursor-pointer">Email Subscribe Form</Label>
+                  <p className="text-sm text-gray-600">Show the &ldquo;Subscribe&rdquo; input in the brand column</p>
+                </div>
+                <Switch id="footerShowSubscribe" checked={settings.footer.showSubscribeForm} onCheckedChange={(v) => setSettings((prev) => ({ ...prev, footer: { ...prev.footer, showSubscribeForm: v } }))} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="text-gray-900">Contact &amp; Address</CardTitle>
+              <CardDescription>Address shown in the Contact column. Phone and email are pulled from Header settings.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="footerAddress">Address</Label>
+                <Input id="footerAddress" placeholder="Mumbai, Maharashtra" value={settings.footer.address} onChange={(e) => setSettings((prev) => ({ ...prev, footer: { ...prev.footer, address: e.target.value } }))} />
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="text-gray-900">Bottom Bar</CardTitle>
+              <CardDescription>Copyright text and footer links shown at the very bottom</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid gap-2">
+                <Label htmlFor="footerCopyright">Copyright Text</Label>
+                <Input id="footerCopyright" placeholder="© 2026 YourBrand. All rights reserved." value={settings.footer.copyrightText} onChange={(e) => setSettings((prev) => ({ ...prev, footer: { ...prev.footer, copyrightText: e.target.value } }))} />
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="footerPrivacyUrl">Privacy Policy URL</Label>
+                  <Input id="footerPrivacyUrl" placeholder="#" value={settings.footer.privacyUrl} onChange={(e) => setSettings((prev) => ({ ...prev, footer: { ...prev.footer, privacyUrl: e.target.value } }))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="footerTermsUrl">Terms & Conditions URL</Label>
+                  <Input id="footerTermsUrl" placeholder="#" value={settings.footer.termsUrl} onChange={(e) => setSettings((prev) => ({ ...prev, footer: { ...prev.footer, termsUrl: e.target.value } }))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="footerRefundsUrl">Refund Policy URL</Label>
+                  <Input id="footerRefundsUrl" placeholder="#" value={settings.footer.refundsUrl} onChange={(e) => setSettings((prev) => ({ ...prev, footer: { ...prev.footer, refundsUrl: e.target.value } }))} />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="flex items-center gap-2 text-gray-900"><Share2 className="w-4 h-4" />Social Media Links</CardTitle>
+              <CardDescription>Link and logo upload for footer social icons. URL blank hoga to icon hide ho jayega.</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="socialFacebook">Facebook URL</Label>
+                  <Input id="socialFacebook" placeholder="https://facebook.com/yourpage" value={settings.socialLinks.facebook} onChange={(e) => setSettings((prev) => ({ ...prev, socialLinks: { ...prev.socialLinks, facebook: e.target.value } }))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialFacebookIconUpload">Facebook Logo Upload</Label>
+                  <Input id="socialFacebookIconUpload" type="file" accept="image/*" onChange={(e) => void handleSocialIconUpload("facebook", e.target.files?.[0])} />
+                  {uploadingSocialIconKey === "facebook" && <p className="text-xs text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</p>}
+                  {settings.socialIconUrls.facebook && (
+                    <img src={resolveUploadAssetUrl(settings.socialIconUrls.facebook, settings.socialIconUrls.facebook)} alt="Facebook logo" className="w-8 h-8 object-contain rounded border border-gray-200 p-1" />
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialInstagram">Instagram URL</Label>
+                  <Input id="socialInstagram" placeholder="https://instagram.com/yourhandle" value={settings.socialLinks.instagram} onChange={(e) => setSettings((prev) => ({ ...prev, socialLinks: { ...prev.socialLinks, instagram: e.target.value } }))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialInstagramIconUpload">Instagram Logo Upload</Label>
+                  <Input id="socialInstagramIconUpload" type="file" accept="image/*" onChange={(e) => void handleSocialIconUpload("instagram", e.target.files?.[0])} />
+                  {uploadingSocialIconKey === "instagram" && <p className="text-xs text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</p>}
+                  {settings.socialIconUrls.instagram && (
+                    <img src={resolveUploadAssetUrl(settings.socialIconUrls.instagram, settings.socialIconUrls.instagram)} alt="Instagram logo" className="w-8 h-8 object-contain rounded border border-gray-200 p-1" />
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialYoutube">YouTube URL</Label>
+                  <Input id="socialYoutube" placeholder="https://youtube.com/@yourchannel" value={settings.socialLinks.youtube} onChange={(e) => setSettings((prev) => ({ ...prev, socialLinks: { ...prev.socialLinks, youtube: e.target.value } }))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialYoutubeIconUpload">YouTube Logo Upload</Label>
+                  <Input id="socialYoutubeIconUpload" type="file" accept="image/*" onChange={(e) => void handleSocialIconUpload("youtube", e.target.files?.[0])} />
+                  {uploadingSocialIconKey === "youtube" && <p className="text-xs text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</p>}
+                  {settings.socialIconUrls.youtube && (
+                    <img src={resolveUploadAssetUrl(settings.socialIconUrls.youtube, settings.socialIconUrls.youtube)} alt="YouTube logo" className="w-8 h-8 object-contain rounded border border-gray-200 p-1" />
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialTwitter">Twitter / X URL</Label>
+                  <Input id="socialTwitter" placeholder="https://x.com/yourhandle" value={settings.socialLinks.twitter} onChange={(e) => setSettings((prev) => ({ ...prev, socialLinks: { ...prev.socialLinks, twitter: e.target.value } }))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialTwitterIconUpload">Twitter / X Logo Upload</Label>
+                  <Input id="socialTwitterIconUpload" type="file" accept="image/*" onChange={(e) => void handleSocialIconUpload("twitter", e.target.files?.[0])} />
+                  {uploadingSocialIconKey === "twitter" && <p className="text-xs text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</p>}
+                  {settings.socialIconUrls.twitter && (
+                    <img src={resolveUploadAssetUrl(settings.socialIconUrls.twitter, settings.socialIconUrls.twitter)} alt="Twitter logo" className="w-8 h-8 object-contain rounded border border-gray-200 p-1" />
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialLinkedin">LinkedIn URL</Label>
+                  <Input id="socialLinkedin" placeholder="https://linkedin.com/company/yourpage" value={settings.socialLinks.linkedin} onChange={(e) => setSettings((prev) => ({ ...prev, socialLinks: { ...prev.socialLinks, linkedin: e.target.value } }))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialLinkedinIconUpload">LinkedIn Logo Upload</Label>
+                  <Input id="socialLinkedinIconUpload" type="file" accept="image/*" onChange={(e) => void handleSocialIconUpload("linkedin", e.target.files?.[0])} />
+                  {uploadingSocialIconKey === "linkedin" && <p className="text-xs text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</p>}
+                  {settings.socialIconUrls.linkedin && (
+                    <img src={resolveUploadAssetUrl(settings.socialIconUrls.linkedin, settings.socialIconUrls.linkedin)} alt="LinkedIn logo" className="w-8 h-8 object-contain rounded border border-gray-200 p-1" />
+                  )}
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialWhatsapp">WhatsApp URL</Label>
+                  <Input id="socialWhatsapp" placeholder="https://wa.me/919876543210" value={settings.socialLinks.whatsapp} onChange={(e) => setSettings((prev) => ({ ...prev, socialLinks: { ...prev.socialLinks, whatsapp: e.target.value } }))} />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="socialWhatsappIconUpload">WhatsApp Logo Upload</Label>
+                  <Input id="socialWhatsappIconUpload" type="file" accept="image/*" onChange={(e) => void handleSocialIconUpload("whatsapp", e.target.files?.[0])} />
+                  {uploadingSocialIconKey === "whatsapp" && <p className="text-xs text-gray-500 flex items-center gap-1"><Loader2 className="w-3 h-3 animate-spin" /> Uploading...</p>}
+                  {settings.socialIconUrls.whatsapp && (
+                    <img src={resolveUploadAssetUrl(settings.socialIconUrls.whatsapp, settings.socialIconUrls.whatsapp)} alt="WhatsApp logo" className="w-8 h-8 object-contain rounded border border-gray-200 p-1" />
+                  )}
+                </div>
+              </div>
+              <div className="rounded-lg border border-dashed border-gray-300 bg-gray-50 px-3 py-2 text-xs text-gray-600 flex items-center gap-2">
+                <Upload className="w-3.5 h-3.5" />
+                Image upload ho jayega aur footer me same icon show hoga after Save.
               </div>
             </CardContent>
           </Card>

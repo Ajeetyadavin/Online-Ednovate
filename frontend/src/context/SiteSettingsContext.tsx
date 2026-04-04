@@ -286,6 +286,33 @@ export interface SiteSettings {
   };
   exploreCategoryIds: string[];
   customHomepageSections: HomepageSection[];
+  socialLinks: {
+    facebook: string;
+    instagram: string;
+    youtube: string;
+    twitter: string;
+    linkedin: string;
+    whatsapp: string;
+  };
+  socialIconUrls: {
+    facebook: string;
+    instagram: string;
+    youtube: string;
+    twitter: string;
+    linkedin: string;
+    whatsapp: string;
+  };
+  footer: {
+    tagline: string;
+    address: string;
+    copyrightText: string;
+    privacyUrl: string;
+    termsUrl: string;
+    refundsUrl: string;
+    showSubscribeForm: boolean;
+    showCoursesSection: boolean;
+    showQuickLinksSection: boolean;
+  };
 }
 
 const createDefaultSettings = (): SiteSettings => ({
@@ -618,6 +645,33 @@ const createDefaultSettings = (): SiteSettings => ({
   },
   exploreCategoryIds: [],
   customHomepageSections: [],
+  socialLinks: {
+    facebook: "",
+    instagram: "",
+    youtube: "",
+    twitter: "",
+    linkedin: "",
+    whatsapp: "",
+  },
+  socialIconUrls: {
+    facebook: "",
+    instagram: "",
+    youtube: "",
+    twitter: "",
+    linkedin: "",
+    whatsapp: "",
+  },
+  footer: {
+    tagline: "India's trusted online learning platform for CA, CS, CMA and professional courses. Structured programs, expert mentorship, and outcomes that matter.",
+    address: "Mumbai, Maharashtra",
+    copyrightText: "© 2026 Ednovate. All rights reserved.",
+    privacyUrl: "#",
+    termsUrl: "#",
+    refundsUrl: "#",
+    showSubscribeForm: true,
+    showCoursesSection: true,
+    showQuickLinksSection: true,
+  },
 });
 
 const defaultSettings: SiteSettings = createDefaultSettings();
@@ -985,6 +1039,18 @@ const mergeStoredSettings = (stored: Partial<SiteSettings>): SiteSettings => {
           } as HomepageSection;
         })
       : base.customHomepageSections,
+    socialLinks: {
+      ...base.socialLinks,
+      ...(stored.socialLinks || {}),
+    },
+    socialIconUrls: {
+      ...base.socialIconUrls,
+      ...(stored.socialIconUrls || {}),
+    },
+    footer: {
+      ...base.footer,
+      ...(stored.footer || {}),
+    },
   };
 };
 

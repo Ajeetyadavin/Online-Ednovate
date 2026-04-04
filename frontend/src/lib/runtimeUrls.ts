@@ -76,7 +76,21 @@ export const resolveUploadAssetUrl = (value?: string, fallback = "") => {
   const normalizedValue = String(value || "").trim();
   if (!normalizedValue) return fallback;
   if (isHttpUrl(normalizedValue)) return normalizedValue;
+
+  // Database-backed image uploads are served via API route, not /uploads static path.
+  if (normalizedValue.startsWith("api/uploads/storage/")) return resolveApiUrl(`/${normalizedValue}`);
+  if (normalizedValue.startsWith("/api/uploads/storage/")) return resolveApiUrl(normalizedValue);
+
+  if (normalizedValue.startsWith("uploads/")) return resolveUploadsUrl(`/${normalizedValue}`);
   if (normalizedValue.startsWith("/uploads/")) return resolveUploadsUrl(normalizedValue);
+
+  if (normalizedValue.startsWith("api/uploads/storage?")) {
+    const query = normalizedValue.split("?")[1] || "";
+    const storagePath = new URLSearchParams(query).get("path");
+    if (!storagePath) return resolveApiUrl(`/${normalizedValue}`);
+    const localPath = storagePath.replace(/^images\//, "");
+    return resolveUploadsUrl(`/uploads/${localPath}`);
+  }
 
   if (normalizedValue.startsWith("/api/uploads/storage?")) {
     const query = normalizedValue.split("?")[1] || "";
@@ -86,6 +100,7 @@ export const resolveUploadAssetUrl = (value?: string, fallback = "") => {
     return resolveUploadsUrl(`/uploads/${localPath}`);
   }
 
+  if (normalizedValue.startsWith("api/uploads/")) return resolveUploadsUrl(`/${normalizedValue}`);
   if (normalizedValue.startsWith("/api/uploads/")) return resolveUploadsUrl(normalizedValue);
   return normalizedValue;
 };
