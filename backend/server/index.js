@@ -6443,9 +6443,10 @@ const buildCourseLookup = async () => {
   }, {});
 };
 
-const mapFacultyProfile = (row, courseLookup = {}) => {
+const mapFacultyProfile = (row, courseLookup = {}, options = {}) => {
+  const includePrivate = options.includePrivate === true;
   const courseIds = normalizeStringList(row.course_ids);
-  return {
+  const item = {
     id: String(row.id),
     name: String(row.name || ""),
     photoUrl: String(row.photo_url || ""),
@@ -6458,8 +6459,622 @@ const mapFacultyProfile = (row, courseLookup = {}) => {
     sortOrder: Number(row.sort_order || 0),
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+    revenueSharePercent: Number(row.revenue_share_percent || 0),
+    isLoginEnabled: row.is_login_enabled === true,
   };
+
+  if (includePrivate) {
+    item.email = String(row.email || "");
+  }
+
+  return item;
 };
+
+const parseDateParam = (value) => {
+  if (!value) return null;
+  const date = new Date(String(value));
+  if (Number.isNaN(date.getTime())) return null;
+  return date.toISOString().slice(0, 10);
+};
+
+const normalizeLessonInstructorShares = (lesson) => {
+  const source = Array.isArray(lesson?.instructorShares)
+    ? lesson.instructorShares
+    : Array.isArray(lesson?.instructors)
+      ? lesson.instructors
+      : [];
+
+  const cleaned = source
+    .map((row) => ({
+      facultyId: String(row?.facultyId || row?.id || "").trim(),
+      sharePercent: Number(row?.sharePercent || row?.percentage || 0),
+    }))
+    .filter((row) => row.facultyId && Number.isFinite(row.sharePercent) && row.sharePercent > 0);
+
+  const total = cleaned.reduce((sum, row) => sum + row.sharePercent, 0);
+  if (total <= 0) return [];
+
+  return cleaned.map((row) => ({
+    facultyId: row.facultyId,
+    sharePercent: row.sharePercent / total,
+  }));
+};
+
+const buildCourseInstructorStatsMap = async (dbClient, courseIds) => {
+  const uniqueCourseIds = Array.from(new Set((Array.isArray(courseIds) ? courseIds : []).map((id) => String(id || "").trim()).filter(Boolean)));
+  if (uniqueCourseIds.length === 0) return new Map();
+
+  const result = await dbClient.query(
+    "SELECT course_id, chapters FROM course_curricula WHERE course_id = ANY($1::text[])",
+    [uniqueCourseIds],
+  );
+
+  const stats = new Map();
+  uniqueCourseIds.forEach((courseId) => {
+    stats.set(courseId, {
+      totalSeconds: 0,
+      instructorSeconds: {},
+    });
+  });
+
+  result.rows.forEach((row) => {
+    const courseId = String(row.course_id || "").trim();
+    if (!courseId) return;
+    const chapters = Array.isArray(row.chapters) ? row.chapters : [];
+    const entry = stats.get(courseId) || { totalSeconds: 0, instructorSeconds: {} };
+
+    chapters.forEach((chapter) => {
+      const lessons = Array.isArray(chapter?.lessons) ? chapter.lessons : [];
+      lessons.forEach((lesson) => {
+        const seconds = parseDurationToSeconds(lesson?.durationSeconds ?? lesson?.duration);
+        if (seconds <= 0) return;
+
+        entry.totalSeconds += seconds;
+        const shares = normalizeLessonInstructorShares(lesson);
+        shares.forEach((shareRow) => {
+          const current = Number(entry.instructorSeconds[shareRow.facultyId] || 0);
+          entry.instructorSeconds[shareRow.facultyId] = current + (seconds * shareRow.sharePercent);
+        });
+      });
+    });
+
+    stats.set(courseId, entry);
+  });
+
+  return stats;
+};
+
+const parseOrderPackageCourseIds = (row) => {
+  if (Array.isArray(row?.package_course_ids)) {
+    return row.package_course_ids.map((item) => String(item || "").trim()).filter(Boolean);
+  }
+  return [];
+};
+
+const buildFacultySalesEntries = ({
+  orderRows,
+  facultyId,
+  facultyCourseSet,
+  courseStatsMap,
+  revenueSharePercent,
+}) => {
+  const entries = [];
+  const percent = Math.max(0, Math.min(100, Number(revenueSharePercent || 0)));
+
+  orderRows.forEach((row) => {
+    const directCourseId = String(row.course_id || "").trim();
+    const packageCourseIds = parseOrderPackageCourseIds(row).filter((courseId) => facultyCourseSet.has(courseId));
+    const targetCourseIds = [];
+
+    if (directCourseId && facultyCourseSet.has(directCourseId)) targetCourseIds.push(directCourseId);
+    packageCourseIds.forEach((courseId) => {
+      if (!targetCourseIds.includes(courseId)) targetCourseIds.push(courseId);
+    });
+
+    if (targetCourseIds.length === 0) return;
+
+    const weightedCourses = targetCourseIds.map((courseId) => {
+      const stats = courseStatsMap.get(courseId) || { totalSeconds: 0, instructorSeconds: {} };
+      const weight = Number(stats.totalSeconds || 0) > 0 ? Number(stats.totalSeconds) : 1;
+      return { courseId, stats, weight };
+    });
+
+    const totalWeight = weightedCourses.reduce((sum, item) => sum + item.weight, 0) || weightedCourses.length;
+    const orderAmount = Math.max(0, Number(row.amount || 0));
+
+    weightedCourses.forEach(({ courseId, stats, weight }) => {
+      const allocatedAmount = orderAmount * (weight / totalWeight);
+      const facultySeconds = Number(stats.instructorSeconds?.[facultyId] || 0);
+      const hasInstructorMapping = Object.keys(stats.instructorSeconds || {}).length > 0;
+      const ratio = hasInstructorMapping
+        ? (stats.totalSeconds > 0 ? (facultySeconds / stats.totalSeconds) : 0)
+        : 1;
+
+      const facultyShareAmount = allocatedAmount * (percent / 100) * ratio;
+      if (!Number.isFinite(facultyShareAmount) || facultyShareAmount <= 0) return;
+
+      entries.push({
+        orderDbId: Number(row.id),
+        orderId: String(row.order_id || ""),
+        studentId: String(row.student_id || ""),
+        studentName: String(row.customer_name || ""),
+        studentEmail: String(row.customer_email || ""),
+        courseId,
+        courseTitle: courseId === directCourseId
+          ? String(row.course_title || "")
+          : String(row.course_title || courseId || ""),
+        orderDate: row.order_date,
+        grossAllocatedAmount: Number(allocatedAmount.toFixed(2)),
+        currency: String(row.currency || "INR"),
+        facultyShareAmount: Number(facultyShareAmount.toFixed(2)),
+      });
+    });
+  });
+
+  return entries;
+};
+
+const fetchEligibleFacultyOrders = async ({ courseIds, fromDate, toDate }) => {
+  return pool.query(
+    `
+    SELECT id,
+           order_id,
+           student_id,
+           customer_name,
+           customer_email,
+           course_id,
+           course_title,
+           package_course_ids,
+           order_date,
+           amount,
+           currency,
+           dispatch_status,
+           status
+    FROM student_orders
+    WHERE (
+      course_id = ANY($1::text[])
+      OR EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements_text(COALESCE(package_course_ids, '[]'::jsonb)) pkg(course_id)
+        WHERE pkg.course_id = ANY($1::text[])
+      )
+    )
+      AND COALESCE(dispatch_status, '') <> 'refunded'
+      AND (COALESCE(dispatch_status, '') = 'delivered' OR COALESCE(status, '') = 'completed')
+      AND ($2::date IS NULL OR order_date >= $2::date)
+      AND ($3::date IS NULL OR order_date <= $3::date)
+    ORDER BY order_date DESC, id DESC
+    `,
+    [courseIds, fromDate, toDate],
+  );
+};
+
+const loadFacultySession = async (token) => {
+  if (!token) return null;
+  const sessionResult = await pool.query(
+    `
+    SELECT s.token,
+           s.faculty_id,
+           s.expires_at,
+          s.is_active AS session_is_active,
+           s.revoked_reason,
+           s.revoked_at,
+           s.replaced_by_token,
+           s.login_ip,
+           r.login_ip AS replaced_login_ip,
+           r.created_at AS replaced_login_at,
+          f.is_active AS faculty_is_active,
+           f.*
+    FROM faculty_sessions s
+    JOIN faculty_profiles f ON f.id = s.faculty_id
+    LEFT JOIN faculty_sessions r ON r.token = s.replaced_by_token
+    WHERE s.token = $1
+    `,
+    [token],
+  );
+
+  return sessionResult.rows[0] || null;
+};
+
+const requireFacultySession = async (request, response, next) => {
+  try {
+    const token = extractAdminToken(request);
+    if (!token) {
+      response.status(401).json({ message: "Faculty authorization required" });
+      return;
+    }
+
+    const row = await loadFacultySession(token);
+    if (!row) {
+      response.status(401).json({ message: "Invalid faculty session" });
+      return;
+    }
+
+    if (row.session_is_active === false) {
+      const message = row.revoked_reason === "logged_in_elsewhere"
+        ? buildForcedLogoutMessage(row.replaced_login_ip || row.login_ip, row.replaced_login_at || row.revoked_at)
+        : "Faculty session is no longer active";
+      response.status(401).json({ message, reason: row.revoked_reason || "session_revoked", forcedLogout: true });
+      return;
+    }
+
+    if (new Date(row.expires_at).getTime() < Date.now()) {
+      await pool.query(
+        `
+        UPDATE faculty_sessions
+        SET is_active = FALSE,
+            revoked_reason = 'session_expired',
+            revoked_at = NOW()
+        WHERE token = $1
+        `,
+        [token],
+      );
+      response.status(401).json({ message: "Faculty session expired" });
+      return;
+    }
+
+    if (row.faculty_is_active === false) {
+      response.status(403).json({ message: "Faculty account is disabled" });
+      return;
+    }
+
+    const courseLookup = await buildCourseLookup();
+    request.facultySession = {
+      token,
+      facultyId: String(row.id),
+      faculty: mapFacultyProfile(row, courseLookup, { includePrivate: true }),
+    };
+
+    next();
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Faculty auth failed" });
+  }
+};
+
+app.post("/api/faculty/login", async (request, response) => {
+  try {
+    const email = String(request.body?.email || "").trim().toLowerCase();
+    const password = String(request.body?.password || "");
+    const forceLogin = request.body?.forceLogin === true;
+
+    if (!email || !password) {
+      response.status(400).json({ message: "Email and password are required" });
+      return;
+    }
+
+    const facultyResult = await pool.query(
+      "SELECT * FROM faculty_profiles WHERE LOWER(email) = $1 LIMIT 1",
+      [email],
+    );
+    const faculty = facultyResult.rows[0];
+
+    if (!faculty) {
+      response.status(401).json({ message: "Invalid credentials" });
+      return;
+    }
+
+    if (faculty.is_active === false || faculty.is_login_enabled !== true) {
+      response.status(403).json({ message: "Faculty login is disabled" });
+      return;
+    }
+
+    if (!verifyPassword(password, faculty.password_hash)) {
+      response.status(401).json({ message: "Invalid credentials" });
+      return;
+    }
+
+    const activeSessionResult = await pool.query(
+      `
+      SELECT token, login_ip, created_at
+      FROM faculty_sessions
+      WHERE faculty_id = $1
+        AND is_active = TRUE
+        AND expires_at > NOW()
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [faculty.id],
+    );
+
+    const activeSession = activeSessionResult.rows[0] || null;
+    if (activeSession && !forceLogin) {
+      response.status(409).json({
+        message: buildActiveSessionPrompt(activeSession.login_ip, activeSession.created_at),
+        requiresConfirmation: true,
+        reason: "active_session_exists",
+        activeSession: {
+          ipAddress: activeSession.login_ip || null,
+          loginAt: activeSession.created_at || null,
+        },
+      });
+      return;
+    }
+
+    const token = randomUUID();
+    const ipAddress = getIpAddress(request);
+    const userAgent = String(request.headers["user-agent"] || "");
+
+    if (activeSession) {
+      await pool.query(
+        `
+        UPDATE faculty_sessions
+        SET is_active = FALSE,
+            revoked_reason = 'logged_in_elsewhere',
+            revoked_at = NOW(),
+            replaced_by_token = $2
+        WHERE token = $1
+        `,
+        [activeSession.token, token],
+      );
+    }
+
+    await pool.query(
+      `
+      INSERT INTO faculty_sessions
+      (token, faculty_id, expires_at, is_active, login_ip, login_user_agent)
+      VALUES ($1, $2, NOW() + INTERVAL '24 hours', TRUE, $3, $4)
+      `,
+      [token, faculty.id, ipAddress || null, userAgent || null],
+    );
+
+    const courseLookup = await buildCourseLookup();
+    response.json({
+      token,
+      user: mapFacultyProfile(faculty, courseLookup, { includePrivate: true }),
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Faculty login failed" });
+  }
+});
+
+app.post("/api/faculty/logout", requireFacultySession, async (request, response) => {
+  try {
+    await pool.query(
+      `
+      UPDATE faculty_sessions
+      SET is_active = FALSE,
+          revoked_reason = 'manual_logout',
+          revoked_at = NOW()
+      WHERE token = $1
+      `,
+      [request.facultySession.token],
+    );
+    response.json({ ok: true });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to logout faculty" });
+  }
+});
+
+app.get("/api/faculty/session-status", requireFacultySession, async (request, response) => {
+  response.json({
+    ok: true,
+    user: request.facultySession.faculty,
+  });
+});
+
+app.get("/api/faculty/dashboard/monthly", requireFacultySession, async (request, response) => {
+  try {
+    const faculty = request.facultySession.faculty;
+    const courseIds = Array.isArray(faculty.courseIds) ? faculty.courseIds : [];
+    if (courseIds.length === 0) {
+      response.json({ items: [] });
+      return;
+    }
+
+    const facultyId = String(faculty.id || "").trim();
+    const fromDate = parseDateParam(request.query?.from);
+    const toDate = parseDateParam(request.query?.to);
+    const facultyCourseSet = new Set(courseIds.map((id) => String(id || "").trim()).filter(Boolean));
+    const [ordersResult, courseStatsMap] = await Promise.all([
+      fetchEligibleFacultyOrders({ courseIds: Array.from(facultyCourseSet), fromDate, toDate }),
+      buildCourseInstructorStatsMap(pool, Array.from(facultyCourseSet)),
+    ]);
+
+    const entries = buildFacultySalesEntries({
+      orderRows: Array.isArray(ordersResult.rows) ? ordersResult.rows : [],
+      facultyId,
+      facultyCourseSet,
+      courseStatsMap,
+      revenueSharePercent: Number(faculty.revenueSharePercent || 0),
+    });
+
+    const bucket = new Map();
+    entries.forEach((entry) => {
+      const month = entry.orderDate ? `${String(entry.orderDate).slice(0, 7)}-01` : "unknown";
+      const existing = bucket.get(month) || {
+        month,
+        sales_count: 0,
+        students_set: new Set(),
+        gross_amount: 0,
+        faculty_share: 0,
+      };
+      existing.sales_count += 1;
+      if (entry.studentId) existing.students_set.add(entry.studentId);
+      existing.gross_amount += Number(entry.grossAllocatedAmount || 0);
+      existing.faculty_share += Number(entry.facultyShareAmount || 0);
+      bucket.set(month, existing);
+    });
+
+    const items = Array.from(bucket.values())
+      .map((row) => ({
+        month: row.month,
+        sales_count: row.sales_count,
+        students_count: row.students_set.size,
+        gross_amount: Number(row.gross_amount.toFixed(2)),
+        faculty_share: Number(row.faculty_share.toFixed(2)),
+      }))
+      .sort((a, b) => String(b.month).localeCompare(String(a.month)));
+
+    response.json({ items });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load monthly summary" });
+  }
+});
+
+app.get("/api/faculty/dashboard/courses", requireFacultySession, async (request, response) => {
+  try {
+    const faculty = request.facultySession.faculty;
+    const courseIds = Array.isArray(faculty.courseIds) ? faculty.courseIds : [];
+    if (courseIds.length === 0) {
+      response.json({ items: [] });
+      return;
+    }
+
+    const facultyId = String(faculty.id || "").trim();
+    const fromDate = parseDateParam(request.query?.from);
+    const toDate = parseDateParam(request.query?.to);
+    const facultyCourseSet = new Set(courseIds.map((id) => String(id || "").trim()).filter(Boolean));
+    const [ordersResult, courseStatsMap] = await Promise.all([
+      fetchEligibleFacultyOrders({ courseIds: Array.from(facultyCourseSet), fromDate, toDate }),
+      buildCourseInstructorStatsMap(pool, Array.from(facultyCourseSet)),
+    ]);
+
+    const entries = buildFacultySalesEntries({
+      orderRows: Array.isArray(ordersResult.rows) ? ordersResult.rows : [],
+      facultyId,
+      facultyCourseSet,
+      courseStatsMap,
+      revenueSharePercent: Number(faculty.revenueSharePercent || 0),
+    });
+
+    const bucket = new Map();
+    entries.forEach((entry) => {
+      const key = entry.courseId || "unknown";
+      const existing = bucket.get(key) || {
+        course_id: entry.courseId,
+        course_title: entry.courseTitle || entry.courseId,
+        sales_count: 0,
+        gross_amount: 0,
+        faculty_share: 0,
+      };
+      existing.sales_count += 1;
+      existing.gross_amount += Number(entry.grossAllocatedAmount || 0);
+      existing.faculty_share += Number(entry.facultyShareAmount || 0);
+      bucket.set(key, existing);
+    });
+
+    const items = Array.from(bucket.values())
+      .map((row) => ({
+        ...row,
+        gross_amount: Number(row.gross_amount.toFixed(2)),
+        faculty_share: Number(row.faculty_share.toFixed(2)),
+      }))
+      .sort((a, b) => (b.gross_amount - a.gross_amount) || String(a.course_title || "").localeCompare(String(b.course_title || "")));
+
+    response.json({ items });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load course summary" });
+  }
+});
+
+app.get("/api/faculty/dashboard/sales", requireFacultySession, async (request, response) => {
+  try {
+    const faculty = request.facultySession.faculty;
+    const courseIds = Array.isArray(faculty.courseIds) ? faculty.courseIds : [];
+    if (courseIds.length === 0) {
+      response.json({ items: [], total: 0, page: 1, limit: 25 });
+      return;
+    }
+
+    const facultyId = String(faculty.id || "").trim();
+    const fromDate = parseDateParam(request.query?.from);
+    const toDate = parseDateParam(request.query?.to);
+    const search = String(request.query?.search || "").trim().toLowerCase();
+    const page = Math.max(1, toSafeInt(request.query?.page, 1, { min: 1, max: 50000 }));
+    const limit = Math.max(1, Math.min(200, toSafeInt(request.query?.limit, 25, { min: 1, max: 200 })));
+    const offset = (page - 1) * limit;
+    const facultyCourseSet = new Set(courseIds.map((id) => String(id || "").trim()).filter(Boolean));
+    const [ordersResult, courseStatsMap] = await Promise.all([
+      fetchEligibleFacultyOrders({ courseIds: Array.from(facultyCourseSet), fromDate, toDate }),
+      buildCourseInstructorStatsMap(pool, Array.from(facultyCourseSet)),
+    ]);
+
+    const entries = buildFacultySalesEntries({
+      orderRows: Array.isArray(ordersResult.rows) ? ordersResult.rows : [],
+      facultyId,
+      facultyCourseSet,
+      courseStatsMap,
+      revenueSharePercent: Number(faculty.revenueSharePercent || 0),
+    });
+
+    const filtered = search
+      ? entries.filter((row) => {
+        const hay = [
+          String(row.orderId || ""),
+          String(row.studentName || ""),
+          String(row.studentEmail || ""),
+          String(row.courseTitle || ""),
+          String(row.courseId || ""),
+        ].join(" ").toLowerCase();
+        return hay.includes(search);
+      })
+      : entries;
+
+    const paginated = filtered.slice(offset, offset + limit);
+
+    response.json({
+      items: paginated.map((row) => ({
+        id: row.orderDbId,
+        orderId: row.orderId,
+        studentId: row.studentId,
+        studentName: row.studentName,
+        studentEmail: row.studentEmail,
+        courseId: row.courseId,
+        courseTitle: row.courseTitle,
+        orderDate: row.orderDate,
+        amount: row.grossAllocatedAmount,
+        currency: row.currency,
+        facultyShareAmount: row.facultyShareAmount,
+      })),
+      total: filtered.length,
+      page,
+      limit,
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load sales list" });
+  }
+});
+
+app.get("/api/faculty/dashboard/payouts", requireFacultySession, async (request, response) => {
+  try {
+    const faculty = request.facultySession.faculty;
+    const facultyId = String(faculty.id || "").trim();
+    const courseIds = Array.isArray(faculty.courseIds) ? faculty.courseIds.map((id) => String(id || "").trim()).filter(Boolean) : [];
+    if (courseIds.length === 0) {
+      response.json({ pendingAmount: 0, paidAmount: 0, currency: "INR", payouts: [] });
+      return;
+    }
+
+    const facultyCourseSet = new Set(courseIds);
+    const [ordersResult, courseStatsMap, paidResult, payoutsResult] = await Promise.all([
+      fetchEligibleFacultyOrders({ courseIds, fromDate: null, toDate: null }),
+      buildCourseInstructorStatsMap(pool, courseIds),
+      pool.query("SELECT COALESCE(SUM(amount), 0)::numeric(12,2) AS paid_amount FROM faculty_payouts WHERE faculty_id = $1", [facultyId]),
+      pool.query("SELECT id, amount, currency, status, reference_id, payout_date, note, created_at FROM faculty_payouts WHERE faculty_id = $1 ORDER BY payout_date DESC, id DESC LIMIT 100", [facultyId]),
+    ]);
+
+    const entries = buildFacultySalesEntries({
+      orderRows: Array.isArray(ordersResult.rows) ? ordersResult.rows : [],
+      facultyId,
+      facultyCourseSet,
+      courseStatsMap,
+      revenueSharePercent: Number(faculty.revenueSharePercent || 0),
+    });
+
+    const totalEarned = entries.reduce((sum, row) => sum + Number(row.facultyShareAmount || 0), 0);
+    const paidAmount = Number(paidResult.rows[0]?.paid_amount || 0);
+    const pendingAmount = Math.max(0, Number((totalEarned - paidAmount).toFixed(2)));
+
+    response.json({
+      pendingAmount,
+      paidAmount: Number(paidAmount.toFixed(2)),
+      currency: "INR",
+      payouts: payoutsResult.rows || [],
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load payout status" });
+  }
+});
 
 app.get("/api/admin/faculty", requireAdminPermission("faculty", "read"), async (_request, response) => {
   try {
@@ -6469,7 +7084,7 @@ app.get("/api/admin/faculty", requireAdminPermission("faculty", "read"), async (
     ]);
 
     response.json({
-      items: facultyResult.rows.map((row) => mapFacultyProfile(row, courseLookup)),
+      items: facultyResult.rows.map((row) => mapFacultyProfile(row, courseLookup, { includePrivate: true })),
     });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load faculty" });
@@ -6479,8 +7094,12 @@ app.get("/api/admin/faculty", requireAdminPermission("faculty", "read"), async (
 app.post("/api/admin/faculty", requireAdminPermission("faculty", "create"), async (request, response) => {
   try {
     const name = String(request.body?.name || "").trim();
+    const emailInput = String(request.body?.email || "").trim().toLowerCase();
     const photoUrl = String(request.body?.photoUrl || "").trim();
     const about = String(request.body?.about || "").trim();
+    const rawPassword = String(request.body?.password || "");
+    const revenueSharePercent = Math.max(0, Math.min(100, Number(request.body?.revenueSharePercent || 0)));
+    const isLoginEnabled = request.body?.isLoginEnabled === true;
     const courseIds = normalizeStringList(request.body?.courseIds);
     const isActive = request.body?.isActive !== false;
     const sortOrder = toSafeInt(request.body?.sortOrder, 0);
@@ -6490,14 +7109,49 @@ app.post("/api/admin/faculty", requireAdminPermission("faculty", "create"), asyn
       return;
     }
 
+    if (emailInput) {
+      const emailExists = await pool.query(
+        "SELECT id FROM faculty_profiles WHERE LOWER(email) = $1 LIMIT 1",
+        [emailInput],
+      );
+      if (emailExists.rows[0]) {
+        response.status(409).json({ message: "Faculty email already exists" });
+        return;
+      }
+    }
+
+    if (isLoginEnabled && !emailInput) {
+      response.status(400).json({ message: "Email is required when login is enabled" });
+      return;
+    }
+
+    if (rawPassword && rawPassword.length < 6) {
+      response.status(400).json({ message: "Password must be at least 6 characters" });
+      return;
+    }
+
     const id = String(request.body?.id || `faculty-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`);
+    const passwordHash = rawPassword ? hashPassword(rawPassword) : null;
 
     await pool.query(
       `
-      INSERT INTO faculty_profiles (id, name, photo_url, about, course_ids, is_active, sort_order, updated_at)
-      VALUES ($1, $2, $3, $4, $5::jsonb, $6, $7, NOW())
+      INSERT INTO faculty_profiles
+      (id, name, email, password_hash, photo_url, about, course_ids, is_active, sort_order, revenue_share_percent, is_login_enabled, updated_at)
+      VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, $9, $10, $11, NOW())
       `,
-      [id, name, photoUrl || null, about || null, JSON.stringify(courseIds), isActive, sortOrder],
+      [
+        id,
+        name,
+        emailInput || null,
+        passwordHash,
+        photoUrl || null,
+        about || null,
+        JSON.stringify(courseIds),
+        isActive,
+        sortOrder,
+        revenueSharePercent,
+        isLoginEnabled,
+      ],
     );
 
     const [itemResult, courseLookup] = await Promise.all([
@@ -6505,7 +7159,7 @@ app.post("/api/admin/faculty", requireAdminPermission("faculty", "create"), asyn
       buildCourseLookup(),
     ]);
 
-    response.status(201).json({ item: mapFacultyProfile(itemResult.rows[0], courseLookup) });
+    response.status(201).json({ item: mapFacultyProfile(itemResult.rows[0], courseLookup, { includePrivate: true }) });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to create faculty" });
   }
@@ -6515,8 +7169,12 @@ app.put("/api/admin/faculty/:id", requireAdminPermission("faculty", "edit"), asy
   try {
     const id = String(request.params.id);
     const name = String(request.body?.name || "").trim();
+    const emailInput = String(request.body?.email || "").trim().toLowerCase();
     const photoUrl = String(request.body?.photoUrl || "").trim();
     const about = String(request.body?.about || "").trim();
+    const rawPassword = String(request.body?.password || "");
+    const revenueSharePercent = Math.max(0, Math.min(100, Number(request.body?.revenueSharePercent || 0)));
+    const isLoginEnabled = request.body?.isLoginEnabled === true;
     const courseIds = normalizeStringList(request.body?.courseIds);
     const isActive = request.body?.isActive !== false;
     const sortOrder = toSafeInt(request.body?.sortOrder, 0);
@@ -6526,25 +7184,64 @@ app.put("/api/admin/faculty/:id", requireAdminPermission("faculty", "edit"), asy
       return;
     }
 
-    const existing = await pool.query("SELECT id FROM faculty_profiles WHERE id = $1", [id]);
+    const existing = await pool.query("SELECT id, password_hash FROM faculty_profiles WHERE id = $1", [id]);
     if (!existing.rows[0]) {
       response.status(404).json({ message: "Faculty not found" });
       return;
     }
 
+    if (emailInput) {
+      const emailExists = await pool.query(
+        "SELECT id FROM faculty_profiles WHERE LOWER(email) = $1 AND id <> $2 LIMIT 1",
+        [emailInput, id],
+      );
+      if (emailExists.rows[0]) {
+        response.status(409).json({ message: "Faculty email already exists" });
+        return;
+      }
+    }
+
+    if (isLoginEnabled && !emailInput) {
+      response.status(400).json({ message: "Email is required when login is enabled" });
+      return;
+    }
+
+    if (rawPassword && rawPassword.length < 6) {
+      response.status(400).json({ message: "Password must be at least 6 characters" });
+      return;
+    }
+
+    const passwordHash = rawPassword ? hashPassword(rawPassword) : existing.rows[0].password_hash || null;
+
     await pool.query(
       `
       UPDATE faculty_profiles
       SET name = $2,
-          photo_url = $3,
-          about = $4,
-          course_ids = $5::jsonb,
-          is_active = $6,
-          sort_order = $7,
+          email = $3,
+          password_hash = $4,
+          photo_url = $5,
+          about = $6,
+          course_ids = $7::jsonb,
+          is_active = $8,
+          sort_order = $9,
+          revenue_share_percent = $10,
+          is_login_enabled = $11,
           updated_at = NOW()
       WHERE id = $1
       `,
-      [id, name, photoUrl || null, about || null, JSON.stringify(courseIds), isActive, sortOrder],
+      [
+        id,
+        name,
+        emailInput || null,
+        passwordHash,
+        photoUrl || null,
+        about || null,
+        JSON.stringify(courseIds),
+        isActive,
+        sortOrder,
+        revenueSharePercent,
+        isLoginEnabled,
+      ],
     );
 
     const [itemResult, courseLookup] = await Promise.all([
@@ -6552,7 +7249,7 @@ app.put("/api/admin/faculty/:id", requireAdminPermission("faculty", "edit"), asy
       buildCourseLookup(),
     ]);
 
-    response.json({ item: mapFacultyProfile(itemResult.rows[0], courseLookup) });
+    response.json({ item: mapFacultyProfile(itemResult.rows[0], courseLookup, { includePrivate: true }) });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to update faculty" });
   }

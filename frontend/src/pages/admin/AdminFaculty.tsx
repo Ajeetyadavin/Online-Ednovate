@@ -11,12 +11,12 @@ import {
 /* ─── Types ───────────────────────────────────────────────── */
 interface CourseOption { id: string; title: string; thumbnail?: string; }
 interface FacultyFormState {
-  name: string; photoUrl: string; about: string;
-  courseIds: string[]; isActive: boolean; sortOrder: number;
+  name: string; email: string; password: string; photoUrl: string; about: string;
+  courseIds: string[]; isActive: boolean; sortOrder: number; revenueSharePercent: number; isLoginEnabled: boolean;
 }
 
 const createDefaultForm = (): FacultyFormState => ({
-  name: "", photoUrl: "", about: "", courseIds: [], isActive: true, sortOrder: 0,
+  name: "", email: "", password: "", photoUrl: "", about: "", courseIds: [], isActive: true, sortOrder: 0, revenueSharePercent: 0, isLoginEnabled: false,
 });
 
 const toCourseOptions = (courses: unknown[]): CourseOption[] =>
@@ -135,7 +135,18 @@ export default function AdminFaculty() {
 
   const handleEdit = (item: FacultyProfile) => {
     setEditingId(item.id);
-    setForm({ name: item.name || "", photoUrl: item.photoUrl || "", about: item.about || "", courseIds: Array.isArray(item.courseIds) ? item.courseIds : [], isActive: item.isActive !== false, sortOrder: Number(item.sortOrder || 0) });
+    setForm({
+      name: item.name || "",
+      email: item.email || "",
+      password: "",
+      photoUrl: item.photoUrl || "",
+      about: item.about || "",
+      courseIds: Array.isArray(item.courseIds) ? item.courseIds : [],
+      isActive: item.isActive !== false,
+      sortOrder: Number(item.sortOrder || 0),
+      revenueSharePercent: Number(item.revenueSharePercent || 0),
+      isLoginEnabled: item.isLoginEnabled === true,
+    });
     setShowForm(true);
     setCourseSearch("");
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -143,11 +154,25 @@ export default function AdminFaculty() {
 
   const handleSave = async () => {
     if (!form.name.trim()) { setError("Faculty name is required"); return; }
+    if (form.isLoginEnabled && !form.email.trim()) { setError("Email is required when login is enabled"); return; }
+    if (!editingId && form.isLoginEnabled && form.password.trim().length < 6) { setError("Password must be at least 6 characters"); return; }
+    if (editingId && form.password.trim() && form.password.trim().length < 6) { setError("Password must be at least 6 characters"); return; }
     setIsSaving(true);
     setError("");
     setSuccess("");
     try {
-      const payload = { name: form.name.trim(), photoUrl: form.photoUrl.trim(), about: form.about.trim(), courseIds: form.courseIds, isActive: form.isActive, sortOrder: Number(form.sortOrder || 0) };
+      const payload = {
+        name: form.name.trim(),
+        email: form.email.trim().toLowerCase(),
+        password: form.password,
+        photoUrl: form.photoUrl.trim(),
+        about: form.about.trim(),
+        courseIds: form.courseIds,
+        isActive: form.isActive,
+        sortOrder: Number(form.sortOrder || 0),
+        revenueSharePercent: Math.max(0, Math.min(100, Number(form.revenueSharePercent || 0))),
+        isLoginEnabled: form.isLoginEnabled,
+      };
       if (editingId) {
         if (!canEdit) throw new Error("No permission to edit faculty");
         await adminApi.updateFaculty(editingId, payload);
@@ -176,7 +201,17 @@ export default function AdminFaculty() {
   const handleToggleActive = async (item: FacultyProfile, checked: boolean) => {
     if (!canEdit) return;
     try {
-      await adminApi.updateFaculty(item.id, { name: item.name, photoUrl: item.photoUrl || "", about: item.about || "", courseIds: Array.isArray(item.courseIds) ? item.courseIds : [], isActive: checked, sortOrder: Number(item.sortOrder || 0) });
+      await adminApi.updateFaculty(item.id, {
+        name: item.name,
+        email: item.email || "",
+        photoUrl: item.photoUrl || "",
+        about: item.about || "",
+        courseIds: Array.isArray(item.courseIds) ? item.courseIds : [],
+        isActive: checked,
+        sortOrder: Number(item.sortOrder || 0),
+        revenueSharePercent: Number(item.revenueSharePercent || 0),
+        isLoginEnabled: item.isLoginEnabled === true,
+      });
       await loadData();
     } catch (err) { setError(err instanceof Error ? err.message : "Failed to update status"); }
   };
@@ -258,6 +293,39 @@ export default function AdminFaculty() {
                     <Input className={fCls} placeholder="https://..." value={form.photoUrl} onChange={(e) => setForm((prev) => ({ ...prev, photoUrl: e.target.value }))} />
                   </div>
                 </div>
+                <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <div className="space-y-1.5 lg:col-span-2">
+                    <FL>Faculty Email</FL>
+                    <Input
+                      className={fCls}
+                      type="email"
+                      placeholder="faculty@example.com"
+                      value={form.email}
+                      onChange={(e) => setForm((prev) => ({ ...prev, email: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <FL>{editingId ? "Reset Password" : "Password"}</FL>
+                    <Input
+                      className={fCls}
+                      type="password"
+                      placeholder={editingId ? "Leave blank to keep" : "Minimum 6 chars"}
+                      value={form.password}
+                      onChange={(e) => setForm((prev) => ({ ...prev, password: e.target.value }))}
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <FL>Revenue Share %</FL>
+                    <Input
+                      className={fCls}
+                      type="number"
+                      min="0"
+                      max="100"
+                      value={String(form.revenueSharePercent)}
+                      onChange={(e) => setForm((prev) => ({ ...prev, revenueSharePercent: Number(e.target.value || 0) }))}
+                    />
+                  </div>
+                </div>
                 <div className="space-y-1.5">
                   <FL>About</FL>
                   <textarea
@@ -306,6 +374,10 @@ export default function AdminFaculty() {
             {/* Footer: auto-sort, active, save */}
             <div className="flex flex-wrap items-center gap-3 border-t border-slate-100 pt-4">
               <p className="text-[11px] font-semibold text-slate-500">Auto sorted by name second word, then courses taught.</p>
+              <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1.5">
+                <span className="text-xs font-semibold text-slate-600">Login Enabled</span>
+                <Switch checked={form.isLoginEnabled} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, isLoginEnabled: checked }))} />
+              </div>
               <div className="flex items-center gap-2 rounded-xl border border-slate-200 px-3 py-1.5">
                 <span className="text-xs font-semibold text-slate-600">Active</span>
                 <Switch checked={form.isActive} onCheckedChange={(checked) => setForm((prev) => ({ ...prev, isActive: checked }))} />
@@ -369,8 +441,13 @@ export default function AdminFaculty() {
                       <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${item.isActive ? "bg-emerald-100 text-emerald-700" : "bg-slate-100 text-slate-500"}`}>
                         {item.isActive ? "Active" : "Inactive"}
                       </span>
+                      <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${item.isLoginEnabled ? "bg-blue-100 text-blue-700" : "bg-slate-100 text-slate-500"}`}>
+                        {item.isLoginEnabled ? "Login On" : "Login Off"}
+                      </span>
                     </div>
+                    {item.email && <p className="text-[11px] text-slate-500 mt-1">{item.email}</p>}
                     {item.about && <p className="text-xs text-slate-500 mt-1 line-clamp-1">{item.about}</p>}
+                    <p className="text-[11px] text-slate-500 mt-1">Revenue Share: {Number(item.revenueSharePercent || 0)}%</p>
                     {/* Course badges */}
                     <div className="flex flex-wrap gap-1.5 mt-2">
                       {(item.courses || []).length === 0 ? (

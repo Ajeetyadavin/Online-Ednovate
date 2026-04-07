@@ -562,6 +562,69 @@ export async function ensureSchema() {
 
   await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_profiles_active ON faculty_profiles(is_active)");
   await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_profiles_sort ON faculty_profiles(sort_order)");
+  await pool.query("ALTER TABLE faculty_profiles ADD COLUMN IF NOT EXISTS email TEXT");
+  await pool.query("ALTER TABLE faculty_profiles ADD COLUMN IF NOT EXISTS password_hash TEXT");
+  await pool.query("ALTER TABLE faculty_profiles ADD COLUMN IF NOT EXISTS revenue_share_percent NUMERIC(5,2) NOT NULL DEFAULT 0");
+  await pool.query("ALTER TABLE faculty_profiles ADD COLUMN IF NOT EXISTS is_login_enabled BOOLEAN NOT NULL DEFAULT FALSE");
+  await pool.query("CREATE UNIQUE INDEX IF NOT EXISTS idx_faculty_profiles_email_unique ON faculty_profiles (LOWER(email)) WHERE email IS NOT NULL");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS faculty_sessions (
+      token TEXT PRIMARY KEY,
+      faculty_id TEXT NOT NULL REFERENCES faculty_profiles(id) ON DELETE CASCADE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ NOT NULL,
+      is_active BOOLEAN NOT NULL DEFAULT TRUE,
+      revoked_reason TEXT,
+      revoked_at TIMESTAMPTZ,
+      replaced_by_token TEXT,
+      login_ip TEXT,
+      login_user_agent TEXT
+    );
+  `);
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_sessions_faculty ON faculty_sessions(faculty_id)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_sessions_active ON faculty_sessions(is_active, expires_at)");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS faculty_earnings_ledger (
+      id BIGSERIAL PRIMARY KEY,
+      faculty_id TEXT NOT NULL REFERENCES faculty_profiles(id) ON DELETE CASCADE,
+      order_id BIGINT NOT NULL,
+      order_item_id BIGINT,
+      course_id TEXT NOT NULL,
+      course_title TEXT,
+      student_id BIGINT,
+      student_name TEXT,
+      sale_date DATE,
+      currency TEXT NOT NULL DEFAULT 'INR',
+      order_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      revenue_share_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
+      faculty_share_amount NUMERIC(12,2) NOT NULL DEFAULT 0,
+      status TEXT NOT NULL DEFAULT 'pending',
+      notes TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE (faculty_id, order_id, course_id)
+    );
+  `);
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_earnings_faculty_date ON faculty_earnings_ledger(faculty_id, sale_date DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_earnings_status ON faculty_earnings_ledger(status)");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS faculty_payouts (
+      id BIGSERIAL PRIMARY KEY,
+      faculty_id TEXT NOT NULL REFERENCES faculty_profiles(id) ON DELETE CASCADE,
+      amount NUMERIC(12,2) NOT NULL,
+      currency TEXT NOT NULL DEFAULT 'INR',
+      status TEXT NOT NULL DEFAULT 'paid',
+      reference_id TEXT,
+      payout_date DATE NOT NULL DEFAULT CURRENT_DATE,
+      note TEXT,
+      created_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_payouts_faculty_date ON faculty_payouts(faculty_id, payout_date DESC)");
 
   const superAdminEmail = String(process.env.ADMIN_EMAIL || "admin@ednovate.com").trim().toLowerCase();
   const superAdminPassword = String(process.env.ADMIN_PASSWORD || "admin123");

@@ -101,6 +101,10 @@ export interface Lesson {
   videoUrl?: string;
   resourceUrl?: string;
   thumbnailUrl?: string;
+  instructorShares?: Array<{
+    facultyId: string;
+    sharePercent: number;
+  }>;
 }
 
 export interface Chapter {

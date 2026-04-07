@@ -20,7 +20,9 @@ interface NewLesson {
   title: string; description: string; duration: string;
   type: "video" | "pdf" | "quiz"; videoSource?: LessonVideoSource;
   videoUrl?: string; resourceUrl?: string; isPreview?: boolean;
+  instructorShares?: Array<{ facultyId: string; sharePercent: number }>;
 }
+interface FacultyOption { id: string; name: string; courseIds: string[]; isActive: boolean; }
 interface EditingChapter { id: string; title: string; description?: string }
 type LessonUploadState = {
   fileName: string;
@@ -30,7 +32,7 @@ type LessonUploadState = {
 };
 type ChapterCollectionVideoDrafts = Record<string, string>;
 
-const INITIAL_LESSON: NewLesson = { title: "", description: "", duration: "", type: "video", videoSource: "direct", videoUrl: "", resourceUrl: "", isPreview: false };
+const INITIAL_LESSON: NewLesson = { title: "", description: "", duration: "", type: "video", videoSource: "direct", videoUrl: "", resourceUrl: "", isPreview: false, instructorShares: [] };
 const INITIAL_CHAPTER = { title: "", description: "" };
 
 /* ─── Utils ──────────────────────────────────────────────────── */
@@ -134,6 +136,7 @@ export default function AdminCourseContent() {
 
   const [chapterDialogOpen, setChapterDialogOpen] = useState(false);
   const [lessonDialogOpen, setLessonDialogOpen] = useState(false);
+  const [facultyOptions, setFacultyOptions] = useState<FacultyOption[]>([]);
 
   const [editingChapter, setEditingChapter] = useState<EditingChapter | null>(null);
   const [editingLessonId, setEditingLessonId] = useState<string | null>(null);
@@ -300,6 +303,25 @@ export default function AdminCourseContent() {
 
   useEffect(() => { if (!chapterDialogOpen) { setEditingChapter(null); setNewChapter(INITIAL_CHAPTER); } }, [chapterDialogOpen]);
   useEffect(() => { if (!lessonDialogOpen) { setEditingLessonId(null); setNewLesson(INITIAL_LESSON); } }, [lessonDialogOpen]);
+  useEffect(() => {
+    let mounted = true;
+    void adminApi.listFaculty().then((result) => {
+      if (!mounted) return;
+      const items = Array.isArray(result.items) ? result.items : [];
+      setFacultyOptions(
+        items.map((item) => ({
+          id: String(item.id || "").trim(),
+          name: String(item.name || "").trim(),
+          courseIds: Array.isArray(item.courseIds) ? item.courseIds.map((id) => String(id || "").trim()).filter(Boolean) : [],
+          isActive: item.isActive !== false,
+        })).filter((item) => item.id && item.name && item.isActive),
+      );
+    }).catch(() => {
+      if (!mounted) return;
+      setFacultyOptions([]);
+    });
+    return () => { mounted = false; };
+  }, []);
   useEffect(() => {
     if (!collectionDialogOpen) {
       setCollectionVideos([]);
@@ -653,19 +675,49 @@ export default function AdminCourseContent() {
   const handleOpenAddLesson = () => { setEditingLessonId(null); setNewLesson(INITIAL_LESSON); setSaveError(null); setLessonDialogOpen(true); };
   const handleOpenEditLesson = (l: any) => {
     setEditingLessonId(l.id);
-    setNewLesson({ title: l.title, description: l.description || "", duration: l.duration || "0:00", type: l.type || "video", videoSource: l.videoSource || "direct", videoUrl: l.videoUrl ? decodeVideoUrl(l.videoUrl) : "", resourceUrl: l.resourceUrl || "", isPreview: l.isPreview || false });
+    setNewLesson({
+      title: l.title,
+      description: l.description || "",
+      duration: l.duration || "0:00",
+      type: l.type || "video",
+      videoSource: l.videoSource || "direct",
+      videoUrl: l.videoUrl ? decodeVideoUrl(l.videoUrl) : "",
+      resourceUrl: l.resourceUrl || "",
+      isPreview: l.isPreview || false,
+      instructorShares: Array.isArray(l.instructorShares)
+        ? l.instructorShares
+          .map((row: any) => ({
+            facultyId: String(row?.facultyId || "").trim(),
+            sharePercent: Number(row?.sharePercent || 0),
+          }))
+          .filter((row: { facultyId: string; sharePercent: number }) => row.facultyId && Number.isFinite(row.sharePercent) && row.sharePercent > 0)
+        : [],
+    });
     setSaveError(null); setLessonDialogOpen(true);
   };
 
   const handleSaveLesson = async () => {
     if (!selectedCourse || !selectedChapter || !newLesson.title.trim()) { setSaveError("Lesson title is required"); return; }
     if (newLesson.type === "video" && !newLesson.videoUrl?.trim()) { setSaveError("Please provide a video URL"); return; }
+    const sanitizedInstructorShares = (Array.isArray(newLesson.instructorShares) ? newLesson.instructorShares : [])
+      .map((row) => ({
+        facultyId: String(row.facultyId || "").trim(),
+        sharePercent: Number(row.sharePercent || 0),
+      }))
+      .filter((row) => row.facultyId && Number.isFinite(row.sharePercent) && row.sharePercent > 0);
+    const shareTotal = sanitizedInstructorShares.reduce((sum, row) => sum + row.sharePercent, 0);
+    const normalizedInstructorShares = shareTotal > 0
+      ? sanitizedInstructorShares.map((row) => ({
+        facultyId: row.facultyId,
+        sharePercent: Number(((row.sharePercent / shareTotal) * 100).toFixed(2)),
+      }))
+      : [];
     setIsSaving(true); setSaveError(null);
     let updated;
     if (editingLessonId) {
-      updated = curriculum.map((ch) => ch.id === selectedChapter.id ? { ...ch, lessons: ch.lessons.map((l) => l.id === editingLessonId ? { ...l, title: newLesson.title.trim(), description: newLesson.description?.trim() || "", duration: newLesson.duration || l.duration || "0:00", type: newLesson.type as "video" | "pdf" | "quiz", isPreview: newLesson.isPreview || false, videoSource: (newLesson.type === "video" ? newLesson.videoSource : undefined) as LessonVideoSource | undefined, videoUrl: newLesson.type === "video" ? encodeVideoUrl(newLesson.videoUrl || "") : undefined, resourceUrl: newLesson.type !== "video" ? newLesson.resourceUrl : undefined } : l) } : ch);
+      updated = curriculum.map((ch) => ch.id === selectedChapter.id ? { ...ch, lessons: ch.lessons.map((l) => l.id === editingLessonId ? { ...l, title: newLesson.title.trim(), description: newLesson.description?.trim() || "", duration: newLesson.duration || l.duration || "0:00", type: newLesson.type as "video" | "pdf" | "quiz", isPreview: newLesson.isPreview || false, videoSource: (newLesson.type === "video" ? newLesson.videoSource : undefined) as LessonVideoSource | undefined, videoUrl: newLesson.type === "video" ? encodeVideoUrl(newLesson.videoUrl || "") : undefined, resourceUrl: newLesson.type !== "video" ? newLesson.resourceUrl : undefined, instructorShares: newLesson.type === "video" ? normalizedInstructorShares : [] } : l) } : ch);
     } else {
-      const lesson = { id: `l_${Date.now()}`, title: newLesson.title.trim(), description: newLesson.description?.trim() || "", duration: newLesson.duration || "0:00", type: newLesson.type as "video" | "pdf" | "quiz", completed: false, locked: false, isPreview: newLesson.isPreview || false, isHomepageDemo: false, videoSource: (newLesson.type === "video" ? newLesson.videoSource : undefined) as LessonVideoSource | undefined, videoUrl: newLesson.type === "video" ? encodeVideoUrl(newLesson.videoUrl || "") : undefined, resourceUrl: newLesson.type !== "video" ? newLesson.resourceUrl : undefined };
+      const lesson = { id: `l_${Date.now()}`, title: newLesson.title.trim(), description: newLesson.description?.trim() || "", duration: newLesson.duration || "0:00", type: newLesson.type as "video" | "pdf" | "quiz", completed: false, locked: false, isPreview: newLesson.isPreview || false, isHomepageDemo: false, videoSource: (newLesson.type === "video" ? newLesson.videoSource : undefined) as LessonVideoSource | undefined, videoUrl: newLesson.type === "video" ? encodeVideoUrl(newLesson.videoUrl || "") : undefined, resourceUrl: newLesson.type !== "video" ? newLesson.resourceUrl : undefined, instructorShares: newLesson.type === "video" ? normalizedInstructorShares : [] };
       updated = curriculum.map((ch) => ch.id === selectedChapter.id ? { ...ch, lessons: [...ch.lessons, lesson] } : ch);
     }
     try {
@@ -1133,6 +1185,7 @@ export default function AdminCourseContent() {
           {saveError && <div className="shrink-0 flex items-center gap-2 border-b border-rose-100 bg-rose-50 px-6 py-2.5 text-xs text-rose-700"><AlertCircle className="h-3.5 w-3.5" />{saveError}</div>}
           <div className="flex-1 overflow-y-auto">
             <LessonForm lesson={newLesson} setLesson={setNewLesson} onSave={handleSaveLesson} isEditing={!!editingLessonId}
+              facultyOptions={facultyOptions.filter((item) => !selectedCourseId || item.courseIds.includes(selectedCourseId))}
               onUploadVideo={handleVideoFileUpload} isUploadingVideo={isUploadingVideo} isSaving={isSaving}
               uploadProgress={lessonUploadState?.status === "uploading" ? lessonUploadState.progress : 0}
               onCancelUpload={handleCancelLessonUpload} />
@@ -1384,8 +1437,9 @@ export default function AdminCourseContent() {
 }
 
 /* ─── Lesson Form ────────────────────────────────────────────── */
-function LessonForm({ lesson, setLesson, onSave, isEditing, onUploadVideo, isUploadingVideo, isSaving = false, uploadProgress = 0, onCancelUpload }: {
+function LessonForm({ lesson, setLesson, onSave, isEditing, facultyOptions, onUploadVideo, isUploadingVideo, isSaving = false, uploadProgress = 0, onCancelUpload }: {
   lesson: NewLesson; setLesson: Dispatch<SetStateAction<NewLesson>>;
+  facultyOptions: Array<{ id: string; name: string }>;
   onSave: () => void; isEditing: boolean; onUploadVideo: (file?: File | null) => void;
   isUploadingVideo: boolean; isSaving?: boolean; uploadProgress?: number; onCancelUpload?: () => void;
 }) {
@@ -1460,6 +1514,36 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, onUploadVideo, isUpl
   const fCls = "h-9 rounded-xl border-slate-200 text-xs placeholder:text-slate-400 focus-visible:ring-primary/40";
   const sCls = "h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-xs focus:outline-none focus:ring-2 focus:ring-primary/40";
   const FL2 = ({ children }: { children: React.ReactNode }) => <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{children}</p>;
+  const instructorShares = Array.isArray(lesson.instructorShares) ? lesson.instructorShares : [];
+  const selectedInstructorIds = new Set(instructorShares.map((row) => String(row.facultyId || "").trim()).filter(Boolean));
+  const instructorTotal = instructorShares.reduce((sum, row) => sum + Number(row.sharePercent || 0), 0);
+
+  const rebalanceShares = (shares: Array<{ facultyId: string; sharePercent: number }>) => {
+    const valid = shares
+      .map((row) => ({ facultyId: String(row.facultyId || "").trim(), sharePercent: Number(row.sharePercent || 0) }))
+      .filter((row) => row.facultyId && Number.isFinite(row.sharePercent) && row.sharePercent > 0);
+    const total = valid.reduce((sum, row) => sum + row.sharePercent, 0);
+    if (total <= 0) return valid;
+    return valid.map((row) => ({
+      facultyId: row.facultyId,
+      sharePercent: Number(((row.sharePercent / total) * 100).toFixed(2)),
+    }));
+  };
+
+  const toggleInstructor = (facultyId: string, checked: boolean) => {
+    const current = Array.isArray(lesson.instructorShares) ? lesson.instructorShares : [];
+    const next = checked
+      ? [...current, { facultyId, sharePercent: 100 }]
+      : current.filter((row) => String(row.facultyId || "") !== facultyId);
+    setLesson({ ...lesson, instructorShares: rebalanceShares(next) });
+  };
+
+  const updateInstructorShare = (facultyId: string, nextValue: string) => {
+    const numeric = Number(nextValue || 0);
+    const current = Array.isArray(lesson.instructorShares) ? lesson.instructorShares : [];
+    const next = current.map((row) => String(row.facultyId || "") === facultyId ? { ...row, sharePercent: numeric } : row);
+    setLesson({ ...lesson, instructorShares: next });
+  };
 
   return (
     <div className="space-y-4 px-6 py-5">
@@ -1515,6 +1599,46 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, onUploadVideo, isUpl
           <div className="space-y-1.5">
             <FL2>Duration (HH:MM:SS)</FL2>
             <Input className={fCls} placeholder="00:45:30" value={lesson.duration} onChange={(e) => setLesson({ ...lesson, duration: e.target.value })} disabled={isSaving} />
+          </div>
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <FL2>Instructor Hour Share (%)</FL2>
+              <span className={`text-[11px] font-semibold ${Math.abs(instructorTotal - 100) < 0.5 || instructorTotal === 0 ? "text-emerald-600" : "text-amber-600"}`}>
+                Total: {instructorTotal.toFixed(2)}%
+              </span>
+            </div>
+            <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 space-y-2">
+              {facultyOptions.length === 0 ? (
+                <p className="px-2 py-1 text-[11px] text-slate-500">No mapped faculty found for this course.</p>
+              ) : facultyOptions.map((faculty) => {
+                const active = selectedInstructorIds.has(faculty.id);
+                const row = instructorShares.find((item) => String(item.facultyId || "") === faculty.id);
+                return (
+                  <div key={faculty.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2 py-1.5">
+                    <input
+                      type="checkbox"
+                      className="h-3.5 w-3.5 accent-primary"
+                      checked={active}
+                      onChange={(event) => toggleInstructor(faculty.id, event.target.checked)}
+                      disabled={isSaving}
+                    />
+                    <span className="flex-1 truncate text-xs font-medium text-slate-700">{faculty.name}</span>
+                    <Input
+                      className="h-8 w-24 rounded-lg border-slate-200 text-xs"
+                      type="number"
+                      min="0"
+                      max="100"
+                      step="0.01"
+                      value={active ? String(Number(row?.sharePercent || 0).toFixed(2)) : ""}
+                      placeholder="0"
+                      onChange={(event) => updateInstructorShare(faculty.id, event.target.value)}
+                      disabled={!active || isSaving}
+                    />
+                  </div>
+                );
+              })}
+            </div>
+            <p className="text-[11px] text-slate-500">Tip: Save karte waqt percentages auto-normalize hoke 100% ban jayenge.</p>
           </div>
           <div className="flex items-center justify-between">
             <div>

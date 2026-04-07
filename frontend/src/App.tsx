@@ -2,7 +2,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { Toaster as Sonner } from "@/components/ui/sonner";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { BrowserRouter, Routes, Route, Outlet, useLocation } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Outlet, Navigate, useLocation } from "react-router-dom";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 
 import Layout from "./components/Layout";
@@ -52,6 +52,9 @@ import AdminLogs from "./pages/admin/AdminLogs";
 import AdminApiModule from "./pages/admin/AdminApiModule";
 import CourseCollection from "./pages/CourseCollection";
 import FacultyDetail from "./pages/FacultyDetail";
+import { ProfessorAuthProvider, useProfessorAuth } from "./context/ProfessorAuthContext";
+import ProfessorLogin from "./pages/ProfessorLogin";
+import ProfessorDashboard from "./pages/ProfessorDashboard";
 
 const queryClient = new QueryClient();
 const FORCED_LOGOUT_NOTICE_KEY = "ednovate_forced_logout_notice";
@@ -71,6 +74,17 @@ const PublicRouteGuard = () => {
     return <Maintenance />;
   }
 
+  return <Outlet />;
+};
+
+const ProfessorProtectedRoute = () => {
+  const { isAuthenticated, isLoading } = useProfessorAuth();
+  if (isLoading) {
+    return <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">Loading...</div>;
+  }
+  if (!isAuthenticated) {
+    return <Navigate to="/professor/login" replace />;
+  }
   return <Outlet />;
 };
 
@@ -327,66 +341,72 @@ const AppContent = () => (
       <PlatformDataProvider>
         <AuthProvider>
           <CartProvider>
-            <TooltipProvider>
-              <Toaster />
-              <Sonner />
-              <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
-                <ScrollToTop />
-                <SiteSecurityGuard />
-                <ForcedLogoutNoticeOverlay />
-                <Routes>
-                  <Route element={<PublicRouteGuard />}>
-                    {/* Public routes */}
-                    <Route element={<Layout />}>
-                      <Route path="/" element={<Index />} />
-                      <Route path="/packages" element={<Packages />} />
-                      <Route path="/login" element={<Login />} />
-                      <Route path="/signup" element={<Signup />} />
-                      <Route path="/forgot-password" element={<ForgotPassword />} />
-                      <Route path="/checkout" element={<Checkout />} />
-                      <Route path="/order-confirmation" element={<OrderConfirmation />} />
-                      <Route path="/course/:id" element={<CourseDetails />} />
-                      <Route path="/learn/:id" element={<CourseLMS />} />
-                      <Route path="/dashboard" element={<Dashboard />} />
-                      <Route path="/dashboard/technical-support" element={<TechnicalSupport />} />
-                      <Route path="/dashboard/course/:id/about" element={<CourseAbout />} />
-                      <Route path="/collections/:slug" element={<CourseCollection />} />
-                      <Route path="/faculty/:id" element={<FacultyDetail />} />
-                      <Route path="/contact-us" element={<ContactUs />} />
-                      <Route path="/api-test" element={<ApiTest />} />
+            <ProfessorAuthProvider>
+              <TooltipProvider>
+                <Toaster />
+                <Sonner />
+                <BrowserRouter future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+                  <ScrollToTop />
+                  <SiteSecurityGuard />
+                  <ForcedLogoutNoticeOverlay />
+                  <Routes>
+                    <Route element={<PublicRouteGuard />}>
+                      {/* Public routes */}
+                      <Route element={<Layout />}>
+                        <Route path="/" element={<Index />} />
+                        <Route path="/packages" element={<Packages />} />
+                        <Route path="/login" element={<Login />} />
+                        <Route path="/signup" element={<Signup />} />
+                        <Route path="/forgot-password" element={<ForgotPassword />} />
+                        <Route path="/checkout" element={<Checkout />} />
+                        <Route path="/order-confirmation" element={<OrderConfirmation />} />
+                        <Route path="/course/:id" element={<CourseDetails />} />
+                        <Route path="/learn/:id" element={<CourseLMS />} />
+                        <Route path="/dashboard" element={<Dashboard />} />
+                        <Route path="/dashboard/technical-support" element={<TechnicalSupport />} />
+                        <Route path="/dashboard/course/:id/about" element={<CourseAbout />} />
+                        <Route path="/collections/:slug" element={<CourseCollection />} />
+                        <Route path="/faculty/:id" element={<FacultyDetail />} />
+                        <Route path="/contact-us" element={<ContactUs />} />
+                        <Route path="/api-test" element={<ApiTest />} />
+                      </Route>
+                      <Route path="*" element={<NotFound />} />
                     </Route>
-                    <Route path="*" element={<NotFound />} />
-                  </Route>
+                    <Route path="/professor/login" element={<ProfessorLogin />} />
+                    <Route element={<ProfessorProtectedRoute />}>
+                      <Route path="/professor/dashboard" element={<ProfessorDashboard />} />
+                    </Route>
 
-                  {/* Admin routes */}
-                  <Route path="/admin" element={<AdminAuthProvider><AdminLogin /></AdminAuthProvider>} />
-                  <Route path="/admin/login" element={<AdminAuthProvider><AdminLogin /></AdminAuthProvider>} />
-                  <Route path="/admin/*" element={<AdminAuthProvider><AdminLayout /></AdminAuthProvider>}>
-                    <Route path="dashboard" element={<AdminDashboard />} />
-                    <Route path="courses" element={<AdminCourses mode="courses" />} />
-                    <Route path="packages" element={<AdminCourses mode="packages" />} />
-                    <Route path="course-content" element={<AdminCourseContent />} />
-                    <Route path="bunny-video" element={<AdminBunnyVideo />} />
-                    <Route path="categories" element={<AdminMasters />} />
-                    <Route path="masters" element={<AdminMasters />} />
-                    <Route path="coupons" element={<AdminCoupons />} />
-                    <Route path="faculty" element={<AdminFaculty />} />
-                    <Route path="users" element={<AdminUsers />} />
-                    <Route path="orders" element={<AdminOrders />} />
-                    <Route path="leads" element={<AdminLeads />} />
-                    <Route path="announcements" element={<AdminAnnouncements />} />
-                    <Route path="technical-support" element={<AdminTechnicalSupport />} />
-                    <Route path="marketing" element={<AdminMarketing />} />
-                    <Route path="homepage" element={<AdminHomepage />} />
-                    <Route path="header" element={<AdminHeader />} />
-                    <Route path="settings" element={<AdminSettings />} />
-                    <Route path="subadmins" element={<AdminSubAdmins />} />
-                    <Route path="logs" element={<AdminLogs />} />
-                    <Route path="apis" element={<AdminApiModule />} />
-                  </Route>
-                </Routes>
-              </BrowserRouter>
-            </TooltipProvider>
+                    {/* Admin routes */}
+                    <Route path="/admin" element={<AdminAuthProvider><AdminLogin /></AdminAuthProvider>} />
+                    <Route path="/admin/login" element={<AdminAuthProvider><AdminLogin /></AdminAuthProvider>} />
+                    <Route path="/admin/*" element={<AdminAuthProvider><AdminLayout /></AdminAuthProvider>}>
+                      <Route path="dashboard" element={<AdminDashboard />} />
+                      <Route path="courses" element={<AdminCourses mode="courses" />} />
+                      <Route path="packages" element={<AdminCourses mode="packages" />} />
+                      <Route path="course-content" element={<AdminCourseContent />} />
+                      <Route path="bunny-video" element={<AdminBunnyVideo />} />
+                      <Route path="categories" element={<AdminMasters />} />
+                      <Route path="masters" element={<AdminMasters />} />
+                      <Route path="coupons" element={<AdminCoupons />} />
+                      <Route path="faculty" element={<AdminFaculty />} />
+                      <Route path="users" element={<AdminUsers />} />
+                      <Route path="orders" element={<AdminOrders />} />
+                      <Route path="leads" element={<AdminLeads />} />
+                      <Route path="announcements" element={<AdminAnnouncements />} />
+                      <Route path="technical-support" element={<AdminTechnicalSupport />} />
+                      <Route path="marketing" element={<AdminMarketing />} />
+                      <Route path="homepage" element={<AdminHomepage />} />
+                      <Route path="header" element={<AdminHeader />} />
+                      <Route path="settings" element={<AdminSettings />} />
+                      <Route path="subadmins" element={<AdminSubAdmins />} />
+                      <Route path="logs" element={<AdminLogs />} />
+                      <Route path="apis" element={<AdminApiModule />} />
+                    </Route>
+                  </Routes>
+                </BrowserRouter>
+              </TooltipProvider>
+            </ProfessorAuthProvider>
           </CartProvider>
         </AuthProvider>
       </PlatformDataProvider>

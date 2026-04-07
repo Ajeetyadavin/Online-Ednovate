@@ -333,12 +333,15 @@ export interface BunnyLibraryVideo {
 export interface FacultyProfile {
   id: string;
   name: string;
+  email?: string;
   photoUrl?: string;
   about?: string;
   courseIds: string[];
   courses: FacultyCourseRef[];
   isActive: boolean;
   sortOrder: number;
+  revenueSharePercent?: number;
+  isLoginEnabled?: boolean;
   createdAt?: string;
   updatedAt?: string;
 }
@@ -1353,11 +1356,15 @@ export const adminApi = {
 
   async createFaculty(payload: {
     name: string;
+    email?: string;
+    password?: string;
     photoUrl?: string;
     about?: string;
     courseIds: string[];
     isActive?: boolean;
     sortOrder?: number;
+    revenueSharePercent?: number;
+    isLoginEnabled?: boolean;
   }) {
     return parseResponse<{ item: FacultyProfile }>(
       await fetch("/api/admin/faculty", {
@@ -1372,11 +1379,15 @@ export const adminApi = {
     id: string,
     payload: {
       name: string;
+      email?: string;
+      password?: string;
       photoUrl?: string;
       about?: string;
       courseIds: string[];
       isActive?: boolean;
       sortOrder?: number;
+      revenueSharePercent?: number;
+      isLoginEnabled?: boolean;
     },
   ) {
     return parseResponse<{ item: FacultyProfile }>(
