@@ -735,6 +735,12 @@ const CourseDetails = () => {
     () => attemptOptions.find((item) => item.id === selectedAttemptOptionId) || null,
     [attemptOptions, selectedAttemptOptionId],
   );
+  const selectedModeLabel = useMemo(
+    () => deliveryModes.find((mode) => mode.id === selectedDeliveryModeIds[0])?.label || "",
+    [deliveryModes, selectedDeliveryModeIds],
+  );
+  const selectedAttemptLabel = selectedAttempt?.label || "";
+  const selectedBooksCount = selectedBookAddonIds.length;
   const validityLabel = useAttemptPricing && selectedAttempt?.endDate
     ? formatAttemptEndDateLabel(selectedAttempt.endDate)
     : (course.unlimitedViewsEnabled === true
@@ -1175,23 +1181,28 @@ const CourseDetails = () => {
                 </div>
 
                 {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && (
-                  <div className="mb-4 space-y-2">
+                  <div className="mb-4 space-y-2.5">
                     {useDeliveryModePricing && deliveryModes.length > 0 && (
-                      <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
+                      <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
                         <button
                           type="button"
                           onClick={() => toggleDesktopOptionSection("modes")}
-                          className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-left"
+                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
                         >
-                          <span className="text-sm font-semibold text-foreground">Select Mode</span>
-                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${openDesktopOptionSections.modes ? "rotate-180" : "rotate-0"}`} />
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">Select Mode</span>
+                            {selectedModeLabel && (
+                              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedModeLabel}</span>
+                            )}
+                          </div>
+                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.modes ? "rotate-180" : "rotate-0"}`} />
                         </button>
                         {openDesktopOptionSections.modes && (
                           <div className="pt-1">
                             <select
                               value={selectedDeliveryModeIds[0] || deliveryModes[0]?.id || ""}
                               onChange={(e) => setSelectedDeliveryModeIds(e.target.value ? [e.target.value] : [])}
-                              className="w-full h-10 rounded-lg border border-input bg-background px-3 text-sm font-medium"
+                              className="h-10 w-full rounded-xl border border-border/80 bg-background px-3 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
                             >
                               {deliveryModes.map((mode) => (
                                 <option key={mode.id} value={mode.id}>
@@ -1205,14 +1216,19 @@ const CourseDetails = () => {
                     )}
 
                     {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
-                      <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
+                      <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
                         <button
                           type="button"
                           onClick={() => toggleDesktopOptionSection("books")}
-                          className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-left"
+                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
                         >
-                          <span className="text-sm font-semibold text-foreground">Books / Notes</span>
-                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${openDesktopOptionSections.books ? "rotate-180" : "rotate-0"}`} />
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">Books / Notes</span>
+                            {selectedBooksCount > 0 && (
+                              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedBooksCount} selected</span>
+                            )}
+                          </div>
+                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.books ? "rotate-180" : "rotate-0"}`} />
                         </button>
                         {openDesktopOptionSections.books && (
                         <div className="space-y-2">
@@ -1251,14 +1267,17 @@ const CourseDetails = () => {
                     )}
 
                     {useViewPricing && (
-                      <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
+                      <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
                         <button
                           type="button"
                           onClick={() => toggleDesktopOptionSection("views")}
-                          className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-left"
+                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
                         >
-                          <span className="text-sm font-semibold text-foreground">Select Views</span>
-                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${openDesktopOptionSections.views ? "rotate-180" : "rotate-0"}`} />
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">Select Views</span>
+                            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedViews}x</span>
+                          </div>
+                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.views ? "rotate-180" : "rotate-0"}`} />
                         </button>
                         {openDesktopOptionSections.views && (
                           <div className="relative pt-1">
@@ -1266,7 +1285,7 @@ const CourseDetails = () => {
                             <select
                               value={selectedViews}
                               onChange={(e) => setSelectedViews(Number(e.target.value) || 1)}
-                              className="w-full h-10 rounded-lg border border-input bg-background pl-9 pr-2 text-sm font-medium"
+                              className="h-10 w-full rounded-xl border border-border/80 bg-background pl-9 pr-2 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
                             >
                               {viewOptions.map((option) => (
                                 <option key={option} value={option}>
@@ -1280,14 +1299,17 @@ const CourseDetails = () => {
                     )}
 
                     {useValidityPricing && (
-                      <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
+                      <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
                         <button
                           type="button"
                           onClick={() => toggleDesktopOptionSection("validity")}
-                          className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-left"
+                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
                         >
-                          <span className="text-sm font-semibold text-foreground">Select Validity</span>
-                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${openDesktopOptionSections.validity ? "rotate-180" : "rotate-0"}`} />
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">Select Validity</span>
+                            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedValidityDays} days</span>
+                          </div>
+                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.validity ? "rotate-180" : "rotate-0"}`} />
                         </button>
                         {openDesktopOptionSections.validity && (
                           <div className="relative pt-1">
@@ -1295,7 +1317,7 @@ const CourseDetails = () => {
                             <select
                               value={selectedValidityDays}
                               onChange={(e) => setSelectedValidityDays(Number(e.target.value) || backendDefaultValidityDays)}
-                              className="w-full h-10 rounded-lg border border-input bg-background pl-9 pr-2 text-sm font-medium"
+                              className="h-10 w-full rounded-xl border border-border/80 bg-background pl-9 pr-2 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
                             >
                               {validityOptionsDays.map((days) => (
                                 <option key={days} value={days}>
@@ -1309,14 +1331,19 @@ const CourseDetails = () => {
                     )}
 
                     {useAttemptPricing && attemptOptions.length > 0 && (
-                      <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
+                      <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
                         <button
                           type="button"
                           onClick={() => toggleDesktopOptionSection("attempts")}
-                          className="flex w-full items-center justify-between rounded-lg px-1 py-1.5 text-left"
+                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
                         >
-                          <span className="text-sm font-semibold text-foreground">Select Attempt</span>
-                          <ChevronDown className={`h-4 w-4 text-muted-foreground transition-transform ${openDesktopOptionSections.attempts ? "rotate-180" : "rotate-0"}`} />
+                          <div className="flex items-center gap-2">
+                            <span className="text-sm font-semibold text-foreground">Select Attempt</span>
+                            {selectedAttemptLabel && (
+                              <span className="max-w-[140px] truncate rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedAttemptLabel}</span>
+                            )}
+                          </div>
+                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.attempts ? "rotate-180" : "rotate-0"}`} />
                         </button>
                         {openDesktopOptionSections.attempts && (
                           <div className="relative pt-1">
@@ -1324,7 +1351,7 @@ const CourseDetails = () => {
                             <select
                               value={selectedAttemptOptionId}
                               onChange={(e) => setSelectedAttemptOptionId(e.target.value)}
-                              className="w-full h-10 rounded-lg border border-input bg-background pl-9 pr-2 text-sm font-medium"
+                              className="h-10 w-full rounded-xl border border-border/80 bg-background pl-9 pr-2 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
                             >
                               {attemptOptions.map((option) => (
                                 <option key={option.id} value={option.id}>
@@ -1445,14 +1472,17 @@ const CourseDetails = () => {
                 <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5">
                   <div className="grid grid-cols-1 gap-2">
                   {useDeliveryModePricing && deliveryModes.length > 0 && (
-                    <div className="rounded-lg border border-border/70 bg-card/80 p-2">
+                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("modes")}
-                        className="flex w-full items-center justify-between rounded-md px-0.5 py-0.5 text-left"
+                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
                       >
-                        <span className="text-xs font-semibold text-foreground">Select Mode</span>
-                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${openMobileOptionSections.modes ? "rotate-180" : "rotate-0"}`} />
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-semibold text-foreground">Select Mode</span>
+                          {selectedModeLabel && <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedModeLabel}</span>}
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.modes ? "rotate-180" : "rotate-0"}`} />
                       </button>
                       {openMobileOptionSections.modes && (
                       <select
@@ -1470,14 +1500,17 @@ const CourseDetails = () => {
                     </div>
                   )}
                   {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
-                    <div className="rounded-lg border border-border/70 bg-card/80 p-2">
+                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("books")}
-                        className="flex w-full items-center justify-between rounded-md px-0.5 py-0.5 text-left"
+                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
                       >
-                        <span className="text-xs font-semibold text-foreground">Books / Notes</span>
-                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${openMobileOptionSections.books ? "rotate-180" : "rotate-0"}`} />
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-semibold text-foreground">Books / Notes</span>
+                          {selectedBooksCount > 0 && <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedBooksCount}</span>}
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.books ? "rotate-180" : "rotate-0"}`} />
                       </button>
                       {openMobileOptionSections.books && (
                       <div className="space-y-1.5 pt-1">
@@ -1513,14 +1546,17 @@ const CourseDetails = () => {
                     </div>
                   )}
                   {useViewPricing && (
-                    <div className="rounded-lg border border-border/70 bg-card/80 p-2">
+                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("views")}
-                        className="flex w-full items-center justify-between rounded-md px-0.5 py-0.5 text-left"
+                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
                       >
-                        <span className="text-xs font-semibold text-foreground">Select Views</span>
-                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${openMobileOptionSections.views ? "rotate-180" : "rotate-0"}`} />
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-semibold text-foreground">Select Views</span>
+                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedViews}x</span>
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.views ? "rotate-180" : "rotate-0"}`} />
                       </button>
                       {openMobileOptionSections.views && (
                       <select
@@ -1538,14 +1574,17 @@ const CourseDetails = () => {
                     </div>
                   )}
                   {useValidityPricing && (
-                    <div className="rounded-lg border border-border/70 bg-card/80 p-2">
+                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("validity")}
-                        className="flex w-full items-center justify-between rounded-md px-0.5 py-0.5 text-left"
+                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
                       >
-                        <span className="text-xs font-semibold text-foreground">Select Validity</span>
-                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${openMobileOptionSections.validity ? "rotate-180" : "rotate-0"}`} />
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-semibold text-foreground">Select Validity</span>
+                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedValidityDays}d</span>
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.validity ? "rotate-180" : "rotate-0"}`} />
                       </button>
                       {openMobileOptionSections.validity && (
                       <select
@@ -1563,14 +1602,17 @@ const CourseDetails = () => {
                     </div>
                   )}
                   {useAttemptPricing && attemptOptions.length > 0 && (
-                    <div className="rounded-lg border border-border/70 bg-card/80 p-2">
+                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("attempts")}
-                        className="flex w-full items-center justify-between rounded-md px-0.5 py-0.5 text-left"
+                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
                       >
-                        <span className="text-xs font-semibold text-foreground">Select Attempt</span>
-                        <ChevronDown className={`h-3.5 w-3.5 text-muted-foreground transition-transform ${openMobileOptionSections.attempts ? "rotate-180" : "rotate-0"}`} />
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-xs font-semibold text-foreground">Select Attempt</span>
+                          {selectedAttemptLabel && <span className="max-w-[90px] truncate rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedAttemptLabel}</span>}
+                        </div>
+                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.attempts ? "rotate-180" : "rotate-0"}`} />
                       </button>
                       {openMobileOptionSections.attempts && (
                       <select
