@@ -25,6 +25,7 @@ import {
   Shield,
   Award,
   Headphones,
+  HelpCircle,
   GraduationCap,
   Phone,
   MessageCircle,
@@ -185,6 +186,7 @@ const CourseDetails = () => {
     attempts: false,
   });
   const [showMobileConfigurator, setShowMobileConfigurator] = useState(false);
+  const [showCombinationsDialog, setShowCombinationsDialog] = useState(false);
   const [installPromptOpen, setInstallPromptOpen] = useState(false);
 
   const PLAY_STORE_URL = "https://play.google.com/store";
@@ -1157,7 +1159,18 @@ const CourseDetails = () => {
           <div className="hidden lg:block lg:w-[360px] shrink-0">
             <div className="sticky top-[76px] space-y-4">
               {/* Price Card */}
-              <div className="bg-card rounded-xl border border-border p-5 sm:p-6 shadow-sm">
+              <div className="relative bg-card rounded-xl border border-border p-5 sm:p-6 shadow-sm">
+                {combinationMatrixRows.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowCombinationsDialog(true)}
+                    className="absolute top-3 right-3 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-primary/30 bg-background text-primary shadow-sm transition-colors hover:bg-primary/10"
+                    aria-label="View combinations"
+                    title="View combinations"
+                  >
+                    <HelpCircle className="h-3.5 w-3.5" />
+                  </button>
+                )}
                 <h1 className="text-xl font-bold text-foreground mb-3 leading-tight">{course.title}</h1>
                 
                 {showEnrollmentCount && (
@@ -1364,30 +1377,6 @@ const CourseDetails = () => {
                       </div>
                     )}
 
-                    {combinationMatrixRows.length > 0 && (
-                      <div className="rounded-xl border border-border/70 bg-card/70 p-2.5">
-                        <p className="text-xs font-semibold text-foreground mb-2">All Combinations</p>
-                        <div className="max-h-40 overflow-auto space-y-1.5 pr-1">
-                          {combinationMatrixRows.map((row) => (
-                            <div
-                              key={row.id}
-                              className={`rounded-md border px-2 py-1.5 text-[11px] ${
-                                row.selected
-                                  ? "border-primary/70 bg-primary/15"
-                                  : "border-border bg-background/80"
-                              }`}
-                            >
-                              <div className="flex items-center justify-between gap-2">
-                                <span className="font-semibold text-foreground">
-                                  {row.viewCount > 0 ? `${row.viewCount} View` : "Any View"} | {row.validityDays > 0 ? `${row.validityDays} Days` : "Any Validity"} | {row.attemptLabel || "Any Attempt"} | {row.modeLabel || "Any Mode"}
-                                </span>
-                                <span className="font-bold text-primary">₹{Number(row.price || 0).toLocaleString()}</span>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
                   </div>
                 )}
 
@@ -1469,7 +1458,18 @@ const CourseDetails = () => {
                 </button>
               )}
               {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && showMobileConfigurator && (
-                <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5">
+                <div className="relative rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5">
+                  {combinationMatrixRows.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => setShowCombinationsDialog(true)}
+                      className="absolute top-2 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-primary/30 bg-background text-primary shadow-sm transition-colors hover:bg-primary/10"
+                      aria-label="View combinations"
+                      title="View combinations"
+                    >
+                      <HelpCircle className="h-3.5 w-3.5" />
+                    </button>
+                  )}
                   <div className="grid grid-cols-1 gap-2">
                   {useDeliveryModePricing && deliveryModes.length > 0 && (
                     <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
@@ -1629,30 +1629,6 @@ const CourseDetails = () => {
                       )}
                     </div>
                   )}
-                  {combinationMatrixRows.length > 0 && (
-                    <div className="rounded-lg border border-border/70 bg-card/80 p-2">
-                      <p className="text-xs font-semibold text-foreground mb-1">All Combinations</p>
-                      <div className="max-h-28 overflow-auto space-y-1 pr-1">
-                        {combinationMatrixRows.map((row) => (
-                          <div
-                            key={row.id}
-                            className={`rounded border px-2 py-1 text-[10px] ${
-                              row.selected
-                                ? "border-primary/70 bg-primary/15"
-                                : "border-input bg-background"
-                            }`}
-                          >
-                            <div className="flex items-center justify-between gap-1.5">
-                              <span className="truncate font-medium">
-                                {row.viewCount > 0 ? `${row.viewCount}V` : "Any"} | {row.validityDays > 0 ? `${row.validityDays}D` : "Any"} | {(row.attemptLabel || "Any")} | {row.modeLabel || "Any"}
-                              </span>
-                              <span className="font-semibold text-primary">₹{Number(row.price || 0).toLocaleString()}</span>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
                   </div>
                 </div>
               )}
@@ -1711,6 +1687,39 @@ const CourseDetails = () => {
         onToggleMode={() => setSignupMode((prev) => !prev)}
       />
 
+
+      <Dialog open={showCombinationsDialog} onOpenChange={setShowCombinationsDialog}>
+        <DialogContent className="max-w-xl rounded-2xl border border-border p-0 overflow-hidden">
+          <DialogHeader className="border-b border-border bg-card px-5 py-4">
+            <DialogTitle className="text-base font-bold text-foreground">Available Combinations</DialogTitle>
+          </DialogHeader>
+          <div className="max-h-[65vh] overflow-auto px-4 py-3 space-y-2">
+            {combinationMatrixRows.map((row) => (
+              <div
+                key={row.id}
+                className={`rounded-lg border px-3 py-2 text-xs ${
+                  row.selected
+                    ? "border-primary/70 bg-primary/10"
+                    : "border-border bg-background"
+                }`}
+              >
+                <div className="flex items-start justify-between gap-3">
+                  <span className="font-semibold text-foreground leading-relaxed">
+                    {row.viewCount > 0 ? `${row.viewCount} View` : "Any View"}
+                    {" | "}
+                    {row.validityDays > 0 ? `${row.validityDays} Days` : "Any Validity"}
+                    {" | "}
+                    {row.attemptLabel || "Any Attempt"}
+                    {" | "}
+                    {row.modeLabel || "Any Mode"}
+                  </span>
+                  <span className="shrink-0 font-bold text-primary">₹{Number(row.price || 0).toLocaleString()}</span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </DialogContent>
+      </Dialog>
       <Dialog open={installPromptOpen} onOpenChange={setInstallPromptOpen}>
         <DialogContent className="max-w-md rounded-2xl border border-slate-200">
           <DialogHeader>
