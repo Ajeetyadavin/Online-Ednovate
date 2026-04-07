@@ -713,7 +713,7 @@ const CourseDetails = () => {
     : course.originalPrice;
   const viewMultiplier = useViewPricing ? selectedViews : 1;
   const baseOnDemandSeconds = course.isCombo ? totalPackageSeconds : totalVideoSeconds;
-  const effectiveOnDemandSeconds = Math.max(0, Math.round(baseOnDemandSeconds * viewMultiplier));
+  const effectiveOnDemandSeconds = Math.max(0, Math.round(baseOnDemandSeconds));
   const effectiveOnDemandLabel = formatSecondsToHms(effectiveOnDemandSeconds);
   const effectiveValidityDays = useValidityPricing ? selectedValidityDays : backendDefaultValidityDays;
   const validityMultiplier = useValidityPricing ? effectiveValidityDays / 30 : 1;

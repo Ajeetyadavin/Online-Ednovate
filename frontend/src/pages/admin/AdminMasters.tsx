@@ -61,14 +61,28 @@ export default function AdminMasters() {
   const addViewMode = () => {
     setViewModes((prev) => [
       ...prev,
-      { id: uid("view-mode"), name: "", maxViews: 1, isLifetime: false, isActive: true, sortOrder: prev.length + 1 },
+      {
+        id: uid("view-mode"),
+        name: `View ${prev.length + 1}`,
+        maxViews: 1,
+        isLifetime: false,
+        isActive: true,
+        sortOrder: prev.length + 1,
+      },
     ]);
   };
 
   const addValidityOption = () => {
     setValidityOptions((prev) => [
       ...prev,
-      { id: uid("validity"), label: "", days: 30, isLifetime: false, isActive: true, sortOrder: prev.length + 1 },
+      {
+        id: uid("validity"),
+        label: `Validity ${prev.length + 1}`,
+        days: 30,
+        isLifetime: false,
+        isActive: true,
+        sortOrder: prev.length + 1,
+      },
     ]);
   };
 
@@ -523,11 +537,24 @@ export default function AdminMasters() {
 
     try {
       const cleanedViewModes = viewModes
-        .map((item, index) => ({ ...item, sortOrder: index + 1, name: item.name.trim() }))
+        .map((item, index) => ({
+          ...item,
+          sortOrder: index + 1,
+          name: String(item.name || `View ${index + 1}`).trim(),
+        }))
         .filter((item) => item.name);
 
       const cleanedValidityOptions = validityOptions
-        .map((item, index) => ({ ...item, sortOrder: index + 1, label: item.label.trim() }))
+        .map((item, index) => {
+          const fallbackLabel = Number(item.days) > 0
+            ? `${Math.floor(Number(item.days))} Days`
+            : `Validity ${index + 1}`;
+          return {
+            ...item,
+            sortOrder: index + 1,
+            label: String(item.label || fallbackLabel).trim(),
+          };
+        })
         .filter((item) => item.label);
 
       const cleanedDeliveryModes = deliveryModes
