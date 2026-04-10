@@ -34,6 +34,7 @@ import { useEffect, useMemo, useState } from "react";
 import { type ManagedCourse, usePlatformData } from "@/context/PlatformDataContext";
 import { decodeVideoUrl, getYouTubeEmbedUrl } from "@/lib/video-utils";
 import { getBunnyStreamVideoUrl } from "@/lib/bunnystream-api";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 import { adminApi } from "@/services/adminApi";
 
 const defaultContent = [
@@ -928,7 +929,7 @@ const CourseDetails = () => {
               <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[rgb(38,72,151)] via-[rgba(38,72,151,0.9)] to-accent/60 aspect-video mb-6 group flex items-center justify-center">
                 {(course.thumbnail || course.image) && (
                   <img
-                    src={course.thumbnail || course.image || "/placeholder.svg"}
+                    src={resolveUploadAssetUrl(course.thumbnail || course.image || "", "/placeholder.svg")}
                     alt={course.title}
                     className="absolute inset-0 w-full h-full object-cover"
                     onError={(e) => {

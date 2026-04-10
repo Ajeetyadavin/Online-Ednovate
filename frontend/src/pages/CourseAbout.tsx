@@ -32,6 +32,7 @@ import {
   type StudentOrderLine,
 } from "@/services/authApi";
 import { getCourseAccessIssueLabel, getCourseAccessIssueMessage, isCourseAccessActive } from "@/lib/studentAccess";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 
 const fmt = (value?: string) => {
   if (!value) return "—";
@@ -194,7 +195,7 @@ export default function CourseAbout() {
   const isActive = isCourseAccessActive(accessItem);
   const accessIssueLabel = getCourseAccessIssueLabel(accessItem);
   const accessIssueMessage = getCourseAccessIssueMessage(accessItem);
-  const thumbnail = course.thumbnail || course.image || "/placeholder.svg";
+  const thumbnail = resolveUploadAssetUrl(course.thumbnail || course.image || "", "/placeholder.svg");
   const expiresAt = accessItem?.expiresAt;
   const isWebPlayBlocked = course.webPlayEnabled !== true;
 

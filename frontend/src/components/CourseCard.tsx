@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import type { Course } from "@/data/courses";
 import { useCart } from "@/context/CartContext";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 import confetti from "canvas-confetti";
 
 interface CourseCardProps {
@@ -15,6 +16,7 @@ const CourseCard = ({ course }: CourseCardProps) => {
   const navigate = useNavigate();
   const inCart = isInCart(course.id);
   const [justAdded, setJustAdded] = useState(false);
+  const thumbnailUrl = resolveUploadAssetUrl(course.thumbnail || course.image || "", "/placeholder.svg");
 
   const openDetails = () => navigate(`/course/${course.id}`);
 
@@ -34,7 +36,7 @@ const CourseCard = ({ course }: CourseCardProps) => {
       {/* Thumbnail */}
       <div className="relative h-24 sm:h-40 overflow-hidden">
         <img
-          src={course.thumbnail || course.image || "/placeholder.svg"}
+          src={thumbnailUrl}
           alt={course.title}
           className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
           loading="lazy"

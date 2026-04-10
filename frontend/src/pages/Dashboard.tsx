@@ -21,6 +21,7 @@ import { usePlatformData } from "@/context/PlatformDataContext";
 import LoginModal from "@/components/LoginModal";
 import { Country, State } from "country-state-city";
 import { getCourseAccessIssue, getCourseAccessIssueLabel, getCourseAccessIssueMessage, isCourseAccessActive } from "@/lib/studentAccess";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 import { changeStudentPasswordApi, getStudentDashboardApi, updateStudentCourseVideoQualityApi, updateStudentProfileApi } from "@/services/authApi";
 import type { StudentCourseAccessSelf } from "@/services/authApi";
 
@@ -508,7 +509,7 @@ const Dashboard = () => {
                   <Card key={course.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 group border-slate-200/60">
                     <div className="relative h-36 sm:h-40 overflow-hidden">
                       <img
-                        src={course.thumbnail || course.image || "/placeholder.svg"}
+                        src={resolveUploadAssetUrl(course.thumbnail || course.image || "", "/placeholder.svg")}
                         alt={course.title}
                         className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
                       />

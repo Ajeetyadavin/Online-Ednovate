@@ -11,6 +11,7 @@ import {
   type CourseMasterViewMode,
 } from "@/services/adminApi";
 import { decodeVideoUrl } from "@/lib/video-utils";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
@@ -2092,7 +2093,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                             <label key={c.id} className={`flex cursor-pointer items-center gap-3 px-3 py-2.5 transition-colors ${sel ? "bg-primary/5" : "hover:bg-slate-50"}`}>
                               <input type="checkbox" className="accent-primary h-3.5 w-3.5 shrink-0" checked={sel}
                                 onChange={(e) => setPkgCourseIds((prev) => e.target.checked ? [...prev, c.id] : prev.filter((id) => id !== c.id))} />
-                              {c.thumbnail && <img src={c.thumbnail} alt={c.title} className="h-9 w-14 rounded-md object-cover shrink-0" />}
+                              {c.thumbnail && <img src={resolveUploadAssetUrl(c.thumbnail, c.thumbnail)} alt={c.title} className="h-9 w-14 rounded-md object-cover shrink-0" />}
                               <div className="flex-1 min-w-0">
                                 <p className={`text-xs font-semibold line-clamp-1 ${sel ? "text-primary" : "text-slate-700"}`}>{c.title}</p>
                                 <p className="text-[10px] text-slate-400 mt-0.5">₹{c.price.toLocaleString()} · {c.lectures} lec · {c.hours}h · {c.professor}</p>
@@ -2931,7 +2932,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                           <div className="p-5">
                             <div className="flex items-start gap-4">
                               {form.thumbnail ? (
-                                <img src={form.thumbnail} alt="" className="h-20 w-28 shrink-0 rounded-xl object-cover ring-2 ring-indigo-100 shadow-md" />
+                                <img src={resolveUploadAssetUrl(form.thumbnail, form.thumbnail)} alt="" className="h-20 w-28 shrink-0 rounded-xl object-cover ring-2 ring-indigo-100 shadow-md" />
                               ) : (
                                 <div className="flex h-20 w-28 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-slate-100 to-slate-50 border-2 border-dashed border-slate-200 text-slate-300">
                                   <BookOpen className="h-8 w-8" />
@@ -3780,7 +3781,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                 {/* Thumbnail */}
                 <div className="relative h-36 overflow-hidden bg-gradient-to-br from-slate-100 to-slate-200">
                   {course.thumbnail ? (
-                    <img src={course.thumbnail} alt={course.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
+                    <img src={resolveUploadAssetUrl(course.thumbnail, course.thumbnail)} alt={course.title} className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" />
                   ) : (
                     <div className="flex h-full items-center justify-center">
                       <BookOpen className="h-10 w-10 text-slate-300" />
@@ -3845,7 +3846,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                   <div className="flex min-w-0 items-center gap-3">
                     <div className="h-10 w-16 shrink-0 overflow-hidden rounded-lg bg-gradient-to-br from-slate-100 to-slate-200">
                       {course.thumbnail
-                        ? <img src={course.thumbnail} alt="" className="h-full w-full object-cover" />
+                        ? <img src={resolveUploadAssetUrl(course.thumbnail, course.thumbnail)} alt="" className="h-full w-full object-cover" />
                         : <div className="flex h-full items-center justify-center"><BookOpen className="h-4 w-4 text-slate-300" /></div>}
                     </div>
                     <div className="min-w-0">
