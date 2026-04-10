@@ -285,7 +285,61 @@ export const loginWithEmailApi = async (
 
     const session = parseStudentSessionPayload(parsed.payload);
     if (!session) {
-      return { ok: false, message: "Invalid login response." };
+      const extractTokenDeep = (input: unknown): string => {
+        const queue: unknown[] = [input];
+        const visited = new Set<unknown>();
+
+        while (queue.length > 0) {
+          const current = queue.shift();
+          if (!current || typeof current !== "object") continue;
+          if (visited.has(current)) continue;
+          visited.add(current);
+
+          const node = current as Record<string, unknown>;
+          const token = String(node.token || node.accessToken || node.sessionToken || "").trim();
+          if (token) return token;
+
+          Object.values(node).forEach((value) => {
+            if (value && typeof value === "object") queue.push(value);
+          });
+        }
+
+        return "";
+      };
+
+      const fallbackToken = extractTokenDeep(parsed.payload);
+      if (!fallbackToken) {
+        return { ok: false, message: parsed.message || "Login failed. Please try again." };
+      }
+
+      localStorage.setItem(SESSION_TOKEN_KEY, fallbackToken);
+
+      const profileResponse = await fetch("/api/auth/student/profile", {
+        headers: {
+          Authorization: `Bearer ${fallbackToken}`,
+        },
+      });
+      const profileParsed = await parseResponseMessage(profileResponse, "Profile not found.");
+      if (!profileParsed.ok) {
+        return { ok: false, message: profileParsed.message || parsed.message || "Login failed. Please try again." };
+      }
+
+      const profilePayload = profileParsed.payload as {
+        user?: Record<string, unknown>;
+        student?: Record<string, unknown>;
+        profile?: Record<string, unknown>;
+      };
+      const profileUserRaw = profilePayload.user || profilePayload.student || profilePayload.profile;
+      const profileUser = profileUserRaw ? toAuthUserProfile(profileUserRaw) : null;
+      if (!profileUser?.studentId) {
+        return { ok: false, message: parsed.message || "Login failed. Please try again." };
+      }
+
+      return {
+        ok: true,
+        message: parsed.message || "Login successful.",
+        data: profileUser,
+      };
     }
 
     localStorage.setItem(SESSION_TOKEN_KEY, session.token);
