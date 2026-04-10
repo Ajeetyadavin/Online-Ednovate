@@ -285,7 +285,7 @@ const mapSupportMessage = (row) => ({
 });
 
 const mapStudentSelf = (row) => ({
-  studentId: Number(row.id),
+  studentId: String(row.id || ""),
   name: row.name,
   email: row.email,
   mobile: row.mobile || "",
@@ -301,7 +301,7 @@ const mapStudentSelf = (row) => ({
 });
 
 const withOrderLocationFallback = async (studentRow) => {
-  const profile = mapStudentSelf(studentRow);
+  const profile = studentRow;
   const needsFallback = !profile.pin || !profile.city || !profile.state || !profile.country;
   if (!needsFallback) return profile;
 
@@ -320,7 +320,7 @@ const withOrderLocationFallback = async (studentRow) => {
       ORDER BY created_at DESC
       LIMIT 1
       `,
-      [String(studentRow.id)],
+      [String(profile.studentId)],
     );
 
     const latest = locationResult.rows[0];
@@ -349,7 +349,7 @@ const withOrderLocationFallback = async (studentRow) => {
           updated_at = NOW()
       WHERE id = $1
       `,
-      [String(studentRow.id), fallbackPin, fallbackCity, fallbackState, fallbackCountry],
+      [String(profile.studentId), fallbackPin, fallbackCity, fallbackState, fallbackCountry],
     );
 
     return nextProfile;
@@ -3045,6 +3045,9 @@ app.post("/api/auth/student/logout", async (request, response) => {
 });
 
 app.get("/api/auth/student/profile", requireStudentSession, async (request, response) => {
+  response.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, private");
+  response.setHeader("Pragma", "no-cache");
+  response.setHeader("Expires", "0");
   const student = await withOrderLocationFallback(request.studentSession.student);
   response.json({ user: student });
 });
