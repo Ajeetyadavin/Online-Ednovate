@@ -327,24 +327,53 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!loginResult.ok || !loginResult.data) {
       return loginResult;
     }
-    if (!loginResult.data.studentId) {
-      return errorResult("Invalid login response.");
+
+    const maybeConfirmation = loginResult.data as ActiveSessionConfirmationData;
+    if (maybeConfirmation.requiresConfirmation === true) {
+      return {
+        ok: false,
+        message: loginResult.message || "This account is already active on another device.",
+        data: maybeConfirmation,
+      };
+    }
+
+    const profileCandidate = loginResult.data as Partial<AuthUserProfile> & {
+      id?: string | number;
+      student_id?: string | number;
+      userId?: string | number;
+      user_id?: string | number;
+    };
+
+    const resolvedStudentId = String(
+      profileCandidate.studentId ||
+      profileCandidate.student_id ||
+      profileCandidate.userId ||
+      profileCandidate.user_id ||
+      profileCandidate.id ||
+      "",
+    ).trim();
+
+    if (!resolvedStudentId) {
+      return {
+        ok: false,
+        message: loginResult.message || "Login failed. Please try again.",
+      };
     }
 
     const baseUser: AuthUserProfile = {
-      studentId: String(loginResult.data.studentId || ""),
-      name: loginResult.data.name || "Student",
-      email: loginResult.data.email || email,
-      mobile: loginResult.data.mobile || "",
-      address: loginResult.data.address || "",
-      gender: loginResult.data.gender || "",
-      country: loginResult.data.country || "",
-      state: loginResult.data.state || "",
-      city: loginResult.data.city || "",
-      pin: loginResult.data.pin || "",
-      course: loginResult.data.course || "",
-      level: loginResult.data.level || "",
-      attemptYear: loginResult.data.attemptYear || "",
+      studentId: resolvedStudentId,
+      name: profileCandidate.name || "Student",
+      email: profileCandidate.email || email,
+      mobile: profileCandidate.mobile || "",
+      address: profileCandidate.address || "",
+      gender: profileCandidate.gender || "",
+      country: profileCandidate.country || "",
+      state: profileCandidate.state || "",
+      city: profileCandidate.city || "",
+      pin: profileCandidate.pin || "",
+      course: profileCandidate.course || "",
+      level: profileCandidate.level || "",
+      attemptYear: profileCandidate.attemptYear || "",
     };
 
     setIsProfileLoading(true);

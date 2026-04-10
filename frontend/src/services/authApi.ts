@@ -148,7 +148,18 @@ const parseStudentSessionPayload = (payload: unknown): { token: string; user: Au
   const rawUser = parsed.user || parsed.student || parsed.profile || parsed.data?.user || parsed.data?.student || parsed.data?.profile || fallbackRootUser;
   if (!token || !rawUser) return null;
 
-  const user = toAuthUserProfile(rawUser);
+  const normalizedRawUser = (() => {
+    const candidate = rawUser as Record<string, unknown>;
+    const hasIdentity = Boolean(candidate.studentId || candidate.student_id || candidate.id || candidate.email || candidate.mobile);
+    if (hasIdentity) return candidate;
+    const nested = candidate.user || candidate.student || candidate.profile;
+    if (nested && typeof nested === "object") {
+      return nested as Record<string, unknown>;
+    }
+    return candidate;
+  })();
+
+  const user = toAuthUserProfile(normalizedRawUser);
   if (!user.studentId) return null;
 
   return { token, user };
