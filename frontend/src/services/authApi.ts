@@ -216,22 +216,23 @@ export const loginWithEmailApi = async (
       body: JSON.stringify({ identifier: emailOrMobile, password, forceLogin: options?.forceLogin === true }),
     });
     const parsed = await parseResponseMessage(response, "Login failed.");
-    if (!parsed.ok) {
-      const requiresConfirmation = (parsed.payload as { requiresConfirmation?: boolean })?.requiresConfirmation === true;
-      if (requiresConfirmation) {
-        return {
-          ok: false,
-          message: parsed.message,
-          data: {
-            requiresConfirmation: true,
-            reason: String((parsed.payload as { reason?: string })?.reason || "active_session_exists"),
-            activeSession: {
-              ipAddress: (parsed.payload as { activeSession?: { ipAddress?: string | null } })?.activeSession?.ipAddress || null,
-              loginAt: (parsed.payload as { activeSession?: { loginAt?: string | null } })?.activeSession?.loginAt || null,
-            },
+    const requiresConfirmation = (parsed.payload as { requiresConfirmation?: boolean })?.requiresConfirmation === true;
+    if (requiresConfirmation) {
+      return {
+        ok: false,
+        message: parsed.message,
+        data: {
+          requiresConfirmation: true,
+          reason: String((parsed.payload as { reason?: string })?.reason || "active_session_exists"),
+          activeSession: {
+            ipAddress: (parsed.payload as { activeSession?: { ipAddress?: string | null } })?.activeSession?.ipAddress || null,
+            loginAt: (parsed.payload as { activeSession?: { loginAt?: string | null } })?.activeSession?.loginAt || null,
           },
-        };
-      }
+        },
+      };
+    }
+
+    if (!parsed.ok) {
       return { ok: false, message: parsed.message };
     }
 
