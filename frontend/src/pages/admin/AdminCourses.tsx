@@ -1355,6 +1355,17 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       : getNextCategoryCourseCode(form.category || "general", form.id);
 
     const normalizedFacultyIds = Array.from(new Set(form.facultyIds.map((item) => String(item || "").trim()).filter(Boolean)));
+    const derivedProfessorFromFaculty = normalizedFacultyIds
+      .map((id) => String(facultyNameById[id] || "").trim())
+      .filter(Boolean)
+      .join(" / ");
+    const resolvedProfessor = (() => {
+      const typed = String(form.professor || "").trim();
+      if (!typed || typed.toLowerCase() === "ednovate faculty") {
+        return derivedProfessorFromFaculty || "Ednovate Faculty";
+      }
+      return typed;
+    })();
 
     const nextCourse: ManagedCourse = {
       id: resolvedCourseId, title: form.title.trim(), category: form.category || "general",
@@ -1367,7 +1378,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       taxPercentage: Math.max(0, Number(form.taxPercentage || 0)),
       discount: derivedBaseOriginalPrice > 0 ? Math.max(0, Math.min(95, Math.round(((derivedBaseOriginalPrice - derivedBasePrice) / derivedBaseOriginalPrice) * 100))) : 0,
       image: "/placeholder.svg", thumbnail: form.thumbnail || "",
-      professor: form.professor.trim() || "Ednovate Faculty",
+      professor: resolvedProfessor,
       facultyIds: normalizedFacultyIds,
       isCombo: false, isMaterial: false, isVisible: editingId
         ? (courses.find((item) => item.id === editingId)?.isVisible ?? true)

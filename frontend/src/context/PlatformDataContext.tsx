@@ -273,6 +273,9 @@ const normalizeCourse = (course: Partial<ManagedCourse>, index: number): Managed
   image: course.image || "/placeholder.svg",
   thumbnail: String(course.thumbnail || "").trim(),
   professor: course.professor || "Ednovate Faculty",
+  facultyIds: Array.isArray(course.facultyIds)
+    ? course.facultyIds.map((item) => String(item || "").trim()).filter(Boolean)
+    : [],
   viewPricingEnabled: Boolean(course.viewPricingEnabled),
   unlimitedViewsEnabled: Boolean(course.unlimitedViewsEnabled),
   validityPricingEnabled: Boolean(course.validityPricingEnabled),
