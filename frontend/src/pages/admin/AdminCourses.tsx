@@ -88,13 +88,11 @@ const combinationTupleKey = (item: {
   validityOptionId?: string | null;
   attemptOptionId?: string | null;
   deliveryModeId?: string | null;
-  languageId?: string | null;
 }) => [
   String(item.viewModeId || "").trim() || "any",
   String(item.validityOptionId || "").trim() || "any",
   String(item.attemptOptionId || "").trim() || "any",
   String(item.deliveryModeId || "").trim() || "any",
-  String(item.languageId || "").trim() || "any",
 ].join("|");
 
 type CourseForm = {
@@ -1257,15 +1255,21 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
 
     const hasMasterCombinationPricing = selectedMasterCombinationsWithPricing.length > 0;
     if (hasMasterCombinationPricing) {
-      const seen = new Set<string>();
-      const hasDuplicate = selectedMasterCombinationsWithPricing.some((item) => {
+      const seen = new Map<string, number>();
+      const duplicateRowNumbers: number[] = [];
+      selectedMasterCombinationsWithPricing.forEach((item, index) => {
         const key = combinationTupleKey(item);
-        if (seen.has(key)) return true;
-        seen.add(key);
-        return false;
+        const existingIndex = seen.get(key);
+        if (existingIndex !== undefined) {
+          duplicateRowNumbers.push(existingIndex + 1, index + 1);
+          return;
+        }
+        seen.set(key, index);
       });
-      if (hasDuplicate) {
-        alert("Duplicate master combinations are not allowed. Please keep each combination unique.");
+
+      if (duplicateRowNumbers.length > 0) {
+        const uniqueRows = Array.from(new Set(duplicateRowNumbers)).sort((a, b) => a - b);
+        alert(`Combination already exists. Duplicate rows: ${uniqueRows.join(", ")}. Please keep each View/Validity/Attempt/Lecture Mode combination unique.`);
         return;
       }
     }
