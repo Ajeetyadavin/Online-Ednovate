@@ -16,6 +16,7 @@ export interface Course {
   image: string;
   thumbnail?: string;
   professor: string;
+  facultyIds?: string[];
   viewPricingEnabled?: boolean;
   unlimitedViewsEnabled?: boolean;
   validityPricingEnabled?: boolean;

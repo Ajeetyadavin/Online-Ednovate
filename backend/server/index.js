@@ -6422,6 +6422,26 @@ app.post("/api/courses/upsert", requireAdminPermission("courses", "edit"), async
       response.status(400).json({ message: "course.id is required" });
       return;
     }
+
+    const facultyIds = Array.from(new Set(normalizeStringList(course?.facultyIds)));
+    if (facultyIds.length > 0) {
+      const facultyResult = await pool.query(
+        "SELECT id::text AS id FROM faculty_profiles WHERE id::text = ANY($1::text[])",
+        [facultyIds],
+      );
+      const validFacultyIds = new Set(facultyResult.rows.map((row) => String(row.id || "").trim()).filter(Boolean));
+      const invalidFacultyIds = facultyIds.filter((id) => !validFacultyIds.has(id));
+      if (invalidFacultyIds.length > 0) {
+        response.status(400).json({ message: `Invalid facultyIds: ${invalidFacultyIds.join(", ")}` });
+        return;
+      }
+    }
+
+    const nextCourse = {
+      ...course,
+      facultyIds,
+    };
+
     await pool.query(
       `
       INSERT INTO courses (id, payload, updated_at)
@@ -6429,7 +6449,7 @@ app.post("/api/courses/upsert", requireAdminPermission("courses", "edit"), async
       ON CONFLICT (id)
       DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()
       `,
-      [String(course.id), JSON.stringify(course)],
+      [String(course.id), JSON.stringify(nextCourse)],
     );
     response.json({ ok: true });
   } catch (error) {

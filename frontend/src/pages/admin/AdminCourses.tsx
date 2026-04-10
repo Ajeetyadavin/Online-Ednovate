@@ -14,6 +14,8 @@ import { decodeVideoUrl } from "@/lib/video-utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Plus, Search, Edit2, Trash2, Eye, EyeOff, ArrowUpDown, Copy, BookOpen, Clock, DollarSign, Tag, Video, Package, FileText, Star, Settings, Loader2, LayoutGrid, List, Layers, CheckCircle2, X, ChevronDown, ChevronUp } from "lucide-react";
 
 /* ─── helpers (unchanged) ─────────────────────────────────────── */
@@ -97,7 +99,7 @@ const combinationTupleKey = (item: {
 type CourseForm = {
   id: string; title: string; category: string; subcategory: string; price: number; originalPrice: number; taxPercentage: number;
   subject: string; chapter: string; selectedChapters: string[];
-  language: string; professor: string; lectures: number; hours: number; thumbnail?: string;
+  language: string; professor: string; facultyIds: string[]; lectures: number; hours: number; thumbnail?: string;
   demoVideoTitle?: string; demoVideoDescription?: string; demoVideoSource?: "youtube" | "direct" | "upload";
   demoVideoUrl?: string; demoVideoThumbnailUrl?: string; demoVideoVisible?: boolean;
   webPlayEnabled?: boolean;
@@ -130,6 +132,7 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
     ? c.selectedChapters.map((item) => String(item || "").trim()).filter(Boolean)
     : (c.chapter ? [String(c.chapter)] : []),
   price: c.price, originalPrice: c.originalPrice, taxPercentage: Math.max(0, Number(c.taxPercentage || 0)), language: c.language, professor: c.professor,
+  facultyIds: Array.isArray(c.facultyIds) ? c.facultyIds.map((item) => String(item || "").trim()).filter(Boolean) : [],
   lectures: c.lectures, hours: c.hours, thumbnail: c.thumbnail,
   demoVideoTitle: c.demoVideoTitle, demoVideoDescription: c.demoVideoDescription,
   demoVideoSource: c.demoVideoSource, demoVideoUrl: decodeDemoVideoValue(c.demoVideoUrl),
@@ -196,7 +199,7 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
 const BLANK_FORM: CourseForm = {
   id: "", title: "", category: "", subcategory: "general", price: 0, originalPrice: 0, taxPercentage: 0,
   subject: "", chapter: "", selectedChapters: [],
-  language: "English", professor: "Ednovate Faculty", lectures: 0, hours: 0, thumbnail: "",
+  language: "English", professor: "Ednovate Faculty", facultyIds: [], lectures: 0, hours: 0, thumbnail: "",
   demoVideoTitle: "", demoVideoDescription: "", demoVideoSource: "youtube", demoVideoUrl: "",
   demoVideoThumbnailUrl: "", demoVideoVisible: false, webPlayEnabled: false, isSubcategoryCustom: false,
   viewPricingEnabled: false, unlimitedViewsEnabled: false, validityPricingEnabled: false,
@@ -254,7 +257,8 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
   const [showHeaderFilters, setShowHeaderFilters] = useState(false);
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [viewMode, setViewMode] = useState<"grid" | "list">("grid");
-  const [facultyOptions, setFacultyOptions] = useState<string[]>([]);
+  const [facultyOptions, setFacultyOptions] = useState<Array<{ id: string; name: string }>>([]);
+  const [facultyPickerOpen, setFacultyPickerOpen] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [form, setForm] = useState<CourseForm>(BLANK_FORM);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -655,12 +659,17 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
         const response = await fetch("/api/faculty");
         if (!response.ok) throw new Error("Failed to load faculty");
         const data = await response.json();
-        const names = Array.isArray(data?.items)
+        const items = Array.isArray(data?.items)
           ? data.items
-              .map((item: { name?: string }) => String(item?.name || "").trim())
-              .filter(Boolean)
+              .map((item: { id?: string; name?: string; isActive?: boolean }) => ({
+                id: String(item?.id || "").trim(),
+                name: String(item?.name || "").trim(),
+                isActive: item?.isActive !== false,
+              }))
+              .filter((item) => Boolean(item.id && item.name && item.isActive))
           : [];
-        setFacultyOptions(Array.from(new Set(names)));
+        const deduped = Array.from(new Map(items.map((item) => [item.id, { id: item.id, name: item.name }])).values());
+        setFacultyOptions(deduped);
       } catch {
         setFacultyOptions([]);
       }
@@ -919,13 +928,35 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       .sort((a, b) => sortOrder === "asc" ? a.title.localeCompare(b.title) : b.title.localeCompare(a.title)),
   [scopedCourses, categoriesById, searchTerm, sortOrder, courseFilter, levelFilter, subjectFilter, chapterFilter]);
 
+  const facultyNameById = useMemo(
+    () => Object.fromEntries(facultyOptions.map((item) => [item.id, item.name])),
+    [facultyOptions],
+  );
+
+  const selectedFacultyLabels = useMemo(
+    () => form.facultyIds.map((id) => facultyNameById[id] || id).filter(Boolean),
+    [form.facultyIds, facultyNameById],
+  );
+
   const suggestedFaculty = useMemo(() => {
     const query = form.professor.trim().toLowerCase();
     if (!query) return [];
     return facultyOptions
+      .map((item) => item.name)
       .filter((name) => name.toLowerCase().includes(query))
       .slice(0, 8);
   }, [facultyOptions, form.professor]);
+
+  const toggleFacultySelection = (facultyId: string) => {
+    const normalized = String(facultyId || "").trim();
+    if (!normalized) return;
+    const exists = form.facultyIds.includes(normalized);
+    sf({
+      facultyIds: exists
+        ? form.facultyIds.filter((id) => id !== normalized)
+        : [...form.facultyIds, normalized],
+    });
+  };
 
   const handleToggleVisibility = (courseId: string) => {
     toggleCourseVisibility(courseId);
@@ -1328,6 +1359,8 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       ? form.id
       : getNextCategoryCourseCode(form.category || "general", form.id);
 
+    const normalizedFacultyIds = Array.from(new Set(form.facultyIds.map((item) => String(item || "").trim()).filter(Boolean)));
+
     const nextCourse: ManagedCourse = {
       id: resolvedCourseId, title: form.title.trim(), category: form.category || "general",
       subcategory: form.subcategory || "general", language: derivedLanguage,
@@ -1340,6 +1373,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       discount: derivedBaseOriginalPrice > 0 ? Math.max(0, Math.min(95, Math.round(((derivedBaseOriginalPrice - derivedBasePrice) / derivedBaseOriginalPrice) * 100))) : 0,
       image: "/placeholder.svg", thumbnail: form.thumbnail || "",
       professor: form.professor.trim() || "Ednovate Faculty",
+      facultyIds: normalizedFacultyIds,
       isCombo: false, isMaterial: false, isVisible: editingId
         ? (courses.find((item) => item.id === editingId)?.isVisible ?? true)
         : true,
@@ -2802,6 +2836,72 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                                 <Label>Professor / Faculty</Label>
                                 <Input className={fieldCls} placeholder="Faculty Name" list="course-faculty-options2" value={form.professor} onChange={(e) => sf({ professor: e.target.value })} />
                                 <datalist id="course-faculty-options2">{suggestedFaculty.map((name) => <option key={name} value={name} />)}</datalist>
+                                <div className="space-y-1.5 pt-1">
+                                  <Label>Assign Faculties (Multiple)</Label>
+                                  <Popover open={facultyPickerOpen} onOpenChange={setFacultyPickerOpen}>
+                                    <PopoverTrigger asChild>
+                                      <button
+                                        type="button"
+                                        className="flex h-9 w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-2 text-left text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300"
+                                      >
+                                        <span className="truncate">
+                                          {selectedFacultyLabels.length > 0
+                                            ? `${selectedFacultyLabels.length} selected: ${selectedFacultyLabels.slice(0, 2).join(", ")}${selectedFacultyLabels.length > 2 ? "..." : ""}`
+                                            : "Select faculty"}
+                                        </span>
+                                        <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
+                                      </button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-[300px] p-0" align="start">
+                                      <Command>
+                                        <CommandInput placeholder="Search faculty..." className="h-9 text-xs" />
+                                        <CommandList>
+                                          <CommandEmpty>No faculty found.</CommandEmpty>
+                                          <CommandGroup>
+                                            {facultyOptions.map((item) => {
+                                              const checked = form.facultyIds.includes(item.id);
+                                              return (
+                                                <CommandItem
+                                                  key={item.id}
+                                                  value={`${item.name} ${item.id}`}
+                                                  onSelect={() => toggleFacultySelection(item.id)}
+                                                  className="text-xs"
+                                                >
+                                                  <span className={`mr-2 inline-flex h-4 w-4 items-center justify-center rounded border ${checked ? "border-indigo-600 bg-indigo-600 text-white" : "border-slate-300 bg-white text-transparent"}`}>
+                                                    <CheckCircle2 className="h-3 w-3" />
+                                                  </span>
+                                                  <span>{item.name}</span>
+                                                </CommandItem>
+                                              );
+                                            })}
+                                          </CommandGroup>
+                                        </CommandList>
+                                      </Command>
+                                    </PopoverContent>
+                                  </Popover>
+                                  {form.facultyIds.length > 0 && (
+                                    <div className="flex flex-wrap gap-1">
+                                      {form.facultyIds.map((id) => (
+                                        <button
+                                          key={id}
+                                          type="button"
+                                          onClick={() => toggleFacultySelection(id)}
+                                          className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                                        >
+                                          <span>{facultyNameById[id] || id}</span>
+                                          <X className="h-2.5 w-2.5" />
+                                        </button>
+                                      ))}
+                                      <button
+                                        type="button"
+                                        onClick={() => sf({ facultyIds: [] })}
+                                        className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200"
+                                      >
+                                        Clear
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                               <div className="space-y-1.5">
                                 <Label>Language</Label>
