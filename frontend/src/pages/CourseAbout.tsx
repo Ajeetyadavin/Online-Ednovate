@@ -94,7 +94,7 @@ function DispatchBadge({ status }: { status: string }) {
 export default function CourseAbout() {
   const { id } = useParams();
   const navigate = useNavigate();
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, logout } = useAuth();
   const { courses, getCurriculumForCourse } = usePlatformData();
   const { purchasedCourses } = useCart();
 
@@ -104,6 +104,7 @@ export default function CourseAbout() {
   const [loginOpen, setLoginOpen] = useState(false);
   const [signupMode, setSignupMode] = useState(false);
   const [installPromptOpen, setInstallPromptOpen] = useState(false);
+  const hasStudentSessionFailure = (message: string) => /session|token|authoriz|logged out|expired/i.test(message);
 
   const PLAY_STORE_URL = "https://play.google.com/store";
   const APP_STORE_URL = "https://www.apple.com/app-store/";
@@ -127,12 +128,17 @@ export default function CourseAbout() {
     const load = async () => {
       setLoading(true);
       const [a, o] = await Promise.all([getStudentCourseAccessApi(), getStudentOrdersApi(id)]);
+      if ((!a.ok && hasStudentSessionFailure(a.message || "")) || (!o.ok && hasStudentSessionFailure(o.message || ""))) {
+        void logout();
+        setLoading(false);
+        return;
+      }
       if (a.ok && a.data) setAccessItem(a.data.find((x) => x.courseId === id) || null);
       if (o.ok && o.data) setOrderLines(Array.isArray(o.data.lines) ? o.data.lines : []);
       setLoading(false);
     };
     void load();
-  }, [id, isLoggedIn]);
+  }, [id, isLoggedIn, logout]);
 
   /* ── open first chapter by default ── */
   useEffect(() => {

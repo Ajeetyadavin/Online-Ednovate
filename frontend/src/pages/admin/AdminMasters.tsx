@@ -5,6 +5,7 @@ import {
   type CourseMasterDeliveryMode,
   type CourseMasterLanguage,
   type CourseMasterAttemptOption,
+  type CourseMasterPricingCombination,
   type CourseMasterSubjectChapter,
   type CourseMasterSubject,
   type CourseMasterValidityOption,
@@ -32,6 +33,7 @@ export default function AdminMasters() {
   const [deliveryModes, setDeliveryModes] = useState<CourseMasterDeliveryMode[]>([]);
   const [languages, setLanguages] = useState<CourseMasterLanguage[]>([]);
   const [attemptOptions, setAttemptOptions] = useState<CourseMasterAttemptOption[]>([]);
+  const [pricingCombinations, setPricingCombinations] = useState<CourseMasterPricingCombination[]>([]);
   const [categories, setCategories] = useState<AdminCategoryItem[]>([]);
   const [subjects, setSubjects] = useState<CourseMasterSubject[]>([]);
 
@@ -44,6 +46,7 @@ export default function AdminMasters() {
       setDeliveryModes(response.deliveryModes || []);
       setLanguages(response.languages || []);
       setAttemptOptions(response.attemptOptions || []);
+      setPricingCombinations(response.pricingCombinations || []);
       setCategories(response.categories || []);
       setSubjects(response.subjects || []);
       setError("");
@@ -287,6 +290,13 @@ export default function AdminMasters() {
   const addCourseFromExplorer = async () => {
     const name = courseQuickName.trim();
     if (!name || isAddingCourseQuick) return;
+    const alreadyExists = categories.some(
+      (item) => !item.parentId && item.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (alreadyExists) {
+      setError("Course with this name already exists");
+      return;
+    }
     setIsAddingCourseQuick(true);
     try {
       const payload = {
@@ -317,6 +327,13 @@ export default function AdminMasters() {
   const addLevelFromExplorer = async () => {
     const name = levelQuickName.trim();
     if (!selectedCourseId || !name || isAddingLevelQuick) return;
+    const alreadyExists = categories.some(
+      (item) => item.parentId === selectedCourseId && item.name.trim().toLowerCase() === name.toLowerCase(),
+    );
+    if (alreadyExists) {
+      setError("Level with this name already exists under selected course");
+      return;
+    }
     setIsAddingLevelQuick(true);
     try {
       const payload = {
@@ -600,7 +617,7 @@ export default function AdminMasters() {
         deliveryModes: cleanedDeliveryModes,
         languages: cleanedLanguages,
         subjects: cleanedSubjects,
-        pricingCombinations: [],
+        pricingCombinations,
       });
 
       setMessage("Master configurations saved successfully");

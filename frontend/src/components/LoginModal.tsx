@@ -674,13 +674,7 @@ const LoginModal = ({
 
     setIsForgotSubmitting(true);
     try {
-      const verifyResult = await verifyOtpCode(mobile, forgotOtpCode);
-      if (!verifyResult.ok) {
-        toast.error(verifyResult.message || "OTP verification failed.");
-        return;
-      }
-
-      const resetResult = await resetPassword(mobile, forgotNewPassword);
+      const resetResult = await resetPassword(mobile, forgotNewPassword, forgotOtpCode);
       if (!resetResult.ok) {
         toast.error(resetResult.message || "Password reset failed.");
         return;

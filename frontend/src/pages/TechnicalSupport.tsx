@@ -96,7 +96,7 @@ const fileToBase64 = async (file: File): Promise<string> => {
 
 export default function TechnicalSupport() {
   const navigate = useNavigate();
-  const { isLoggedIn, user } = useAuth();
+  const { isLoggedIn, user, logout } = useAuth();
 
   const [courses, setCourses] = useState<StudentSupportCourse[]>([]);
   const [tickets, setTickets] = useState<StudentSupportTicket[]>([]);
@@ -122,6 +122,7 @@ export default function TechnicalSupport() {
   });
   const [screenshotFileName, setScreenshotFileName] = useState("");
   const [replyMessage, setReplyMessage] = useState("");
+  const hasStudentSessionFailure = (message: string) => /session|token|authoriz|logged out|expired/i.test(message);
 
   const loadSupportData = async () => {
     setIsLoading(true);
@@ -132,12 +133,20 @@ export default function TechnicalSupport() {
       ]);
 
       if (!coursesResult.ok) {
+        if (hasStudentSessionFailure(coursesResult.message || "")) {
+          void logout();
+          return;
+        }
         setError(coursesResult.message || "Failed to load courses");
       } else {
         setCourses(coursesResult.data || []);
       }
 
       if (!ticketsResult.ok) {
+        if (hasStudentSessionFailure(ticketsResult.message || "")) {
+          void logout();
+          return;
+        }
         setError(ticketsResult.message || "Failed to load tickets");
       } else {
         const allTickets = ticketsResult.data || [];
@@ -161,8 +170,8 @@ export default function TechnicalSupport() {
 
   useEffect(() => {
     if (!isLoggedIn) return;
-    loadSupportData();
-  }, [isLoggedIn]);
+    void loadSupportData();
+  }, [isLoggedIn, logout]);
 
   useEffect(() => {
     if (!form.courseId && courses[0]) {
@@ -183,6 +192,10 @@ export default function TechnicalSupport() {
 
     const details = await getStudentSupportTicketDetailsApi(ticketId);
     if (!details.ok || !details.data) {
+      if (hasStudentSessionFailure(details.message || "")) {
+        void logout();
+        return;
+      }
       setError(details.message || "Failed to open ticket");
       return;
     }
@@ -238,6 +251,10 @@ export default function TechnicalSupport() {
       });
 
       if (!createResult.ok || !createResult.data) {
+        if (hasStudentSessionFailure(createResult.message || "")) {
+          void logout();
+          return;
+        }
         setError(createResult.message || "Failed to submit support request");
         return;
       }
@@ -269,6 +286,10 @@ export default function TechnicalSupport() {
     try {
       const reply = await replyStudentSupportTicketApi(selectedTicket.id, replyMessage.trim());
       if (!reply.ok) {
+        if (hasStudentSessionFailure(reply.message || "")) {
+          void logout();
+          return;
+        }
         setError(reply.message || "Failed to send reply");
         return;
       }

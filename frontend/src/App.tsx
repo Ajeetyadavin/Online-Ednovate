@@ -23,7 +23,7 @@ import ApiTest from "./pages/ApiTest";
 import ContactUs from "./pages/ContactUs";
 import Maintenance from "./pages/Maintenance";
 import { CartProvider } from "./context/CartContext";
-import { AuthProvider } from "./context/AuthContext";
+import { AuthProvider, useAuth } from "./context/AuthContext";
 import { AdminAuthProvider } from "./context/AdminAuthContext";
 import { SiteSettingsProvider, useSiteSettings } from "./context/SiteSettingsContext";
 import { PlatformDataProvider } from "./context/PlatformDataContext";
@@ -79,12 +79,24 @@ const PublicRouteGuard = () => {
 
 const ProfessorProtectedRoute = () => {
   const { isAuthenticated, isLoading } = useProfessorAuth();
+  const location = useLocation();
   if (isLoading) {
     return <div className="min-h-screen flex items-center justify-center text-sm text-slate-500">Loading...</div>;
   }
   if (!isAuthenticated) {
-    return <Navigate to="/professor/login" replace />;
+    return <Navigate to="/professor/login" replace state={{ from: location }} />;
   }
+  return <Outlet />;
+};
+
+const StudentProtectedRoute = () => {
+  const { isLoggedIn } = useAuth();
+  const location = useLocation();
+
+  if (!isLoggedIn) {
+    return <Navigate to="/login" replace state={{ from: location }} />;
+  }
+
   return <Outlet />;
 };
 
@@ -361,14 +373,16 @@ const AppContent = () => (
                         <Route path="/checkout" element={<Checkout />} />
                         <Route path="/order-confirmation" element={<OrderConfirmation />} />
                         <Route path="/course/:id" element={<CourseDetails />} />
-                        <Route path="/learn/:id" element={<CourseLMS />} />
-                        <Route path="/dashboard" element={<Dashboard />} />
-                        <Route path="/dashboard/technical-support" element={<TechnicalSupport />} />
-                        <Route path="/dashboard/course/:id/about" element={<CourseAbout />} />
                         <Route path="/collections/:slug" element={<CourseCollection />} />
                         <Route path="/faculty/:id" element={<FacultyDetail />} />
                         <Route path="/contact-us" element={<ContactUs />} />
                         <Route path="/api-test" element={<ApiTest />} />
+                        <Route element={<StudentProtectedRoute />}>
+                          <Route path="/learn/:id" element={<CourseLMS />} />
+                          <Route path="/dashboard" element={<Dashboard />} />
+                          <Route path="/dashboard/technical-support" element={<TechnicalSupport />} />
+                          <Route path="/dashboard/course/:id/about" element={<CourseAbout />} />
+                        </Route>
                       </Route>
                       <Route path="*" element={<NotFound />} />
                     </Route>

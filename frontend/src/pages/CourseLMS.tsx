@@ -41,7 +41,7 @@ const CourseLMS = () => {
   const { id } = useParams();
   const navigate = useNavigate();
   const { courses, getCurriculumForCourse, setCurriculumForCourse } = usePlatformData();
-  const { isLoggedIn, user } = useAuth();
+  const { isLoggedIn, user, logout } = useAuth();
   const { addToCart, updateProgress } = useCart();
   const course = courses.find((c) => c.id === id);
   const [loginOpen, setLoginOpen] = useState(false);
@@ -73,6 +73,7 @@ const CourseLMS = () => {
   const [isNotesSaving, setIsNotesSaving] = useState(false);
   const [installPromptOpen, setInstallPromptOpen] = useState(false);
   const autoPromptShownForCourseRef = useRef<string | null>(null);
+  const hasStudentSessionFailure = (message: string) => /session|token|authoriz|logged out|expired/i.test(message);
 
   const PLAY_STORE_URL = "https://play.google.com/store";
   const APP_STORE_URL = "https://www.apple.com/app-store/";
@@ -109,6 +110,10 @@ const CourseLMS = () => {
       try {
         const response = await getStudentCourseAccessApi();
         if (!response.ok || !response.data) {
+          if (hasStudentSessionFailure(response.message || "")) {
+            void logout();
+            return;
+          }
           setAccessItem(null);
           setAccessMessage("Course access not found.");
           setHasCourseAccess(false);
@@ -150,8 +155,8 @@ const CourseLMS = () => {
       }
     };
 
-    loadAccess();
-  }, [isLoggedIn, course?.id]);
+    void loadAccess();
+  }, [isLoggedIn, course?.id, logout]);
 
   useEffect(() => {
     const timer = window.setInterval(() => setNowTick(Date.now()), 30000);
@@ -304,6 +309,10 @@ const CourseLMS = () => {
     if (!response.ok || !response.data) {
       watchBufferSecondsRef.current += bufferedSeconds;
       setPendingWatchSeconds(Math.floor(watchBufferSecondsRef.current));
+      if (hasStudentSessionFailure(response.message || "")) {
+        void logout();
+        return;
+      }
       if ((response.message || "").toLowerCase().includes("budget") || (response.message || "").toLowerCase().includes("expired")) {
         setHasCourseAccess(false);
         setAccessMessage(response.message || "Course access expired.");
@@ -354,6 +363,11 @@ const CourseLMS = () => {
       });
 
       if (!completeResponse.ok) {
+        if (hasStudentSessionFailure(completeResponse.message || "")) {
+          void logout();
+          completionInFlightRef.current.delete(activeLesson.id);
+          return;
+        }
         setAccessMessage(completeResponse.message || "Unable to complete lesson.");
         completionInFlightRef.current.delete(activeLesson.id);
         return;

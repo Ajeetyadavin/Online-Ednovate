@@ -1,5 +1,5 @@
 import { FormEvent, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Mail, KeyRound, Eye, EyeOff, ArrowLeft, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
 
@@ -14,12 +14,16 @@ const hasActiveSessionConflict = (value: unknown): value is { requiresConfirmati
 
 const Login = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { loginWithEmail } = useAuth();
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const redirectTo = typeof location.state === "object" && location.state && "from" in location.state
+    ? String((location.state as { from?: { pathname?: string } }).from?.pathname || "/dashboard")
+    : "/dashboard";
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -46,7 +50,7 @@ const Login = () => {
           }
 
           toast.success(forcedResult.message || "Login successful.");
-          navigate("/dashboard");
+          navigate(redirectTo, { replace: true });
           return;
         }
         toast.error(result.message || "Login failed. Please try again.");
@@ -54,7 +58,7 @@ const Login = () => {
       }
 
       toast.success(result.message || "Login successful.");
-      navigate("/dashboard");
+      navigate(redirectTo, { replace: true });
     } finally {
       setIsSubmitting(false);
     }

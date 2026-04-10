@@ -1,7 +1,9 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { professorApi, type ProfessorUser } from "@/services/professorApi";
 
 const STORAGE_KEY = "ednovate_professor_session";
+const FORCED_LOGOUT_NOTICE_KEY = "ednovate_forced_logout_notice";
 
 type ProfessorSession = {
   token: string;
@@ -48,22 +50,33 @@ export const ProfessorAuthProvider = ({ children }: { children: React.ReactNode 
   const [token, setToken] = useState("");
   const [user, setUser] = useState<ProfessorUser | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const sessionAlertShownRef = useRef(false);
+
+  const clearSession = useCallback(() => {
+    setToken("");
+    setUser(null);
+    writeStoredSession(null);
+    sessionAlertShownRef.current = false;
+  }, []);
 
   const refresh = useCallback(async () => {
     const currentToken = token || readStoredSession()?.token || "";
     if (!currentToken) {
-      setToken("");
-      setUser(null);
-      writeStoredSession(null);
+      clearSession();
       return;
     }
 
-    const status = await professorApi.sessionStatus(currentToken);
-    const nextUser = status.user;
-    setToken(currentToken);
-    setUser(nextUser);
-    writeStoredSession({ token: currentToken, user: nextUser });
-  }, [token]);
+    try {
+      const status = await professorApi.sessionStatus(currentToken);
+      const nextUser = status.user;
+      setToken(currentToken);
+      setUser(nextUser);
+      writeStoredSession({ token: currentToken, user: nextUser });
+    } catch {
+      clearSession();
+      throw new Error("Professor session expired");
+    }
+  }, [clearSession, token]);
 
   const login = useCallback(async (email: string, password: string, forceLogin = false) => {
     const result = await professorApi.login({ email, password, forceLogin });
@@ -81,10 +94,8 @@ export const ProfessorAuthProvider = ({ children }: { children: React.ReactNode 
         // ignore logout errors; clear local session anyway
       }
     }
-    setToken("");
-    setUser(null);
-    writeStoredSession(null);
-  }, [token]);
+    clearSession();
+  }, [clearSession, token]);
 
   useEffect(() => {
     const bootstrap = async () => {
@@ -101,9 +112,7 @@ export const ProfessorAuthProvider = ({ children }: { children: React.ReactNode 
         setUser(status.user);
         writeStoredSession({ token: stored.token, user: status.user });
       } catch {
-        setToken("");
-        setUser(null);
-        writeStoredSession(null);
+        clearSession();
       } finally {
         setIsLoading(false);
       }
@@ -111,6 +120,49 @@ export const ProfessorAuthProvider = ({ children }: { children: React.ReactNode 
 
     void bootstrap();
   }, []);
+
+  useEffect(() => {
+    if (!token || !user) return;
+
+    let mounted = true;
+
+    const checkSession = async () => {
+      try {
+        const status = await professorApi.sessionStatus(token);
+        if (!mounted) return;
+        setUser(status.user);
+        writeStoredSession({ token, user: status.user });
+      } catch (error) {
+        if (!mounted) return;
+        const message = error instanceof Error && error.message
+          ? error.message
+          : "Professor login detected from another place. You have been logged out.";
+        if (!sessionAlertShownRef.current) {
+          sessionAlertShownRef.current = true;
+          localStorage.setItem(
+            FORCED_LOGOUT_NOTICE_KEY,
+            JSON.stringify({
+              message,
+              at: new Date().toISOString(),
+              audience: "professor",
+            }),
+          );
+          toast.error(message);
+        }
+        clearSession();
+      }
+    };
+
+    void checkSession();
+    const interval = window.setInterval(() => {
+      void checkSession();
+    }, 4000);
+
+    return () => {
+      mounted = false;
+      window.clearInterval(interval);
+    };
+  }, [clearSession, token, user]);
 
   const value = useMemo<ProfessorAuthContextValue>(() => ({
     isAuthenticated: Boolean(token && user),

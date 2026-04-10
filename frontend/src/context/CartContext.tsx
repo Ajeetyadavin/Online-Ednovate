@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from "react";
+import { createContext, useContext, useState, useEffect, useRef, ReactNode } from "react";
 import type { Course } from "@/data/courses";
 import { useAuth } from "@/context/AuthContext";
 import {
@@ -105,10 +105,13 @@ const shouldIncludeDashboardOrderItem = (item: RemoteOrderItem) => {
   return itemType === "course" || itemType === "package";
 };
 
+const isStudentSessionFailure = (message: string) => /session|token|authoriz|logged out|expired/i.test(message);
+
 const CartContext = createContext<CartContextType | undefined>(undefined);
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
-  const { isLoggedIn } = useAuth();
+  const { isLoggedIn, logout, user } = useAuth();
+  const previousStudentIdRef = useRef("");
     const getModeLabel = (course: Course): string | undefined => {
       if (!course.deliveryModePricingEnabled) return undefined;
       const modes = Array.isArray(course.deliveryModes) ? course.deliveryModes : [];
@@ -140,6 +143,26 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [orders, setOrders] = useState<OrderRecord[]>(() => parseStored<OrderRecord[]>(ORDERS_STORAGE_KEY, []));
 
   useEffect(() => {
+    const currentStudentId = isLoggedIn ? String(user?.studentId || "") : "";
+
+    if (!currentStudentId) {
+      previousStudentIdRef.current = "";
+      setPurchasedCourses([]);
+      setOrders([]);
+      localStorage.removeItem(PURCHASED_STORAGE_KEY);
+      localStorage.removeItem(ORDERS_STORAGE_KEY);
+      return;
+    }
+
+    if (previousStudentIdRef.current && previousStudentIdRef.current !== currentStudentId) {
+      setPurchasedCourses([]);
+      setOrders([]);
+    }
+
+    previousStudentIdRef.current = currentStudentId;
+  }, [isLoggedIn, user?.studentId]);
+
+  useEffect(() => {
     if (!isLoggedIn) return;
 
     const token = localStorage.getItem(SESSION_TOKEN_KEY) || "";
@@ -153,6 +176,13 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           }),
           fetch("/api/courses"),
         ]);
+
+        if (dashboardResponse.status === 401 || dashboardResponse.status === 403) {
+          setPurchasedCourses([]);
+          setOrders([]);
+          void logout();
+          return;
+        }
 
         if (!dashboardResponse.ok || !coursesResponse.ok) {
           return;
@@ -251,8 +281,8 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       }
     };
 
-    loadRemoteDashboard();
-  }, [isLoggedIn]);
+    void loadRemoteDashboard();
+  }, [isLoggedIn, logout]);
 
   useEffect(() => {
     localStorage.setItem(CART_STORAGE_KEY, JSON.stringify(items));
@@ -436,6 +466,11 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     });
 
     if (!remote.ok) {
+      if (isStudentSessionFailure(remote.message || "")) {
+        setPurchasedCourses([]);
+        setOrders([]);
+        void logout();
+      }
       return { ok: false, message: remote.message || "Failed to save your purchase. Please retry." };
     }
 

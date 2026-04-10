@@ -55,6 +55,20 @@ interface AdminAuthContextType {
 const SESSION_KEY = "admin_session_v2";
 const FORCED_LOGOUT_NOTICE_KEY = "ednovate_forced_logout_notice";
 
+const logoutAdminApi = async (token: string) => {
+  try {
+    await fetch("/api/admin/logout", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      keepalive: true,
+    });
+  } catch {
+    // Ignore logout transport errors; local cleanup still happens.
+  }
+};
+
 const defaultModulePermission: ModulePermission = {
   read: false,
   create: false,
@@ -165,6 +179,9 @@ export const AdminAuthProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   };
 
   const logout = () => {
+    if (token) {
+      void logoutAdminApi(token);
+    }
     setAdmin(null);
     setToken(null);
     localStorage.removeItem(SESSION_KEY);

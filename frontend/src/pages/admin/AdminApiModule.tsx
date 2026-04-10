@@ -16,7 +16,8 @@ type EndpointDoc = {
 const API_ENDPOINTS: EndpointDoc[] = [
   { method: "POST", path: "/api/auth/student/signup", auth: "Public", module: "Auth", description: "Student signup" },
   { method: "POST", path: "/api/auth/student/login", auth: "Public", module: "Auth", description: "Student login" },
-  { method: "GET", path: "/api/auth/student/session-status", auth: "Public", module: "Auth", description: "Check student session" },
+  { method: "GET", path: "/api/auth/student/session-status", auth: "Student Token", module: "Auth", description: "Check student session" },
+  { method: "POST", path: "/api/auth/student/logout", auth: "Student Token", module: "Auth", description: "Logout student session" },
   { method: "GET", path: "/api/auth/student/profile", auth: "Student Token", module: "Auth", description: "Get student profile" },
   { method: "PUT", path: "/api/auth/student/profile", auth: "Student Token", module: "Auth", description: "Update student profile" },
   { method: "POST", path: "/api/auth/student/change-password", auth: "Student Token", module: "Auth", description: "Change student password" },
@@ -58,7 +59,8 @@ const API_ENDPOINTS: EndpointDoc[] = [
   { method: "POST", path: "/api/bunny/signed-playback", auth: "Public", module: "Bunny", description: "Create signed playback URL" },
 
   { method: "POST", path: "/api/admin/login", auth: "Public", module: "Admin Auth", description: "Admin login" },
-  { method: "GET", path: "/api/admin/session-status", auth: "Public", module: "Admin Auth", description: "Check admin session" },
+  { method: "GET", path: "/api/admin/session-status", auth: "Admin Token", module: "Admin Auth", description: "Check admin session" },
+  { method: "POST", path: "/api/admin/logout", auth: "Admin Token", module: "Admin Auth", description: "Logout admin session" },
 
   { method: "GET", path: "/api/admin/subadmins", auth: "Admin Token", module: "Admin Subadmins", description: "List sub admins" },
   { method: "POST", path: "/api/admin/subadmins", auth: "Admin Token", module: "Admin Subadmins", description: "Create sub admin" },

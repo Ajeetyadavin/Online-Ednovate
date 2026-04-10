@@ -1,16 +1,21 @@
-import { useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { FormEvent, useState } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
 import { useProfessorAuth } from "@/context/ProfessorAuthContext";
 
 export default function ProfessorLogin() {
   const navigate = useNavigate();
+  const location = useLocation();
   const { login } = useProfessorAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState("");
+  const redirectTo = typeof location.state === "object" && location.state && "from" in location.state
+    ? String((location.state as { from?: { pathname?: string } }).from?.pathname || "/professor/dashboard")
+    : "/professor/dashboard";
 
-  const handleSubmit = async () => {
+  const handleSubmit = async (event?: FormEvent) => {
+    event?.preventDefault();
     if (!email.trim() || !password.trim()) {
       setError("Email and password are required");
       return;
@@ -20,14 +25,14 @@ export default function ProfessorLogin() {
     setIsLoading(true);
     try {
       await login(email.trim(), password);
-      navigate("/professor/dashboard");
+      navigate(redirectTo, { replace: true });
     } catch (err) {
       const message = err instanceof Error ? err.message : "Login failed";
       if (message.toLowerCase().includes("already logged in")) {
         const force = window.confirm(`${message}\n\nLogin here anyway?`);
         if (force) {
           await login(email.trim(), password, true);
-          navigate("/professor/dashboard");
+          navigate(redirectTo, { replace: true });
           return;
         }
       }
@@ -71,8 +76,9 @@ export default function ProfessorLogin() {
           />
         </div>
 
+        <form onSubmit={(event) => void handleSubmit(event)}>
         <button
-          onClick={() => void handleSubmit()}
+          type="submit"
           disabled={isLoading}
           style={{
             width: "100%",
@@ -88,6 +94,7 @@ export default function ProfessorLogin() {
         >
           {isLoading ? "Signing in..." : "Login"}
         </button>
+        </form>
       </div>
     </div>
   );

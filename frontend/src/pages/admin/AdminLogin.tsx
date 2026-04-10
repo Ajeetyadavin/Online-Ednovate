@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { useAdminAuth } from "@/context/AdminAuthContext";
-import { Navigate } from "react-router-dom";
+import { Navigate, useLocation } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,13 +9,17 @@ import { Lock, Mail, AlertCircle, Loader2 } from "lucide-react";
 
 export default function AdminLogin() {
   const { isAuthenticated, login, isLoading } = useAdminAuth();
-  const [email, setEmail] = useState("admin@ednovate.com");
-  const [password, setPassword] = useState("admin123");
+  const location = useLocation();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const redirectTo = typeof location.state === "object" && location.state && "from" in location.state
+    ? String((location.state as { from?: { pathname?: string } }).from?.pathname || "/admin/dashboard")
+    : "/admin/dashboard";
 
   if (isAuthenticated) {
-    return <Navigate to="/admin/dashboard" replace />;
+    return <Navigate to={redirectTo} replace />;
   }
 
   const handleLogin = async (e: React.FormEvent) => {
@@ -31,11 +35,15 @@ export default function AdminLogin() {
           const forcedResult = await login(email, password, { forceLogin: true });
           if (!forcedResult.success) {
             setError(forcedResult.error || "Login failed");
+          } else {
+            setError("");
           }
         }
       } else {
         setError(result.error || "Login failed");
       }
+    } else {
+      setError("");
     }
 
     setIsSubmitting(false);
@@ -119,11 +127,6 @@ export default function AdminLogin() {
                 )}
               </Button>
 
-              <div className="pt-4 border-t border-orange-100 bg-orange-50 -mx-6 -mb-6 px-6 py-4 rounded-b-lg">
-                <p className="text-xs font-semibold text-gray-700 mb-2">Demo Credentials:</p>
-                <p className="text-xs text-gray-600">📧 Email: admin@ednovate.com</p>
-                <p className="text-xs text-gray-600">🔐 Password: admin123</p>
-              </div>
             </form>
           </CardContent>
         </Card>

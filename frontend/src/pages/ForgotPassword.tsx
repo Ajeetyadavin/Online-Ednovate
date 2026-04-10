@@ -4,7 +4,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ArrowLeft, Mail, Smartphone, CheckCircle2, Lock, KeyRound } from "lucide-react";
 import { Link } from "react-router-dom";
-import { resetPasswordByMobileApi, sendLoginOtpApi, verifyStoredOtpApi } from "@/services/authApi";
+import { resetPasswordByMobileApi, sendLoginOtpApi } from "@/services/authApi";
 
 type Method = "choose" | "email" | "phone";
 
@@ -66,13 +66,7 @@ const ForgotPassword = () => {
       return;
     }
 
-    const verify = await verifyStoredOtpApi(phone, otp);
-    if (!verify.ok) {
-      setErrorMessage(verify.message || "Invalid OTP.");
-      return;
-    }
-
-    const reset = await resetPasswordByMobileApi(phone, newPassword);
+    const reset = await resetPasswordByMobileApi(phone, newPassword, otp);
     if (!reset.ok) {
       setErrorMessage(reset.message || "Password reset failed.");
       return;

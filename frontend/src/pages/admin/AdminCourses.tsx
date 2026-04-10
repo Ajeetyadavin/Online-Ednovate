@@ -1340,7 +1340,9 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       discount: derivedBaseOriginalPrice > 0 ? Math.max(0, Math.min(95, Math.round(((derivedBaseOriginalPrice - derivedBasePrice) / derivedBaseOriginalPrice) * 100))) : 0,
       image: "/placeholder.svg", thumbnail: form.thumbnail || "",
       professor: form.professor.trim() || "Ednovate Faculty",
-      isCombo: false, isMaterial: false, isVisible: true,
+      isCombo: false, isMaterial: false, isVisible: editingId
+        ? (courses.find((item) => item.id === editingId)?.isVisible ?? true)
+        : true,
       demoVideoTitle: form.demoVideoTitle?.trim() || "", demoVideoDescription: form.demoVideoDescription?.trim() || "",
       demoVideoSource: form.demoVideoSource || "youtube", demoVideoUrl: form.demoVideoUrl?.trim() || "",
       demoVideoThumbnailUrl: form.demoVideoThumbnailUrl?.trim() || "", demoVideoVisible: form.demoVideoVisible || false,
@@ -1754,7 +1756,9 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
         price: derivedPrice, originalPrice, taxPercentage: Math.max(0, pkgTaxPct),
         discount, image: "/placeholder.svg", thumbnail: pkgThumbnail.trim(),
         lectures: pkgTotalLectures, hours: pkgTotalHours,
-        isCombo: true, isMaterial: false, isVisible: true,
+        isCombo: true, isMaterial: false, isVisible: pkgEditingId
+          ? (courses.find((item) => item.id === pkgEditingId)?.isVisible ?? true)
+          : true,
         packageCourseIds: pkgCourseIds,
         viewPricingEnabled: normalizedPkgCombos.length > 0 ? true : pkgViewPricingEnabled,
         unlimitedViewsEnabled: normalizedPkgCombos.length > 0

@@ -171,13 +171,6 @@ const CourseDetails = () => {
   const [selectedAttemptOptionId, setSelectedAttemptOptionId] = useState<string>("");
   const [selectedDeliveryModeIds, setSelectedDeliveryModeIds] = useState<string[]>([]);
   const [selectedBookAddonIds, setSelectedBookAddonIds] = useState<string[]>([]);
-  const [openDesktopOptionSections, setOpenDesktopOptionSections] = useState({
-    modes: true,
-    books: false,
-    views: false,
-    validity: false,
-    attempts: false,
-  });
   const [openMobileOptionSections, setOpenMobileOptionSections] = useState({
     modes: false,
     books: false,
@@ -185,19 +178,36 @@ const CourseDetails = () => {
     validity: false,
     attempts: false,
   });
-  const [showMobileConfigurator, setShowMobileConfigurator] = useState(false);
+  const [showMobileConfigurator, setShowMobileConfigurator] = useState(true);
   const [showCombinationsDialog, setShowCombinationsDialog] = useState(false);
   const [installPromptOpen, setInstallPromptOpen] = useState(false);
 
   const PLAY_STORE_URL = "https://play.google.com/store";
   const APP_STORE_URL = "https://www.apple.com/app-store/";
 
-  const toggleDesktopOptionSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
-    setOpenDesktopOptionSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  const toggleMobileOptionSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
+    setOpenMobileOptionSections((prev) => {
+      const nextOpen = !prev[section];
+      return {
+        modes: false,
+        books: false,
+        views: false,
+        validity: false,
+        attempts: false,
+        [section]: nextOpen,
+      };
+    });
   };
 
-  const toggleMobileOptionSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
-    setOpenMobileOptionSections((prev) => ({ ...prev, [section]: !prev[section] }));
+  const openMobileConfiguratorSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
+    setShowMobileConfigurator(true);
+    setOpenMobileOptionSections({
+      modes: section === "modes",
+      books: section === "books",
+      views: section === "views",
+      validity: section === "validity",
+      attempts: section === "attempts",
+    });
   };
 
   const matchedCourse = courses.find((c) => c.id === id);
@@ -737,12 +747,6 @@ const CourseDetails = () => {
     () => attemptOptions.find((item) => item.id === selectedAttemptOptionId) || null,
     [attemptOptions, selectedAttemptOptionId],
   );
-  const selectedModeLabel = useMemo(
-    () => deliveryModes.find((mode) => mode.id === selectedDeliveryModeIds[0])?.label || "",
-    [deliveryModes, selectedDeliveryModeIds],
-  );
-  const selectedAttemptLabel = selectedAttempt?.label || "";
-  const selectedBooksCount = selectedBookAddonIds.length;
   const validityLabel = useAttemptPricing && selectedAttempt?.endDate
     ? formatAttemptEndDateLabel(selectedAttempt.endDate)
     : (course.unlimitedViewsEnabled === true
@@ -1197,53 +1201,26 @@ const CourseDetails = () => {
                   <div className="mb-4 space-y-2.5">
                     {useDeliveryModePricing && deliveryModes.length > 0 && (
                       <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => toggleDesktopOptionSection("modes")}
-                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground">Select Mode</span>
-                            {selectedModeLabel && (
-                              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedModeLabel}</span>
-                            )}
-                          </div>
-                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.modes ? "rotate-180" : "rotate-0"}`} />
-                        </button>
-                        {openDesktopOptionSections.modes && (
-                          <div className="pt-1">
-                            <select
-                              value={selectedDeliveryModeIds[0] || deliveryModes[0]?.id || ""}
-                              onChange={(e) => setSelectedDeliveryModeIds(e.target.value ? [e.target.value] : [])}
-                              className="h-10 w-full rounded-xl border border-border/80 bg-background px-3 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
-                            >
-                              {deliveryModes.map((mode) => (
-                                <option key={mode.id} value={mode.id}>
-                                  {mode.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
+                        <div className="px-2 py-1.5 text-sm font-semibold text-foreground">Select Mode</div>
+                        <div className="pt-1">
+                          <select
+                            value={selectedDeliveryModeIds[0] || deliveryModes[0]?.id || ""}
+                            onChange={(e) => setSelectedDeliveryModeIds(e.target.value ? [e.target.value] : [])}
+                            className="h-10 w-full rounded-xl border border-border/80 bg-background px-3 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
+                          >
+                            {deliveryModes.map((mode) => (
+                              <option key={mode.id} value={mode.id}>
+                                {mode.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     )}
 
                     {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
                       <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => toggleDesktopOptionSection("books")}
-                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground">Books / Notes</span>
-                            {selectedBooksCount > 0 && (
-                              <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedBooksCount} selected</span>
-                            )}
-                          </div>
-                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.books ? "rotate-180" : "rotate-0"}`} />
-                        </button>
-                        {openDesktopOptionSections.books && (
+                        <div className="px-2 py-1.5 text-sm font-semibold text-foreground">Books / Notes</div>
                         <div className="space-y-2">
                           {enabledBookAddons.map((addon) => {
                             const checked = selectedBookAddonIds.includes(addon.id);
@@ -1275,105 +1252,66 @@ const CourseDetails = () => {
                             );
                           })}
                         </div>
-                        )}
                       </div>
                     )}
 
                     {useViewPricing && (
                       <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => toggleDesktopOptionSection("views")}
-                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground">Select Views</span>
-                            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedViews}x</span>
-                          </div>
-                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.views ? "rotate-180" : "rotate-0"}`} />
-                        </button>
-                        {openDesktopOptionSections.views && (
-                          <div className="relative pt-1">
-                            <Eye className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
-                            <select
-                              value={selectedViews}
-                              onChange={(e) => setSelectedViews(Number(e.target.value) || 1)}
-                              className="h-10 w-full rounded-xl border border-border/80 bg-background pl-9 pr-2 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
-                            >
-                              {viewOptions.map((option) => (
-                                <option key={option} value={option}>
-                                  {option} view{option > 1 ? "s" : ""}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
+                        <div className="px-2 py-1.5 text-sm font-semibold text-foreground">Select Views</div>
+                        <div className="relative pt-1">
+                          <Eye className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                          <select
+                            value={selectedViews}
+                            onChange={(e) => setSelectedViews(Number(e.target.value) || 1)}
+                            className="h-10 w-full rounded-xl border border-border/80 bg-background pl-9 pr-2 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
+                          >
+                            {viewOptions.map((option) => (
+                              <option key={option} value={option}>
+                                {option} view{option > 1 ? "s" : ""}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     )}
 
                     {useValidityPricing && (
                       <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => toggleDesktopOptionSection("validity")}
-                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground">Select Validity</span>
-                            <span className="rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedValidityDays} days</span>
-                          </div>
-                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.validity ? "rotate-180" : "rotate-0"}`} />
-                        </button>
-                        {openDesktopOptionSections.validity && (
-                          <div className="relative pt-1">
-                            <Clock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
-                            <select
-                              value={selectedValidityDays}
-                              onChange={(e) => setSelectedValidityDays(Number(e.target.value) || backendDefaultValidityDays)}
-                              className="h-10 w-full rounded-xl border border-border/80 bg-background pl-9 pr-2 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
-                            >
-                              {validityOptionsDays.map((days) => (
-                                <option key={days} value={days}>
-                                  {days} days
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
+                        <div className="px-2 py-1.5 text-sm font-semibold text-foreground">Select Validity</div>
+                        <div className="relative pt-1">
+                          <Clock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                          <select
+                            value={selectedValidityDays}
+                            onChange={(e) => setSelectedValidityDays(Number(e.target.value) || backendDefaultValidityDays)}
+                            className="h-10 w-full rounded-xl border border-border/80 bg-background pl-9 pr-2 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
+                          >
+                            {validityOptionsDays.map((days) => (
+                              <option key={days} value={days}>
+                                {days} days
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     )}
 
                     {useAttemptPricing && attemptOptions.length > 0 && (
                       <div className="rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-3 shadow-sm">
-                        <button
-                          type="button"
-                          onClick={() => toggleDesktopOptionSection("attempts")}
-                          className="flex w-full items-center justify-between rounded-xl px-2 py-1.5 text-left"
-                        >
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-semibold text-foreground">Select Attempt</span>
-                            {selectedAttemptLabel && (
-                              <span className="max-w-[140px] truncate rounded-full bg-primary/15 px-2 py-0.5 text-[11px] font-semibold text-primary">{selectedAttemptLabel}</span>
-                            )}
-                          </div>
-                          <ChevronDown className={`h-4 w-4 text-primary/80 transition-transform ${openDesktopOptionSections.attempts ? "rotate-180" : "rotate-0"}`} />
-                        </button>
-                        {openDesktopOptionSections.attempts && (
-                          <div className="relative pt-1">
-                            <Clock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
-                            <select
-                              value={selectedAttemptOptionId}
-                              onChange={(e) => setSelectedAttemptOptionId(e.target.value)}
-                              className="h-10 w-full rounded-xl border border-border/80 bg-background pl-9 pr-2 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
-                            >
-                              {attemptOptions.map((option) => (
-                                <option key={option.id} value={option.id}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                          </div>
-                        )}
+                        <div className="px-2 py-1.5 text-sm font-semibold text-foreground">Select Attempt</div>
+                        <div className="relative pt-1">
+                          <Clock className="pointer-events-none absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-primary" />
+                          <select
+                            value={selectedAttemptOptionId}
+                            onChange={(e) => setSelectedAttemptOptionId(e.target.value)}
+                            className="h-10 w-full rounded-xl border border-border/80 bg-background pl-9 pr-2 text-sm font-semibold shadow-inner focus:border-primary/40 focus:outline-none"
+                          >
+                            {attemptOptions.map((option) => (
+                              <option key={option.id} value={option.id}>
+                                {option.label}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
                       </div>
                     )}
 
@@ -1476,26 +1414,22 @@ const CourseDetails = () => {
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("modes")}
-                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
+                        className="block w-full rounded-md px-1 py-0.5 text-left"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-foreground">Select Mode</span>
-                          {selectedModeLabel && <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedModeLabel}</span>}
-                        </div>
-                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.modes ? "rotate-180" : "rotate-0"}`} />
+                        <span className="text-xs font-semibold text-foreground">Select Mode</span>
                       </button>
                       {openMobileOptionSections.modes && (
-                      <select
-                        value={selectedDeliveryModeIds[0] || deliveryModes[0]?.id || ""}
-                        onChange={(e) => setSelectedDeliveryModeIds(e.target.value ? [e.target.value] : [])}
-                        className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                      >
-                        {deliveryModes.map((mode) => (
-                          <option key={mode.id} value={mode.id}>
-                            {mode.label}
-                          </option>
-                        ))}
-                      </select>
+                        <select
+                          value={selectedDeliveryModeIds[0] || deliveryModes[0]?.id || ""}
+                          onChange={(e) => setSelectedDeliveryModeIds(e.target.value ? [e.target.value] : [])}
+                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
+                        >
+                          {deliveryModes.map((mode) => (
+                            <option key={mode.id} value={mode.id}>
+                              {mode.label}
+                            </option>
+                          ))}
+                        </select>
                       )}
                     </div>
                   )}
@@ -1504,44 +1438,40 @@ const CourseDetails = () => {
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("books")}
-                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
+                        className="block w-full rounded-md px-1 py-0.5 text-left"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-foreground">Books / Notes</span>
-                          {selectedBooksCount > 0 && <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedBooksCount}</span>}
-                        </div>
-                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.books ? "rotate-180" : "rotate-0"}`} />
+                        <span className="text-xs font-semibold text-foreground">Books / Notes</span>
                       </button>
                       {openMobileOptionSections.books && (
-                      <div className="space-y-1.5 pt-1">
-                        {enabledBookAddons.map((addon) => {
-                          const checked = selectedBookAddonIds.includes(addon.id);
-                          return (
-                          <label
-                            key={addon.id}
-                            className={`flex items-center justify-between gap-1.5 rounded border px-2 py-1.5 text-xs ${
-                              checked ? "border-primary/40 bg-primary/10" : "border-input bg-background"
-                            }`}
-                          >
-                            <span className="flex items-center gap-1.5 truncate font-medium">
-                              <input
-                                type="checkbox"
-                                checked={checked}
-                                onChange={(e) => {
-                                  setSelectedBookAddonIds((prev) => {
-                                    if (e.target.checked) return Array.from(new Set([...prev, addon.id]));
-                                    return prev.filter((id) => id !== addon.id);
-                                  });
-                                }}
-                                className="w-3.5 h-3.5 accent-primary"
-                              />
-                              <span className="truncate">{addon.label}</span>
-                            </span>
-                            <span className="font-semibold text-primary">+₹{Number(addon.price || 0).toLocaleString()}</span>
-                          </label>
-                          );
-                        })}
-                      </div>
+                        <div className="space-y-1.5 pt-1">
+                          {enabledBookAddons.map((addon) => {
+                            const checked = selectedBookAddonIds.includes(addon.id);
+                            return (
+                            <label
+                              key={addon.id}
+                              className={`flex items-center justify-between gap-1.5 rounded border px-2 py-1.5 text-xs ${
+                                checked ? "border-primary/40 bg-primary/10" : "border-input bg-background"
+                              }`}
+                            >
+                              <span className="flex items-center gap-1.5 truncate font-medium">
+                                <input
+                                  type="checkbox"
+                                  checked={checked}
+                                  onChange={(e) => {
+                                    setSelectedBookAddonIds((prev) => {
+                                      if (e.target.checked) return Array.from(new Set([...prev, addon.id]));
+                                      return prev.filter((id) => id !== addon.id);
+                                    });
+                                  }}
+                                  className="w-3.5 h-3.5 accent-primary"
+                                />
+                                <span className="truncate">{addon.label}</span>
+                              </span>
+                              <span className="font-semibold text-primary">+₹{Number(addon.price || 0).toLocaleString()}</span>
+                            </label>
+                            );
+                          })}
+                        </div>
                       )}
                     </div>
                   )}
@@ -1550,26 +1480,22 @@ const CourseDetails = () => {
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("views")}
-                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
+                        className="block w-full rounded-md px-1 py-0.5 text-left"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-foreground">Select Views</span>
-                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedViews}x</span>
-                        </div>
-                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.views ? "rotate-180" : "rotate-0"}`} />
+                        <span className="text-xs font-semibold text-foreground">Select Views</span>
                       </button>
                       {openMobileOptionSections.views && (
-                      <select
-                        value={selectedViews}
-                        onChange={(e) => setSelectedViews(Number(e.target.value) || 1)}
-                        className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                      >
-                        {viewOptions.map((option) => (
-                          <option key={option} value={option}>
-                            {option} view{option > 1 ? "s" : ""}
-                          </option>
-                        ))}
-                      </select>
+                        <select
+                          value={selectedViews}
+                          onChange={(e) => setSelectedViews(Number(e.target.value) || 1)}
+                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
+                        >
+                          {viewOptions.map((option) => (
+                            <option key={option} value={option}>
+                              {option} view{option > 1 ? "s" : ""}
+                            </option>
+                          ))}
+                        </select>
                       )}
                     </div>
                   )}
@@ -1578,26 +1504,22 @@ const CourseDetails = () => {
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("validity")}
-                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
+                        className="block w-full rounded-md px-1 py-0.5 text-left"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-foreground">Select Validity</span>
-                          <span className="rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedValidityDays}d</span>
-                        </div>
-                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.validity ? "rotate-180" : "rotate-0"}`} />
+                        <span className="text-xs font-semibold text-foreground">Select Validity</span>
                       </button>
                       {openMobileOptionSections.validity && (
-                      <select
-                        value={selectedValidityDays}
-                        onChange={(e) => setSelectedValidityDays(Number(e.target.value) || backendDefaultValidityDays)}
-                        className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                      >
-                        {validityOptionsDays.map((days) => (
-                          <option key={days} value={days}>
-                            {days} days
-                          </option>
-                        ))}
-                      </select>
+                        <select
+                          value={selectedValidityDays}
+                          onChange={(e) => setSelectedValidityDays(Number(e.target.value) || backendDefaultValidityDays)}
+                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
+                        >
+                          {validityOptionsDays.map((days) => (
+                            <option key={days} value={days}>
+                              {days} days
+                            </option>
+                          ))}
+                        </select>
                       )}
                     </div>
                   )}
@@ -1606,30 +1528,75 @@ const CourseDetails = () => {
                       <button
                         type="button"
                         onClick={() => toggleMobileOptionSection("attempts")}
-                        className="flex w-full items-center justify-between rounded-md px-1 py-0.5 text-left"
+                        className="block w-full rounded-md px-1 py-0.5 text-left"
                       >
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-xs font-semibold text-foreground">Select Attempt</span>
-                          {selectedAttemptLabel && <span className="max-w-[90px] truncate rounded-full bg-primary/15 px-1.5 py-0.5 text-[10px] font-semibold text-primary">{selectedAttemptLabel}</span>}
-                        </div>
-                        <ChevronDown className={`h-3.5 w-3.5 text-primary/80 transition-transform ${openMobileOptionSections.attempts ? "rotate-180" : "rotate-0"}`} />
+                        <span className="text-xs font-semibold text-foreground">Select Attempt</span>
                       </button>
                       {openMobileOptionSections.attempts && (
-                      <select
-                        value={selectedAttemptOptionId}
-                        onChange={(e) => setSelectedAttemptOptionId(e.target.value)}
-                        className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                      >
-                        {attemptOptions.map((option) => (
-                          <option key={option.id} value={option.id}>
-                            {option.label}
-                          </option>
-                        ))}
-                      </select>
+                        <select
+                          value={selectedAttemptOptionId}
+                          onChange={(e) => setSelectedAttemptOptionId(e.target.value)}
+                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
+                        >
+                          {attemptOptions.map((option) => (
+                            <option key={option.id} value={option.id}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
                       )}
                     </div>
                   )}
                   </div>
+                </div>
+              )}
+              {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && (
+                <div className="flex flex-wrap gap-1.5 pb-0.5">
+                  {useDeliveryModePricing && deliveryModes.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => openMobileConfiguratorSection("modes")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
+                    >
+                      Select Mode
+                    </button>
+                  )}
+                  {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => openMobileConfiguratorSection("books")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
+                    >
+                      Books / Notes
+                    </button>
+                  )}
+                  {useViewPricing && (
+                    <button
+                      type="button"
+                      onClick={() => openMobileConfiguratorSection("views")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
+                    >
+                      Select Views
+                    </button>
+                  )}
+                  {useValidityPricing && (
+                    <button
+                      type="button"
+                      onClick={() => openMobileConfiguratorSection("validity")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
+                    >
+                      Select Validity
+                    </button>
+                  )}
+                  {useAttemptPricing && attemptOptions.length > 0 && (
+                    <button
+                      type="button"
+                      onClick={() => openMobileConfiguratorSection("attempts")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
+                    >
+                      Select Attempt
+                    </button>
+                  )}
                 </div>
               )}
               <div className="flex items-center gap-3">

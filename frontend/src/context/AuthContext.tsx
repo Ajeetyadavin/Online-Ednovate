@@ -5,6 +5,7 @@ import {
   type ActiveSessionConfirmationData,
   fetchProfileApi,
   loginWithEmailApi,
+  logoutStudentApi,
   resetPasswordByMobileApi,
   sendLoginOtpApi,
   signupApi,
@@ -25,7 +26,7 @@ interface AuthContextType {
   logout: () => void;
   sendOtp: (mobileNo: string) => Promise<AuthActionResult>;
   verifyOtpCode: (mobileNo: string, otp: string) => Promise<AuthActionResult>;
-  resetPassword: (mobileNo: string, password: string) => Promise<AuthActionResult>;
+  resetPassword: (mobileNo: string, password: string, otp: string) => Promise<AuthActionResult>;
   verifyOtpAndLogin: (mobileNo: string, otp: string) => Promise<AuthActionResult>;
   loginWithEmail: (
     email: string,
@@ -159,6 +160,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   };
 
   const logout = () => {
+    void logoutStudentApi();
     setIsLoggedIn(false);
     setUserName("");
     setUser(null);
@@ -262,8 +264,8 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     return verifyStoredOtpApi(mobileNo, otp);
   };
 
-  const resetPassword = async (mobileNo: string, password: string): Promise<AuthActionResult> => {
-    return resetPasswordByMobileApi(mobileNo, password);
+  const resetPassword = async (mobileNo: string, password: string, otp: string): Promise<AuthActionResult> => {
+    return resetPasswordByMobileApi(mobileNo, password, otp);
   };
 
   const verifyOtpAndLogin = async (mobileNo: string, otp: string): Promise<AuthActionResult> => {
@@ -325,6 +327,9 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     if (!loginResult.ok || !loginResult.data) {
       return loginResult;
     }
+    if (!loginResult.data.studentId) {
+      return errorResult("Invalid login response.");
+    }
 
     const baseUser: AuthUserProfile = {
       studentId: String(loginResult.data.studentId || ""),
@@ -359,8 +364,6 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
             profile.user_id ||
             profile.id ||
             baseUser.studentId ||
-            loginResult.data.email ||
-            email ||
             "",
         );
         applyUser({
@@ -379,10 +382,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
           attemptYear: profile.attemptYear || baseUser.attemptYear,
         });
       } else {
-        applyUser({
-          ...baseUser,
-          studentId: String(baseUser.studentId || loginResult.data.email || email || ""),
-        });
+        applyUser(baseUser);
       }
     } finally {
       setIsProfileLoading(false);

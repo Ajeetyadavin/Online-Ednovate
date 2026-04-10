@@ -77,6 +77,58 @@ const normalizeEmail = (email: string) => email.trim().toLowerCase();
 const normalizeMobile = (mobile: string) => mobile.replace(/\D/g, "").slice(-10);
 const sanitizeText = (value: string | undefined) => value?.trim() || "";
 
+const toStudentId = (rawUser: Record<string, unknown> | null | undefined) => {
+  if (!rawUser) return "";
+  return String(
+    (rawUser.studentId as string | number | undefined) ||
+      (rawUser.student_id as string | number | undefined) ||
+      (rawUser.id as string | number | undefined) ||
+      "",
+  );
+};
+
+const toAuthUserProfile = (rawUser: Record<string, unknown>): AuthUserProfile => ({
+  studentId: toStudentId(rawUser),
+  name: String((rawUser.name as string | undefined) || ""),
+  email: String((rawUser.email as string | undefined) || ""),
+  mobile: String((rawUser.mobile as string | undefined) || ""),
+  address: String((rawUser.address as string | undefined) || ""),
+  gender: String((rawUser.gender as string | undefined) || ""),
+  country: String((rawUser.country as string | undefined) || ""),
+  state: String((rawUser.state as string | undefined) || ""),
+  city: String((rawUser.city as string | undefined) || ""),
+  pin: String(
+    (rawUser.pin as string | number | undefined) ||
+      (rawUser.pincode as string | number | undefined) ||
+      (rawUser.postalCode as string | number | undefined) ||
+      (rawUser.postal_code as string | number | undefined) ||
+      "",
+  ),
+  course: String((rawUser.course as string | undefined) || ""),
+  level: String((rawUser.level as string | undefined) || (rawUser.education_level as string | undefined) || ""),
+  attemptYear: String((rawUser.attemptYear as string | undefined) || (rawUser.attempt_year as string | undefined) || ""),
+});
+
+const parseStudentSessionPayload = (payload: unknown): { token: string; user: AuthUserProfile } | null => {
+  if (!payload || typeof payload !== "object") return null;
+
+  const parsed = payload as {
+    token?: unknown;
+    user?: Record<string, unknown>;
+    student?: Record<string, unknown>;
+    profile?: Record<string, unknown>;
+  };
+
+  const token = String(parsed.token || "");
+  const rawUser = parsed.user || parsed.student || parsed.profile;
+  if (!token || !rawUser) return null;
+
+  const user = toAuthUserProfile(rawUser);
+  if (!user.studentId) return null;
+
+  return { token, user };
+};
+
 const getToken = () => localStorage.getItem(SESSION_TOKEN_KEY) || "";
 
 const authHeaders = (includeJson = true): Record<string, string> => {
@@ -158,110 +210,16 @@ export const loginWithEmailApi = async (
       return { ok: false, message: parsed.message };
     }
 
-    const payload = parsed.payload as {
-      token?: string;
-      jwt?: string;
-      accessToken?: string;
-      access_token?: string;
-      sessionToken?: string;
-      session_token?: string;
-      user?: Record<string, unknown>;
-      student?: Record<string, unknown>;
-      profile?: Record<string, unknown>;
-      data?: {
-        token?: string;
-        jwt?: string;
-        accessToken?: string;
-        access_token?: string;
-        sessionToken?: string;
-        session_token?: string;
-        user?: Record<string, unknown>;
-        student?: Record<string, unknown>;
-        profile?: Record<string, unknown>;
-      };
-      payload?: {
-        token?: string;
-        jwt?: string;
-        accessToken?: string;
-        access_token?: string;
-        sessionToken?: string;
-        session_token?: string;
-        user?: Record<string, unknown>;
-        student?: Record<string, unknown>;
-        profile?: Record<string, unknown>;
-      };
-    };
-
-    const token = String(
-      payload.token ||
-        payload.jwt ||
-        payload.accessToken ||
-        payload.access_token ||
-        payload.sessionToken ||
-        payload.session_token ||
-        payload.data?.token ||
-        payload.data?.jwt ||
-        payload.data?.accessToken ||
-        payload.data?.access_token ||
-        payload.data?.sessionToken ||
-        payload.data?.session_token ||
-        payload.payload?.token ||
-        payload.payload?.jwt ||
-        payload.payload?.accessToken ||
-        payload.payload?.access_token ||
-        payload.payload?.sessionToken ||
-        payload.payload?.session_token ||
-        "",
-    );
-    const rawUser =
-      payload.user ||
-      payload.student ||
-      payload.profile ||
-      payload.data?.user ||
-      payload.data?.student ||
-      payload.data?.profile ||
-      payload.payload?.user ||
-      payload.payload?.student ||
-      payload.payload?.profile;
-    const studentId = String(
-      (rawUser?.studentId as string | number | undefined) ||
-        (rawUser?.student_id as string | number | undefined) ||
-        (rawUser?.userId as string | number | undefined) ||
-        (rawUser?.user_id as string | number | undefined) ||
-        (rawUser?.id as string | number | undefined) ||
-        "",
-    );
-    if (!token) {
+    const session = parseStudentSessionPayload(parsed.payload);
+    if (!session) {
       return { ok: false, message: "Invalid login response." };
     }
 
-    const user: AuthUserProfile = {
-      studentId,
-      name: String((rawUser?.name as string | undefined) || ""),
-      email: String((rawUser?.email as string | undefined) || ""),
-      mobile: String((rawUser?.mobile as string | undefined) || ""),
-      address: String((rawUser?.address as string | undefined) || ""),
-      gender: String((rawUser?.gender as string | undefined) || ""),
-      country: String((rawUser?.country as string | undefined) || ""),
-      state: String((rawUser?.state as string | undefined) || ""),
-      city: String((rawUser?.city as string | undefined) || ""),
-      pin: String(
-        (rawUser?.pin as string | number | undefined) ||
-          (rawUser?.pincode as string | number | undefined) ||
-          (rawUser?.postalCode as string | number | undefined) ||
-          (rawUser?.postal_code as string | number | undefined) ||
-          "",
-      ),
-      course: String((rawUser?.course as string | undefined) || ""),
-      level: String((rawUser?.level as string | undefined) || (rawUser?.education_level as string | undefined) || ""),
-      attemptYear: String((rawUser?.attemptYear as string | undefined) || (rawUser?.attempt_year as string | undefined) || ""),
-    };
-
-    localStorage.setItem(SESSION_TOKEN_KEY, token);
+    localStorage.setItem(SESSION_TOKEN_KEY, session.token);
     return {
       ok: true,
       message: parsed.message || "Login successful.",
-      data: user,
+      data: session.user,
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Login failed." };
@@ -312,26 +270,17 @@ export const verifyLoginOtpApi = async (
       return { ok: false, message: parsed.message };
     }
 
-    const payload = parsed.payload as {
-      token?: string;
-      user?: { studentId?: string; student_id?: string; id?: string | number };
-    };
-
-    const token = String(payload.token || "");
-    const studentId = String(payload.user?.studentId || payload.user?.student_id || payload.user?.id || "");
-
-    if (token) {
-      localStorage.setItem(SESSION_TOKEN_KEY, token);
-    }
-
-    if (!studentId) {
+    const session = parseStudentSessionPayload(parsed.payload);
+    if (!session) {
       return { ok: false, message: "Invalid OTP login response." };
     }
+
+    localStorage.setItem(SESSION_TOKEN_KEY, session.token);
 
     return {
       ok: true,
       message: parsed.message || "OTP verified successfully.",
-      data: { studentId },
+      data: { studentId: session.user.studentId },
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Invalid OTP." };
@@ -368,10 +317,16 @@ export const verifyStoredOtpApi = async (
 export const resetPasswordByMobileApi = async (
   mobileNo: string,
   password: string,
+  otp: string,
 ): Promise<AuthActionResult> => {
   const mobile = normalizeMobile(mobileNo || "");
   if (mobile.length !== 10) {
     return { ok: false, message: "Invalid mobile number." };
+  }
+
+  const sanitizedOtp = String(otp || "").trim();
+  if (!/^\d{4,8}$/.test(sanitizedOtp)) {
+    return { ok: false, message: "Valid OTP is required." };
   }
 
   if (!password || password.trim().length < 6) {
@@ -382,7 +337,7 @@ export const resetPasswordByMobileApi = async (
     const response = await fetch("/api/auth/student/reset-password-mobile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mobile, password: password.trim() }),
+      body: JSON.stringify({ mobile, password: password.trim(), otp: sanitizedOtp }),
     });
     const parsed = await parseResponseMessage(response, "Password reset failed.");
     return {
@@ -395,6 +350,21 @@ export const resetPasswordByMobileApi = async (
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Password reset failed." };
+  }
+};
+
+export const logoutStudentApi = async (): Promise<void> => {
+  const token = getToken();
+  if (!token) return;
+
+  try {
+    await fetch("/api/auth/student/logout", {
+      method: "POST",
+      headers: authHeaders(false),
+      keepalive: true,
+    });
+  } catch {
+    // Ignore logout transport errors; local cleanup still happens.
   }
 };
 

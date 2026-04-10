@@ -2811,14 +2811,48 @@ app.post("/api/auth/student/otp/verify", async (request, response) => {
 app.post("/api/auth/student/reset-password-mobile", async (request, response) => {
   try {
     const mobile = normalizeMobile10(request.body?.mobile || request.body?.mobileNo || "");
+    const otp = String(request.body?.otp || "").trim();
     const password = String(request.body?.password || "").trim();
 
     if (!/^\d{10}$/.test(mobile)) {
       response.status(400).json({ message: "Invalid mobile number." });
       return;
     }
+    if (!/^\d{4,8}$/.test(otp)) {
+      response.status(400).json({ message: "Valid OTP is required." });
+      return;
+    }
     if (password.length < 6) {
       response.status(400).json({ message: "Password must be at least 6 characters." });
+      return;
+    }
+
+    const otpResult = await pool.query(
+      `
+      SELECT id, otp_hash, expires_at
+      FROM student_otp_codes
+      WHERE mobile = $1
+        AND purpose = 'auth'
+        AND consumed_at IS NULL
+      ORDER BY created_at DESC
+      LIMIT 1
+      `,
+      [mobile],
+    );
+
+    const otpRow = otpResult.rows[0];
+    if (!otpRow) {
+      response.status(400).json({ message: "OTP not found. Please resend OTP." });
+      return;
+    }
+
+    if (new Date(otpRow.expires_at).getTime() < Date.now()) {
+      response.status(400).json({ message: "OTP expired. Please resend OTP." });
+      return;
+    }
+
+    if (String(otpRow.otp_hash || "") !== hashPassword(otp)) {
+      response.status(400).json({ message: "Invalid OTP." });
       return;
     }
 
@@ -2829,7 +2863,18 @@ app.post("/api/auth/student/reset-password-mobile", async (request, response) =>
       return;
     }
 
+    await pool.query("UPDATE student_otp_codes SET consumed_at = NOW() WHERE id = $1", [otpRow.id]);
     await pool.query("UPDATE students SET password = $2, updated_at = NOW() WHERE id = $1", [student.id, hashPassword(password)]);
+    await pool.query(
+      `
+      UPDATE auth_sessions
+      SET is_active = FALSE,
+          revoked_reason = 'password_reset',
+          revoked_at = NOW()
+      WHERE student_id = $1 AND is_active = TRUE
+      `,
+      [student.id],
+    );
 
     void sendAutomatedMail({
       eventKey: "password_reset",
@@ -2892,6 +2937,37 @@ app.get("/api/admin/session-status", async (request, response) => {
   }
 });
 
+app.post("/api/admin/logout", async (request, response) => {
+  try {
+    const token = extractAdminToken(request);
+    if (!token) {
+      response.status(401).json({ message: "Missing admin token" });
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE admin_sessions
+      SET is_active = FALSE,
+          revoked_reason = 'manual_logout',
+          revoked_at = NOW()
+      WHERE token = $1 AND is_active = TRUE
+      RETURNING admin_id
+      `,
+      [token],
+    );
+
+    if (result.rowCount === 0) {
+      response.status(404).json({ message: "Admin session not found" });
+      return;
+    }
+
+    response.json({ ok: true, message: "Logged out successfully" });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to logout admin" });
+  }
+});
+
 app.get("/api/auth/student/session-status", async (request, response) => {
   try {
     const token = extractAdminToken(request);
@@ -2934,6 +3010,37 @@ app.get("/api/auth/student/session-status", async (request, response) => {
     response.json({ active: true });
   } catch (error) {
     response.status(500).json({ active: false, message: error instanceof Error ? error.message : "Failed to validate student session" });
+  }
+});
+
+app.post("/api/auth/student/logout", async (request, response) => {
+  try {
+    const token = extractAdminToken(request);
+    if (!token) {
+      response.status(401).json({ message: "Missing student token" });
+      return;
+    }
+
+    const result = await pool.query(
+      `
+      UPDATE auth_sessions
+      SET is_active = FALSE,
+          revoked_reason = 'manual_logout',
+          revoked_at = NOW()
+      WHERE token = $1 AND is_active = TRUE
+      RETURNING student_id
+      `,
+      [token],
+    );
+
+    if (result.rowCount === 0) {
+      response.status(404).json({ message: "Student session not found" });
+      return;
+    }
+
+    response.json({ ok: true, message: "Logged out successfully" });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to logout student" });
   }
 });
 
@@ -2997,6 +3104,16 @@ app.post("/api/auth/student/change-password", requireStudentSession, async (requ
     }
 
     await pool.query("UPDATE students SET password = $2, updated_at = NOW() WHERE id = $1", [studentId, hashPassword(newPassword)]);
+    await pool.query(
+      `
+      UPDATE auth_sessions
+      SET is_active = FALSE,
+          revoked_reason = 'password_changed',
+          revoked_at = NOW()
+      WHERE student_id = $1 AND token <> $2 AND is_active = TRUE
+      `,
+      [studentId, request.studentSession.token],
+    );
 
     void sendAutomatedMail({
       eventKey: "password_reset",
@@ -4732,14 +4849,27 @@ app.post("/api/admin/quick-login", requireAdminPermission("users", "edit"), asyn
     }
 
     const token = randomUUID();
+    const ipAddress = getIpAddress(request);
+    const userAgent = String(request.headers["user-agent"] || "");
     await pool.query(
-      "INSERT INTO auth_sessions (token, student_id, role, expires_at) VALUES ($1,$2,'student',$3)",
-      [token, studentId, new Date(Date.now() + 1000 * 60 * 60 * 24)],
+      `
+      UPDATE auth_sessions
+      SET is_active = FALSE,
+          revoked_reason = 'logged_in_elsewhere',
+          revoked_at = NOW(),
+          replaced_by_token = $2
+      WHERE student_id = $1 AND is_active = TRUE
+      `,
+      [studentId, token],
+    );
+    await pool.query(
+      "INSERT INTO auth_sessions (token, student_id, role, expires_at, is_active, login_ip, login_user_agent) VALUES ($1,$2,'student',$3,TRUE,$4,$5)",
+      [token, studentId, new Date(Date.now() + 1000 * 60 * 60 * 24), ipAddress, userAgent],
     );
 
     await pool.query(
       "INSERT INTO student_login_logs (student_id, ip_address, user_agent, source) VALUES ($1,$2,$3,$4)",
-      [studentId, getIpAddress(request), String(request.headers["user-agent"] || ""), "admin_quick_login"],
+      [studentId, ipAddress, userAgent, "admin_quick_login"],
     );
 
     const row = result.rows[0];

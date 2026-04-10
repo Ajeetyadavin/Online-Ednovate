@@ -141,7 +141,7 @@ const AdminLayout = () => {
     );
   }
 
-  if (!isAuthenticated) return <Navigate to="/admin/login" replace />;
+  if (!isAuthenticated) return <Navigate to="/admin/login" replace state={{ from: location }} />;
 
   const allowedNavItems = navItems.filter((item) => item.enabled && item.visible && hasPermission(item.moduleKey, "read"));
   const homepageParentItem = allowedNavItems.find((item) => item.id === "homepage") || null;
