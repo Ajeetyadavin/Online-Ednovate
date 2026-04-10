@@ -2601,7 +2601,7 @@ app.post("/api/auth/student/login", async (request, response) => {
     );
     const activeSession = activeSessionResult.rows[0];
     if (activeSession && !forceLogin) {
-      response.status(409).json({
+      response.json({
         message: buildActiveSessionPrompt(activeSession.login_ip, activeSession.created_at),
         requiresConfirmation: true,
         reason: "active_session_exists",
