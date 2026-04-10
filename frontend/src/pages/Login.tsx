@@ -1,4 +1,5 @@
 import { FormEvent, useState } from "react";
+import { flushSync } from "react-dom";
 import { Link, useLocation, useNavigate } from "react-router-dom";
 import { Mail, KeyRound, Eye, EyeOff, ArrowLeft, ShieldCheck } from "lucide-react";
 import { toast } from "sonner";
@@ -7,15 +8,30 @@ import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { fetchProfileApi, SESSION_TOKEN_KEY, type AuthUserProfile } from "@/services/authApi";
 
 const hasActiveSessionConflict = (value: unknown): value is { requiresConfirmation: true } => {
   return Boolean(value) && typeof value === "object" && (value as { requiresConfirmation?: boolean }).requiresConfirmation === true;
 };
 
+const resolveProfileStudentId = (profile: Partial<AuthUserProfile> & {
+  id?: string | number;
+  student_id?: string | number;
+  userId?: string | number;
+  user_id?: string | number;
+}) => String(
+  profile.studentId ||
+  profile.student_id ||
+  profile.userId ||
+  profile.user_id ||
+  profile.id ||
+  "",
+).trim();
+
 const Login = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { loginWithEmail } = useAuth();
+  const { loginAsUser, loginWithEmail } = useAuth();
 
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
@@ -24,6 +40,46 @@ const Login = () => {
   const redirectTo = typeof location.state === "object" && location.state && "from" in location.state
     ? String((location.state as { from?: { pathname?: string } }).from?.pathname || "/dashboard")
     : "/dashboard";
+
+  const hydrateLoginFromSession = async () => {
+    const token = localStorage.getItem(SESSION_TOKEN_KEY) || "";
+    if (!token) {
+      return false;
+    }
+
+    const profileResult = await fetchProfileApi();
+    if (!profileResult.ok || !profileResult.data) {
+      return false;
+    }
+
+    const profile = profileResult.data as Partial<AuthUserProfile> & {
+      id?: string | number;
+      student_id?: string | number;
+      userId?: string | number;
+      user_id?: string | number;
+    };
+    const studentId = resolveProfileStudentId(profile);
+    if (!studentId) {
+      return false;
+    }
+
+    loginAsUser({
+      studentId,
+      name: profile.name || "Student",
+      email: profile.email || "",
+      mobile: profile.mobile || "",
+      address: profile.address || "",
+      gender: profile.gender || "",
+      country: profile.country || "",
+      state: profile.state || "",
+      city: profile.city || "",
+      pin: profile.pin || "",
+      course: profile.course || "",
+      level: profile.level || "",
+      attemptYear: profile.attemptYear || "",
+    });
+    return true;
+  };
 
   const handleSubmit = async (event: FormEvent) => {
     event.preventDefault();
@@ -45,19 +101,36 @@ const Login = () => {
 
           const forcedResult = await loginWithEmail(identifier, password, { forceLogin: true });
           if (!forcedResult.ok) {
+            const recovered = await hydrateLoginFromSession();
+            if (recovered) {
+              toast.success(forcedResult.message || "Login successful.");
+              navigate(redirectTo, { replace: true });
+              return;
+            }
+
             toast.error(forcedResult.message || "Login failed. Please try again.");
             return;
           }
 
           toast.success(forcedResult.message || "Login successful.");
+          flushSync(() => {});
           navigate(redirectTo, { replace: true });
           return;
         }
+
+        const recovered = await hydrateLoginFromSession();
+        if (recovered) {
+          toast.success(result.message || "Login successful.");
+          navigate(redirectTo, { replace: true });
+          return;
+        }
+
         toast.error(result.message || "Login failed. Please try again.");
         return;
       }
 
       toast.success(result.message || "Login successful.");
+      flushSync(() => {});
       navigate(redirectTo, { replace: true });
     } finally {
       setIsSubmitting(false);

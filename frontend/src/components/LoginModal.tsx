@@ -1,10 +1,12 @@
 import { useEffect, useMemo, useState } from "react";
+import { flushSync } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { Check, ChevronLeft, Eye, EyeOff, KeyRound, Mail, Phone, ShieldCheck, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { Country, State } from "country-state-city";
 
 import { useAuth } from "@/context/AuthContext";
+import { fetchProfileApi, SESSION_TOKEN_KEY, type AuthUserProfile } from "@/services/authApi";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -111,7 +113,7 @@ const LoginModal = ({
   redirectPath = "/dashboard",
 }: LoginModalProps) => {
   const navigate = useNavigate();
-  const { loginWithEmail, sendOtp, signup, verifyOtpAndLogin, verifyOtpCode, resetPassword } = useAuth();
+  const { loginWithEmail, loginAsUser, sendOtp, signup, verifyOtpAndLogin, verifyOtpCode, resetPassword } = useAuth();
 
   const [loginIdentifier, setLoginIdentifier] = useState("");
   const [loginPassword, setLoginPassword] = useState("");
@@ -317,6 +319,41 @@ const LoginModal = ({
     onToggleMode();
   };
 
+  const hydrateLoginFromSession = async (): Promise<boolean> => {
+    const token = localStorage.getItem(SESSION_TOKEN_KEY) || "";
+    if (!token) return false;
+    const profileResult = await fetchProfileApi();
+    if (!profileResult.ok || !profileResult.data) return false;
+    const profile = profileResult.data as Partial<AuthUserProfile> & {
+      id?: string | number;
+      student_id?: string | number;
+      userId?: string | number;
+      user_id?: string | number;
+    };
+    const studentId = String(
+      profile.studentId || profile.student_id || profile.userId || profile.user_id || profile.id || ""
+    ).trim();
+    if (!studentId) return false;
+    flushSync(() => {
+      loginAsUser({
+        studentId,
+        name: profile.name || "Student",
+        email: profile.email || "",
+        mobile: profile.mobile || "",
+        address: profile.address || "",
+        gender: profile.gender || "",
+        country: profile.country || "",
+        state: profile.state || "",
+        city: profile.city || "",
+        pin: profile.pin || "",
+        course: profile.course || "",
+        level: profile.level || "",
+        attemptYear: profile.attemptYear || "",
+      });
+    });
+    return true;
+  };
+
   const completeLogin = () => {
     onOpenChange(false);
     resetFormState();
@@ -413,11 +450,24 @@ const LoginModal = ({
 
           const forcedResponse = await loginWithEmail(loginIdentifier, loginPassword, { forceLogin: true });
           if (!forcedResponse.ok) {
+            const recovered = await hydrateLoginFromSession();
+            if (recovered) {
+              toast.success(forcedResponse.message || "Login successful.");
+              completeLogin();
+              return;
+            }
             toast.error(forcedResponse.message || "Login failed.");
             return;
           }
 
+          flushSync(() => {});
           toast.success(forcedResponse.message || "Login successful.");
+          completeLogin();
+          return;
+        }
+        const recovered = await hydrateLoginFromSession();
+        if (recovered) {
+          toast.success(response.message || "Login successful.");
           completeLogin();
           return;
         }
@@ -425,6 +475,7 @@ const LoginModal = ({
         return;
       }
 
+      flushSync(() => {});
       toast.success(response.message || "Login successful.");
       completeLogin();
     } finally {
