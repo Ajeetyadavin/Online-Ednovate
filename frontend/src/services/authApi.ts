@@ -112,6 +112,36 @@ const toAuthUserProfile = (rawUser: Record<string, unknown>): AuthUserProfile =>
 const parseStudentSessionPayload = (payload: unknown): { token: string; user: AuthUserProfile } | null => {
   if (!payload || typeof payload !== "object") return null;
 
+  const findDeepSession = (input: unknown): { token: string; rawUser: Record<string, unknown> } | null => {
+    const queue: unknown[] = [input];
+    const visited = new Set<unknown>();
+
+    while (queue.length > 0) {
+      const current = queue.shift();
+      if (!current || typeof current !== "object") continue;
+      if (visited.has(current)) continue;
+      visited.add(current);
+
+      const node = current as Record<string, unknown>;
+      const token = String(node.token || node.accessToken || node.sessionToken || "").trim();
+      const directUser = node.user || node.student || node.profile;
+      if (token && directUser && typeof directUser === "object") {
+        return { token, rawUser: directUser as Record<string, unknown> };
+      }
+
+      const hasIdentity = Boolean(node.studentId || node.student_id || node.id || node.email || node.mobile);
+      if (token && hasIdentity) {
+        return { token, rawUser: node };
+      }
+
+      Object.values(node).forEach((value) => {
+        if (value && typeof value === "object") queue.push(value);
+      });
+    }
+
+    return null;
+  };
+
   const parsed = payload as {
     token?: unknown;
     accessToken?: unknown;
@@ -160,7 +190,13 @@ const parseStudentSessionPayload = (payload: unknown): { token: string; user: Au
   })();
 
   const user = toAuthUserProfile(normalizedRawUser);
-  if (!user.studentId) return null;
+  if (!user.studentId) {
+    const deep = findDeepSession(payload);
+    if (!deep) return null;
+    const deepUser = toAuthUserProfile(deep.rawUser);
+    if (!deepUser.studentId) return null;
+    return { token: deep.token, user: deepUser };
+  }
 
   return { token, user };
 };
