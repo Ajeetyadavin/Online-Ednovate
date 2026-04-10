@@ -114,13 +114,38 @@ const parseStudentSessionPayload = (payload: unknown): { token: string; user: Au
 
   const parsed = payload as {
     token?: unknown;
+    accessToken?: unknown;
+    sessionToken?: unknown;
     user?: Record<string, unknown>;
     student?: Record<string, unknown>;
     profile?: Record<string, unknown>;
+    data?: {
+      token?: unknown;
+      accessToken?: unknown;
+      sessionToken?: unknown;
+      user?: Record<string, unknown>;
+      student?: Record<string, unknown>;
+      profile?: Record<string, unknown>;
+    };
   };
 
-  const token = String(parsed.token || "");
-  const rawUser = parsed.user || parsed.student || parsed.profile;
+  const token = String(
+    parsed.token ||
+      parsed.accessToken ||
+      parsed.sessionToken ||
+      parsed.data?.token ||
+      parsed.data?.accessToken ||
+      parsed.data?.sessionToken ||
+      "",
+  );
+
+  const fallbackRootUser = (() => {
+    const candidate = parsed as Record<string, unknown>;
+    const hasIdentity = Boolean(candidate.studentId || candidate.student_id || candidate.id || candidate.email || candidate.mobile);
+    return hasIdentity ? candidate : null;
+  })();
+
+  const rawUser = parsed.user || parsed.student || parsed.profile || parsed.data?.user || parsed.data?.student || parsed.data?.profile || fallbackRootUser;
   if (!token || !rawUser) return null;
 
   const user = toAuthUserProfile(rawUser);
