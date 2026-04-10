@@ -933,11 +933,6 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
     [facultyOptions],
   );
 
-  const selectedFacultyLabels = useMemo(
-    () => form.facultyIds.map((id) => facultyNameById[id] || id).filter(Boolean),
-    [form.facultyIds, facultyNameById],
-  );
-
   const suggestedFaculty = useMemo(() => {
     const query = form.professor.trim().toLowerCase();
     if (!query) return [];
@@ -2834,21 +2829,15 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                             <div className="grid grid-cols-2 gap-4">
                               <div className="space-y-1.5">
                                 <Label>Professor / Faculty</Label>
-                                <Input className={fieldCls} placeholder="Faculty Name" list="course-faculty-options2" value={form.professor} onChange={(e) => sf({ professor: e.target.value })} />
-                                <datalist id="course-faculty-options2">{suggestedFaculty.map((name) => <option key={name} value={name} />)}</datalist>
-                                <div className="space-y-1.5 pt-1">
-                                  <Label>Assign Faculties (Multiple)</Label>
+                                <div className="flex items-center gap-2">
+                                  <Input className={fieldCls} placeholder="Faculty Name" list="course-faculty-options2" value={form.professor} onChange={(e) => sf({ professor: e.target.value })} />
                                   <Popover open={facultyPickerOpen} onOpenChange={setFacultyPickerOpen}>
                                     <PopoverTrigger asChild>
                                       <button
                                         type="button"
-                                        className="flex h-9 w-full items-center justify-between rounded-lg border border-slate-200 bg-white px-2 text-left text-xs font-medium text-slate-700 shadow-sm transition hover:border-slate-300"
+                                        className="inline-flex h-8 shrink-0 items-center gap-1 rounded-lg border border-slate-200 bg-white px-2.5 text-[11px] font-semibold text-slate-700 shadow-sm transition hover:border-slate-300"
                                       >
-                                        <span className="truncate">
-                                          {selectedFacultyLabels.length > 0
-                                            ? `${selectedFacultyLabels.length} selected: ${selectedFacultyLabels.slice(0, 2).join(", ")}${selectedFacultyLabels.length > 2 ? "..." : ""}`
-                                            : "Select faculty"}
-                                        </span>
+                                        <span>Select</span>
                                         <ChevronDown className="h-3.5 w-3.5 text-slate-400" />
                                       </button>
                                     </PopoverTrigger>
@@ -2879,29 +2868,33 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                                       </Command>
                                     </PopoverContent>
                                   </Popover>
-                                  {form.facultyIds.length > 0 && (
-                                    <div className="flex flex-wrap gap-1">
-                                      {form.facultyIds.map((id) => (
-                                        <button
-                                          key={id}
-                                          type="button"
-                                          onClick={() => toggleFacultySelection(id)}
-                                          className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100"
-                                        >
-                                          <span>{facultyNameById[id] || id}</span>
-                                          <X className="h-2.5 w-2.5" />
-                                        </button>
-                                      ))}
-                                      <button
-                                        type="button"
-                                        onClick={() => sf({ facultyIds: [] })}
-                                        className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200"
-                                      >
-                                        Clear
-                                      </button>
-                                    </div>
-                                  )}
                                 </div>
+                                <datalist id="course-faculty-options2">{suggestedFaculty.map((name) => <option key={name} value={name} />)}</datalist>
+                                {form.facultyIds.length > 0 && (
+                                  <div className="flex flex-wrap gap-1 pt-1">
+                                    {form.facultyIds.map((id) => (
+                                      <button
+                                        key={id}
+                                        type="button"
+                                        onClick={() => toggleFacultySelection(id)}
+                                        className="inline-flex items-center gap-1 rounded-full bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700 hover:bg-indigo-100"
+                                      >
+                                        <span>{facultyNameById[id] || id}</span>
+                                        <X className="h-2.5 w-2.5" />
+                                      </button>
+                                    ))}
+                                    <button
+                                      type="button"
+                                      onClick={() => sf({ facultyIds: [] })}
+                                      className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600 hover:bg-slate-200"
+                                    >
+                                      Clear
+                                    </button>
+                                  </div>
+                                )}
+                                {form.facultyIds.length === 0 && (
+                                  <p className="pt-1 text-[10px] text-slate-400">No faculty selected</p>
+                                )}
                               </div>
                               <div className="space-y-1.5">
                                 <Label>Language</Label>
