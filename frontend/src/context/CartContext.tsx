@@ -42,11 +42,13 @@ type RemoteOrderItem = {
   courseId?: string;
   title?: string;
   itemType?: string;
+  purchaseRefId?: string;
 };
 
 interface PurchasedCourse extends Course {
   purchasedOn: string;
   progress: number;
+  purchaseRefId?: string;
 }
 
 interface CartContextType {
@@ -208,43 +210,46 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         }, {});
 
         const serverOrders = Array.isArray(dashboardPayload?.orders) ? dashboardPayload.orders : [];
-        const purchasedById = new Map<string, PurchasedCourse>();
-
-        accessItems
-          .filter((item) => item?.courseId)
-          .forEach((item) => {
-            const base = courses.find((course) => course.id === item.courseId);
-            if (!base) return;
-
-            purchasedById.set(item.courseId, {
-              ...base,
-              purchasedOn: item.purchaseDate || new Date(item.createdAt || Date.now()).toLocaleDateString("en-IN"),
-              progress: Math.max(progressFromViews(item), progressByCourse[item.courseId] || 0),
-            });
-          });
-
-        serverOrders
-          .flatMap((order: { date?: string; items?: RemoteOrderItem[] }) => {
+        const nextPurchasedFromOrders = serverOrders
+          .flatMap((order: { id?: string; date?: string; items?: RemoteOrderItem[] }) => {
             const orderDate = String(order?.date || "").trim();
+            const orderId = String(order?.id || "").trim();
             const items = Array.isArray(order?.items) ? order.items : [];
-            return items.map((item) => ({ item, orderDate }));
+            return items.map((item, index) => ({ item, orderDate, orderId, index }));
           })
           .filter(({ item }) => shouldIncludeDashboardOrderItem(item))
-          .forEach(({ item, orderDate }) => {
+          .map(({ item, orderDate, orderId, index }) => {
             const courseId = String(item.courseId || "").trim();
-            if (!courseId || purchasedById.has(courseId)) return;
+            if (!courseId) return null;
 
             const base = courses.find((course) => course.id === courseId);
-            if (!base) return;
+            if (!base) return null;
 
-            purchasedById.set(courseId, {
+            const purchaseRefId = String(item.purchaseRefId || `${orderId || "order"}:${index}:${courseId}`).trim();
+            return {
               ...base,
               purchasedOn: orderDate || new Date().toLocaleDateString("en-IN"),
               progress: progressByCourse[courseId] || 0,
-            });
-          });
+              purchaseRefId,
+            } satisfies PurchasedCourse;
+          })
+          .filter(Boolean) as PurchasedCourse[];
 
-        const nextPurchased = Array.from(purchasedById.values());
+        const nextPurchased = nextPurchasedFromOrders.length > 0
+          ? nextPurchasedFromOrders
+          : accessItems
+              .filter((item) => item?.courseId)
+              .map((item, index) => {
+                const base = courses.find((course) => course.id === item.courseId);
+                if (!base) return null;
+                return {
+                  ...base,
+                  purchasedOn: item.purchaseDate || new Date(item.createdAt || Date.now()).toLocaleDateString("en-IN"),
+                  progress: Math.max(progressFromViews(item), progressByCourse[item.courseId] || 0),
+                  purchaseRefId: `access:${item.id || index}:${item.courseId}`,
+                } satisfies PurchasedCourse;
+              })
+              .filter(Boolean) as PurchasedCourse[];
 
         setPurchasedCourses(nextPurchased);
 
@@ -474,34 +479,40 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       return { ok: false, message: remote.message || "Failed to save your purchase. Please retry." };
     }
 
-    // Add to purchased courses (skip duplicates), expanding bundles
+    // Add to purchased courses (keep duplicates), expanding bundles
     setPurchasedCourses((prev) => {
       const allItems: PurchasedCourse[] = [];
 
       for (const item of currentCart) {
+        const purchaseRefPrefix = `${orderData.orderId || `local-${Date.now()}`}:${item.id}`;
         // Add the package/course itself for normal courses only.
-        if (!item.isCombo && !prev.some((p) => p.id === item.id)) {
-          allItems.push({ ...item, purchasedOn: now, progress: 0 });
+        if (!item.isCombo) {
+          allItems.push({
+            ...item,
+            purchasedOn: now,
+            progress: 0,
+            purchaseRefId: `${purchaseRefPrefix}:self:${prev.length + allItems.length}`,
+          });
         }
         // If this is a combo package, also add each bundled course with same settings
         if (item.isCombo && Array.isArray(item.packageCourseIds)) {
-          for (const bundledId of item.packageCourseIds) {
-            if (!prev.some((p) => p.id === bundledId) && !allItems.some((a) => a.id === bundledId)) {
-              const catalogCourse = courseCatalogById.get(bundledId);
-              // Create a minimal stub inheriting package validity/views settings
-              const stub: PurchasedCourse = {
-                ...(catalogCourse || item),
-                id: bundledId,
-                isCombo: false,
-                packageCourseIds: [],
-                selectedViews: item.selectedViews,
-                selectedValidityDays: item.selectedValidityDays,
-                unlimitedViewsEnabled: item.unlimitedViewsEnabled,
-                purchasedOn: now,
-                progress: 0,
-              } as PurchasedCourse;
-              allItems.push(stub);
-            }
+          const uniqueBundledIds = Array.from(new Set(item.packageCourseIds.map((id) => String(id || "").trim()).filter(Boolean)));
+          for (const bundledId of uniqueBundledIds) {
+            const catalogCourse = courseCatalogById.get(bundledId);
+            // Create a minimal stub inheriting package validity/views settings
+            const stub: PurchasedCourse = {
+              ...(catalogCourse || item),
+              id: bundledId,
+              isCombo: false,
+              packageCourseIds: [],
+              selectedViews: item.selectedViews,
+              selectedValidityDays: item.selectedValidityDays,
+              unlimitedViewsEnabled: item.unlimitedViewsEnabled,
+              purchasedOn: now,
+              progress: 0,
+              purchaseRefId: `${purchaseRefPrefix}:bundle:${bundledId}:${prev.length + allItems.length}`,
+            } as PurchasedCourse;
+            allItems.push(stub);
           }
         }
       }

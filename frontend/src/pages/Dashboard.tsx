@@ -498,7 +498,7 @@ const Dashboard = () => {
               </Card>
             ) : (
               <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                {dashboardCourses.map(course => (
+                {dashboardCourses.map((course, index) => (
                   (() => {
                     const accessEntry = courseAccessById[course.id];
                     const accessIssue = accessEntry ? getCourseAccessIssue(accessEntry) : null;
@@ -506,7 +506,7 @@ const Dashboard = () => {
                     const accessIssueMessage = accessEntry ? getCourseAccessIssueMessage(accessEntry) : "Access active.";
                     const isAccessAllowed = accessEntry ? isCourseAccessActive(accessEntry) : true;
                     return (
-                  <Card key={course.id} className="overflow-hidden hover:shadow-xl transition-all duration-300 group border-slate-200/60">
+                  <Card key={`${course.id}:${(course as { purchaseRefId?: string }).purchaseRefId || index}`} className="overflow-hidden hover:shadow-xl transition-all duration-300 group border-slate-200/60">
                     <div className="relative h-36 sm:h-40 overflow-hidden">
                       <img
                         src={resolveUploadAssetUrl(course.thumbnail || course.image || "", "/placeholder.svg")}
