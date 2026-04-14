@@ -28,8 +28,6 @@ app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, "uploads");
-app.use("/uploads", express.static(uploadsDir));
-app.use("/api/uploads", express.static(uploadsDir));
 
 const mapStudentRow = (row) => ({
   id: row.id,
@@ -8900,6 +8898,10 @@ process.on("SIGTERM", shutdown);
 const start = async () => {
   await ensureSchema();
   await mkdir(uploadsDir, { recursive: true });
+
+  // Static routes must come AFTER all API routes to avoid intercepting POST /api/uploads/image
+  app.use("/uploads", express.static(uploadsDir));
+  app.use("/api/uploads", express.static(uploadsDir));
 
   app.listen(port, () => {
     console.log(`Node API running on http://localhost:${port}`);
