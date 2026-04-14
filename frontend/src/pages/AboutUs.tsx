@@ -52,6 +52,15 @@ export default function AboutUs() {
 
   return (
     <div className="bg-slate-50">
+      <div className="sticky top-[60px] z-20 border-b border-slate-200 bg-white/85 backdrop-blur-md md:top-[66px]">
+        <div className="mx-auto flex max-w-7xl items-center gap-2 overflow-x-auto px-4 py-3 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-500 lg:px-6">
+          <a href="#vision" className="rounded-full border border-slate-200 bg-white px-3 py-2 transition hover:border-sky-200 hover:text-sky-700">Vision</a>
+          <a href="#mission" className="rounded-full border border-slate-200 bg-white px-3 py-2 transition hover:border-sky-200 hover:text-sky-700">Mission</a>
+          <a href="#ceo" className="rounded-full border border-slate-200 bg-white px-3 py-2 transition hover:border-sky-200 hover:text-sky-700">CEO</a>
+          <a href="#why" className="rounded-full border border-slate-200 bg-white px-3 py-2 transition hover:border-sky-200 hover:text-sky-700">Why Ednovate</a>
+        </div>
+      </div>
+
       <section className="relative overflow-hidden border-b border-slate-200 bg-[radial-gradient(circle_at_top_left,_rgba(56,189,248,0.18),_transparent_35%),radial-gradient(circle_at_bottom_right,_rgba(244,114,182,0.16),_transparent_32%),linear-gradient(180deg,_#ffffff_0%,_#f8fafc_100%)]">
         <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, #0f172a 1px, transparent 0)", backgroundSize: "22px 22px" }} />
         <div className="mx-auto grid max-w-7xl gap-10 px-4 py-16 lg:grid-cols-[1.1fr_0.9fr] lg:px-6 lg:py-20">
@@ -106,7 +115,7 @@ export default function AboutUs() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-14 lg:px-6">
+      <section id="vision" className="mx-auto max-w-7xl px-4 py-14 lg:px-6">
         <div className="grid gap-6 lg:grid-cols-2">
           <article className="overflow-hidden rounded-3xl border border-slate-200 bg-white p-6 shadow-sm">
             <div className="flex items-center gap-3">
@@ -164,7 +173,7 @@ export default function AboutUs() {
         </div>
       </section>
 
-      <section className="bg-slate-950 py-14 text-white">
+      <section id="ceo" className="bg-slate-950 py-14 text-white">
         <div className="mx-auto grid max-w-7xl gap-8 px-4 lg:grid-cols-[0.9fr_1.1fr] lg:px-6">
           <div className="flex flex-col justify-center">
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-sky-300">Meet Our CEO</p>
@@ -220,7 +229,7 @@ export default function AboutUs() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-7xl px-4 py-14 lg:px-6">
+      <section id="why" className="mx-auto max-w-7xl px-4 py-14 lg:px-6">
         <div className="grid gap-8 lg:grid-cols-[1fr_0.95fr] lg:items-start">
           <div>
             <p className="text-xs font-bold uppercase tracking-[0.22em] text-indigo-700">Why Ednovate</p>
@@ -264,6 +273,33 @@ export default function AboutUs() {
               </Button>
             </div>
           </aside>
+        </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-16 lg:px-6">
+        <div className="rounded-[2rem] border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
+          <div className="grid gap-6 lg:grid-cols-[1.05fr_0.95fr] lg:items-center">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-[0.22em] text-sky-700">Our promise</p>
+              <h2 className="mt-3 text-3xl font-black text-slate-950 sm:text-4xl">Learning that feels structured, human, and effective.</h2>
+              <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-600 sm:text-base">
+                From the first class to the final result, Ednovate keeps students supported with clarity, discipline, and a fun
+                learning experience that is practical enough to stick.
+              </p>
+            </div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {[
+                "Rank-oriented approach",
+                "Concept-first teaching",
+                "Supportive mentor culture",
+                "Scholarship-driven access",
+              ].map((item) => (
+                <div key={item} className="rounded-2xl border border-slate-200 bg-slate-50 px-4 py-4 text-sm font-semibold text-slate-700 shadow-sm">
+                  {item}
+                </div>
+              ))}
+            </div>
+          </div>
         </div>
       </section>
     </div>

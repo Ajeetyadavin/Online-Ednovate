@@ -36,11 +36,20 @@ const Header = () => {
     headerSettings.courseCollections.map((collection) => [collection.slug, collection]),
   );
 
+  const normalizeHeaderHref = (link: typeof headerSettings.navLinks[number]) => {
+    const label = String(link.label || "").trim().toLowerCase();
+    const href = String(link.href || "").trim();
+    if (link.id === "nav-about" || label === "about us" || href === "/#why-choose" || href === "/about-us") {
+      return "/about-us";
+    }
+    return href;
+  };
+
   const orderedNavLinks = headerSettings.navLinks
     .filter((link) => link.visible)
     .flatMap((link) => {
       if (!isCollectionHref(link.href)) {
-        return [link];
+        return [{ ...link, href: normalizeHeaderHref(link) }];
       }
 
       const slug = extractCollectionSlug(link.href);
