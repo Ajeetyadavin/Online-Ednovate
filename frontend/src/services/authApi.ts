@@ -109,6 +109,37 @@ const toAuthUserProfile = (rawUser: Record<string, unknown>): AuthUserProfile =>
   attemptYear: String((rawUser.attemptYear as string | undefined) || (rawUser.attempt_year as string | undefined) || ""),
 });
 
+const extractStudentProfileCandidate = (payload: unknown): AuthUserProfile | null => {
+  if (!payload || typeof payload !== "object") return null;
+
+  const queue: unknown[] = [payload];
+  const visited = new Set<unknown>();
+
+  while (queue.length > 0) {
+    const current = queue.shift();
+    if (!current || typeof current !== "object") continue;
+    if (visited.has(current)) continue;
+    visited.add(current);
+
+    const node = current as Record<string, unknown>;
+    const candidates = [node.user, node.student, node.profile, node];
+
+    for (const candidate of candidates) {
+      if (!candidate || typeof candidate !== "object") continue;
+      const user = toAuthUserProfile(candidate as Record<string, unknown>);
+      if (user.studentId) {
+        return user;
+      }
+    }
+
+    Object.values(node).forEach((value) => {
+      if (value && typeof value === "object") queue.push(value);
+    });
+  }
+
+  return null;
+};
+
 const parseStudentSessionPayload = (payload: unknown): { token: string; user: AuthUserProfile } | null => {
   if (!payload || typeof payload !== "object") return null;
 
@@ -211,19 +242,41 @@ const authHeaders = (includeJson = true): Record<string, string> => {
   };
 };
 
-const parseResponseMessage = async (response: Response, fallback: string) => {
-  const payload = await response.json().catch(() => ({}));
+const parseResponseMessage = async (
+  response: Response,
+  fallback: string,
+  options?: { allowNotModified?: boolean },
+) => {
+  const payload = response.status === 304 ? {} : await response.json().catch(() => ({}));
   const payloadMessage = (payload as { message?: unknown })?.message;
+  const ok = response.ok || (options?.allowNotModified === true && response.status === 304);
   return {
-    ok: response.ok,
+    ok,
     payload,
     message:
       typeof payloadMessage === "string" && payloadMessage.trim().length > 0
         ? payloadMessage
-        : response.ok
+        : ok
           ? ""
           : fallback,
   };
+};
+
+const fetchStudentProfileResponse = async (token: string) => {
+  const sendRequest = (cacheBust: boolean) =>
+    fetch(cacheBust ? `/api/auth/student/profile?_=${Date.now()}` : "/api/auth/student/profile", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+      cache: "no-store",
+    });
+
+  const initialResponse = await sendRequest(false);
+  if (initialResponse.status !== 304) {
+    return initialResponse;
+  }
+
+  return sendRequest(true);
 };
 
 export const signupApi = async (payload: SignupPayload): Promise<AuthActionResult> => {
@@ -314,12 +367,19 @@ export const loginWithEmailApi = async (
 
       localStorage.setItem(SESSION_TOKEN_KEY, fallbackToken);
 
-      const profileResponse = await fetch("/api/auth/student/profile", {
-        headers: {
-          Authorization: `Bearer ${fallbackToken}`,
-        },
+      const payloadUser = extractStudentProfileCandidate(parsed.payload);
+      if (payloadUser?.studentId) {
+        return {
+          ok: true,
+          message: parsed.message || "Login successful.",
+          data: payloadUser,
+        };
+      }
+
+      const profileResponse = await fetchStudentProfileResponse(fallbackToken);
+      const profileParsed = await parseResponseMessage(profileResponse, "Profile not found.", {
+        allowNotModified: true,
       });
-      const profileParsed = await parseResponseMessage(profileResponse, "Profile not found.");
       if (!profileParsed.ok) {
         return { ok: false, message: profileParsed.message || parsed.message || "Login failed. Please try again." };
       }
@@ -499,10 +559,16 @@ export const fetchProfileApi = async (
   _studentId?: string,
 ): Promise<AuthActionResult<Partial<AuthUserProfile>>> => {
   try {
-    const response = await fetch("/api/auth/student/profile", {
-      headers: authHeaders(false),
+    const token = getToken();
+    const response = token
+      ? await fetchStudentProfileResponse(token)
+      : await fetch("/api/auth/student/profile", {
+          headers: authHeaders(false),
+          cache: "no-store",
+        });
+    const parsed = await parseResponseMessage(response, "Profile not found.", {
+      allowNotModified: true,
     });
-    const parsed = await parseResponseMessage(response, "Profile not found.");
     if (!parsed.ok) {
       return { ok: false, message: parsed.message };
     }

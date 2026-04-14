@@ -5,6 +5,9 @@ import nodemailer from "nodemailer";
 import { createHash, randomUUID } from "node:crypto";
 import { lookup } from "node:dns/promises";
 import { mkdir, writeFile } from "node:fs/promises";
+import multer from "multer";
+// Multer setup for file uploads
+const upload = multer({ storage: multer.memoryStorage() });
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7908,16 +7911,22 @@ app.post("/api/admin/leads/:id/follow-ups", requireAdminPermission("leads", "edi
   }
 });
 
-app.post("/api/uploads/image", requireAdminPermission("course-content", "create"), async (request, response) => {
+app.post("/api/uploads/image", upload.single("file"), requireAdminPermission("course-content", "create"), async (request, response) => {
   try {
-    const fileName = sanitizeFileName(request.body?.fileName || `image-${Date.now()}.png`);
+    // Debug log
+    console.log("/api/uploads/image fields:", request.body);
+    console.log("/api/uploads/image file:", request.file);
+
+    // Multer parses file and fields
+    const file = request.file;
     const folder = sanitizeFileName(request.body?.folder || "images");
-    const mimeType = String(request.body?.mimeType || "application/octet-stream").trim() || "application/octet-stream";
-    const binary = decodeBase64File(request.body?.base64Data);
-    if (!binary) {
-      response.status(400).json({ message: "base64Data is required" });
+    if (!file) {
+      response.status(400).json({ message: "No file uploaded" });
       return;
     }
+    const fileName = sanitizeFileName(file.originalname || `image-${Date.now()}.png`);
+    const mimeType = file.mimetype || "application/octet-stream";
+    const binary = file.buffer;
 
     const imageUploadBackend = String(process.env.IMAGE_UPLOAD_BACKEND || "database").trim().toLowerCase();
 
@@ -7939,14 +7948,7 @@ app.post("/api/uploads/image", requireAdminPermission("course-content", "create"
       return;
     }
 
-    const zone = String(process.env.BUNNY_STORAGE_ZONE || "").trim();
-    const accessKey = String(process.env.BUNNY_STORAGE_API_KEY || "").trim();
-    const region = String(process.env.BUNNY_STORAGE_REGION || "").trim();
-    const publicBaseEnv = String(process.env.BUNNY_PUBLIC_BASE_URL || "").trim();
-    const pullZoneHost = String(process.env.BUNNY_STORAGE_PULL_ZONE || "")
-      .trim()
-      .replace(/^https?:\/\//i, "")
-      .replace(/\/$/, "");
+    // ...existing code for Bunny Storage (if used)...
 
     if (imageUploadBackend === "bunny" && zone && accessKey) {
       const remotePath = `images/${folder}/${Date.now()}-${fileName}`;

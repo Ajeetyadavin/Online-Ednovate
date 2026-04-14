@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { usePlatformData } from "@/context/PlatformDataContext";
-import { adminApi, fileToBase64 } from "@/services/adminApi";
+import { adminApi } from "@/services/adminApi";
 import { useSiteSettings, type SiteSettings } from "@/context/SiteSettingsContext";
 import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 import { Button } from "@/components/ui/button";
@@ -60,6 +60,7 @@ export default function AdminHomepage() {
   const [activeTab, setActiveTab] = useState<Tab>("banners");
   const [isSaving, setIsSaving] = useState(false);
   const [isUploading, setIsUploading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
   const [siteDraft, setSiteDraft] = useState<SiteSettings>(settings);
 
   const [newBanner, setNewBanner] = useState({ title: "", imageUrl: "" });
@@ -191,8 +192,14 @@ export default function AdminHomepage() {
 
   const uploadImageFile = async (file: File, folder: string) => {
     setIsUploading(true);
-    try { const base64Data = await fileToBase64(file); const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, folder); return uploaded.url; }
-    finally { setIsUploading(false); }
+    setUploadProgress(0);
+    try {
+      const uploaded = await adminApi.uploadImageWithProgress(file, folder, (percent) => setUploadProgress(percent));
+      return uploaded.url;
+    } finally {
+      setIsUploading(false);
+      setUploadProgress(0);
+    }
   };
 
   const handleBannerFileInput = async (file?: File | null) => {
@@ -296,9 +303,19 @@ export default function AdminHomepage() {
             </div>
             <div className="mt-3 flex items-center gap-3">
               <label className="flex cursor-pointer items-center gap-2 rounded-xl border border-slate-200 px-4 py-2 text-xs font-semibold text-slate-600 hover:border-primary/40 transition-colors">
-                <Upload className="h-3.5 w-3.5" />{isUploading ? "Uploading..." : "Upload Image File"}
+                <Upload className="h-3.5 w-3.5" />
+                {isUploading ? (
+                  <span>
+                    Uploading... {uploadProgress > 0 ? `${uploadProgress}%` : null}
+                  </span>
+                ) : "Upload Image File"}
                 <input type="file" accept="image/*" className="hidden" onChange={(e) => handleBannerFileInput(e.target.files?.[0])} />
               </label>
+              {isUploading && (
+                <div className="w-32 h-2 bg-slate-100 rounded-full overflow-hidden border border-slate-200">
+                  <div className="h-full bg-primary transition-all duration-200" style={{ width: `${uploadProgress}%` }} />
+                </div>
+              )}
               <Button size="sm" className="ml-auto gap-1.5 rounded-xl px-5 text-xs font-semibold" onClick={handleAddBanner}>Add Banner</Button>
             </div>
           </div>

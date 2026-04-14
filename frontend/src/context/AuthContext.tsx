@@ -231,7 +231,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     try {
       const profileResult = await fetchProfileApi(user.studentId);
       if (!profileResult.ok) {
-        return profileResult;
+        return { ok: false, message: profileResult.message };
       }
 
       const profile = profileResult.data || {};
@@ -271,7 +271,7 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
   const verifyOtpAndLogin = async (mobileNo: string, otp: string): Promise<AuthActionResult> => {
     const verifyResult = await verifyLoginOtpApi(mobileNo, otp);
     if (!verifyResult.ok || !verifyResult.data?.studentId) {
-      return verifyResult;
+      return { ok: verifyResult.ok, message: verifyResult.message };
     }
 
     const baseUser: AuthUserProfile = {
@@ -354,9 +354,50 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     ).trim();
 
     if (!resolvedStudentId) {
+      const profileResult = await fetchProfileApi();
+      if (profileResult.ok) {
+        const hydratedProfile = (profileResult.data || {}) as Partial<AuthUserProfile> & {
+          id?: string | number;
+          student_id?: string | number;
+          userId?: string | number;
+          user_id?: string | number;
+        };
+        const hydratedStudentId = String(
+          hydratedProfile.studentId ||
+            hydratedProfile.student_id ||
+            hydratedProfile.userId ||
+            hydratedProfile.user_id ||
+            hydratedProfile.id ||
+            "",
+        ).trim();
+
+        if (hydratedStudentId) {
+          const hydratedUser: AuthUserProfile = {
+            studentId: hydratedStudentId,
+            name: hydratedProfile.name || profileCandidate.name || "Student",
+            email: hydratedProfile.email || profileCandidate.email || email,
+            mobile: hydratedProfile.mobile || profileCandidate.mobile || "",
+            address: hydratedProfile.address || profileCandidate.address || "",
+            gender: hydratedProfile.gender || profileCandidate.gender || "",
+            country: hydratedProfile.country || profileCandidate.country || "",
+            state: hydratedProfile.state || profileCandidate.state || "",
+            city: hydratedProfile.city || profileCandidate.city || "",
+            pin: hydratedProfile.pin || profileCandidate.pin || "",
+            course: hydratedProfile.course || profileCandidate.course || "",
+            level: hydratedProfile.level || profileCandidate.level || "",
+            attemptYear: hydratedProfile.attemptYear || profileCandidate.attemptYear || "",
+          };
+
+          applyUser(hydratedUser);
+          return { ok: true, message: loginResult.message || "Login successful.", data: hydratedUser };
+        }
+      }
+
       return {
         ok: false,
-        message: loginResult.message || "Login failed. Please try again.",
+        message: profileResult.ok
+          ? loginResult.message || "Login failed. Please try again."
+          : profileResult.message || loginResult.message || "Login failed. Please try again.",
       };
     }
 

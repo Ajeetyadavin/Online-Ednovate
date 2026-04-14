@@ -1450,14 +1450,41 @@ export const adminApi = {
     );
   },
 
-  async uploadImage(fileName: string, mimeType: string, base64Data: string, folder = "images") {
-    return parseResponse<{ url: string }>(
-      await fetch("/api/uploads/image", {
-        method: "POST",
-        headers: withAuthHeaders(),
-        body: JSON.stringify({ fileName, mimeType, base64Data, folder }),
-      }),
-    );
+  async uploadImageWithProgress(file: File, folder = "images", onProgress?: (percent: number, loaded: number, total: number) => void) {
+    return new Promise<{ url: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("POST", "/api/uploads/image", true);
+      // Use empty object so only Authorization header is set, NOT Content-Type
+      // FormData requires browser to auto-set Content-Type with multipart/form-data boundary
+      const headers = withAuthHeaders({});
+      Object.entries(headers).forEach(([key, value]) => {
+        xhr.setRequestHeader(key, value);
+      });
+      xhr.upload.onprogress = (event) => {
+        if (!onProgress) return;
+        const total = Number(event.total || 0);
+        const loaded = Number(event.loaded || 0);
+        const percent = total > 0 ? Math.min(100, Math.round((loaded / total) * 100)) : 0;
+        onProgress(percent, loaded, total);
+      };
+      xhr.onerror = () => reject(new Error("Network error while uploading image"));
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            resolve(res);
+          } catch (e) {
+            reject(new Error("Invalid server response"));
+          }
+        } else {
+          reject(new Error(xhr.responseText || "Image upload failed"));
+        }
+      };
+      const formData = new FormData();
+      formData.append("file", file);
+      formData.append("folder", folder);
+      xhr.send(formData);
+    });
   },
 
   async uploadVideoToBunny(fileName: string, mimeType: string, base64Data: string, folder = "videos") {
