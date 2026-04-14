@@ -110,56 +110,53 @@ const CourseCollection = () => {
     <div className="min-h-screen bg-[#f7f5f2] text-slate-900">
       <section className="relative overflow-hidden border-b border-slate-200 bg-white">
         <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${BRAND_BLUE} 0%, ${BRAND_ORANGE} 100%)` }} />
-        <div
-          className="absolute inset-0"
-          style={{
-            background: collection.heroImageUrl
-              ? `linear-gradient(130deg, rgba(15,23,42,0.72), rgba(15,23,42,0.4)), url(${collection.heroImageUrl}) center/cover no-repeat`
-              : `linear-gradient(145deg, ${BRAND_BLUE} 0%, #1f4aa3 55%, ${BRAND_ORANGE} 100%)`,
-          }}
-        />
-        <div className="relative container mx-auto px-4 py-10 text-white md:py-14">
-          <Link to="/" className="inline-flex items-center gap-2 text-xs font-semibold tracking-wide text-white/90 hover:text-white">
+        <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_18%,rgba(38,71,150,0.08),transparent_52%),radial-gradient(circle_at_84%_22%,rgba(231,71,35,0.1),transparent_46%)]" />
+        <div className="relative mx-auto max-w-6xl px-4 py-6 md:py-8 lg:py-9">
+          <Link
+            to="/"
+            className="inline-flex items-center gap-2 text-xs font-semibold tracking-wide transition-colors"
+            style={{ color: BRAND_BLUE }}
+          >
             <ArrowLeft className="h-4 w-4" /> Back to Home
           </Link>
 
-          <div className="mt-6 max-w-3xl">
-            {collection.badge && (
-              <span className="inline-flex items-center gap-1 rounded-full border border-white/45 bg-white/10 px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em]">
-                <Sparkles className="h-3 w-3" />
-                {collection.badge}
-              </span>
-            )}
+          {(collection.title || collection.description || collection.heroImageUrl) && (
+            <div className="mt-4 grid items-center gap-4 lg:grid-cols-[1.15fr_0.85fr] lg:gap-5">
+              <div>
+                {collection.badge && (
+                  <span className="inline-flex items-center gap-1 rounded-full border px-3 py-1 text-[10px] font-bold uppercase tracking-[0.14em]" style={{ borderColor: "rgba(38,71,150,0.35)", color: BRAND_BLUE, backgroundColor: "rgba(38,71,150,0.08)" }}>
+                    <Sparkles className="h-3 w-3" />
+                    {collection.badge}
+                  </span>
+                )}
 
-            <p className="mt-4 text-[11px] font-semibold uppercase tracking-[0.18em] text-white/75">
-              Curated Collection
-            </p>
+                {collection.title && (
+                  <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight text-slate-900 md:text-4xl">{collection.title}</h1>
+                )}
 
-            <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight md:text-5xl">{collection.title}</h1>
+                {collection.description && (
+                  <p className="mt-2.5 max-w-2xl text-sm leading-6 text-slate-600 md:text-base">
+                    {collection.description}
+                  </p>
+                )}
 
-            <p className="mt-4 max-w-2xl text-sm text-white/85 md:text-base">
-              {collection.description || "Curated collection selected by the academic team."}
-            </p>
-
-            <div className="mt-6 grid max-w-xl grid-cols-2 gap-3 sm:grid-cols-3">
-              <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-[0.12em] text-white/70">Courses</p>
-                <p className="mt-1 text-lg font-bold">{selectedCourses.length}</p>
               </div>
-              <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2">
-                <p className="text-[11px] uppercase tracking-[0.12em] text-white/70">Categories</p>
-                <p className="mt-1 text-lg font-bold">{collectionCategories.length}</p>
-              </div>
-              <div className="rounded-xl border border-white/20 bg-white/10 px-3 py-2 col-span-2 sm:col-span-1">
-                <p className="text-[11px] uppercase tracking-[0.12em] text-white/70">Visibility</p>
-                <p className="mt-1 text-sm font-semibold">{isWithinCollectionWindow ? "Active" : "Scheduled"}</p>
-              </div>
+
+              {collection.heroImageUrl && (
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-white p-2 shadow-[0_14px_30px_-24px_rgba(15,23,42,0.35)]">
+                  <img
+                    src={collection.heroImageUrl}
+                    alt={`${collection.title} banner`}
+                    className="h-[190px] w-full rounded-lg bg-slate-50 object-contain md:h-[220px]"
+                  />
+                </div>
+              )}
             </div>
-          </div>
+          )}
         </div>
       </section>
 
-      <section className="container mx-auto px-4 py-8 md:py-10">
+      <section className="container mx-auto px-4 py-6 md:py-8">
         {(collection.enableSearch || collection.enableCategoryFilter) && (
           <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:p-5">
             <div className="mb-3 flex items-center justify-between gap-2">
