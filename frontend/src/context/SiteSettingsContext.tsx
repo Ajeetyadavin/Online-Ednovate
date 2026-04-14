@@ -406,7 +406,7 @@ const createDefaultSettings = (): SiteSettings => ({
       {
         id: "nav-about",
         label: "About Us",
-        href: "/#why-choose",
+        href: "/about-us",
         hasDropdown: false,
         visible: true,
       },

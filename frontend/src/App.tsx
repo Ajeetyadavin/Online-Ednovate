@@ -52,6 +52,7 @@ import AdminLogs from "./pages/admin/AdminLogs";
 import AdminApiModule from "./pages/admin/AdminApiModule";
 import CourseCollection from "./pages/CourseCollection";
 import FacultyDetail from "./pages/FacultyDetail";
+import AboutUs from "./pages/AboutUs";
 import { ProfessorAuthProvider, useProfessorAuth } from "./context/ProfessorAuthContext";
 import ProfessorLogin from "./pages/ProfessorLogin";
 import ProfessorDashboard from "./pages/ProfessorDashboard";
@@ -367,6 +368,7 @@ const AppContent = () => (
                       <Route element={<Layout />}>
                         <Route path="/" element={<Index />} />
                         <Route path="/packages" element={<Packages />} />
+                        <Route path="/about-us" element={<AboutUs />} />
                         <Route path="/login" element={<Login />} />
                         <Route path="/signup" element={<Signup />} />
                         <Route path="/forgot-password" element={<ForgotPassword />} />
