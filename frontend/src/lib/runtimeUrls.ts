@@ -20,6 +20,23 @@ const LEGACY_PORTAL_API_FALLBACK_URLS = String(import.meta.env.VITE_LEGACY_PORTA
   .split(",")
   .map((item) => trimTrailingSlash(item.trim()))
   .filter(Boolean);
+const PROD_DEFAULT_API_BASE_URL = "https://online-ednovate-api.onrender.com";
+
+const isProductionFrontendHost = () => {
+  if (typeof window === "undefined") return false;
+  const hostname = window.location.hostname.toLowerCase();
+  return hostname.includes("vercel.app") || hostname.includes("netlify.app") || hostname.includes("github.io");
+};
+
+const getResolvedApiBaseUrl = () => {
+  if (API_BASE_URL) return API_BASE_URL;
+  return isProductionFrontendHost() ? PROD_DEFAULT_API_BASE_URL : "";
+};
+
+const getResolvedUploadsBaseUrl = () => {
+  if (UPLOADS_BASE_URL) return UPLOADS_BASE_URL;
+  return getResolvedApiBaseUrl();
+};
 
 const buildSameOriginReplacement = (value: string) => {
   if (!isHttpUrl(value)) return value;
@@ -42,7 +59,7 @@ export const resolveApiUrl = (path: string) => {
   if (!path) return path;
   if (isHttpUrl(path)) return buildSameOriginReplacement(path);
   if (path === "/api" || path.startsWith("/api/")) {
-    return joinBaseAndPath(API_BASE_URL, path);
+    return joinBaseAndPath(getResolvedApiBaseUrl(), path);
   }
   return path;
 };
@@ -52,12 +69,12 @@ export const resolveUploadsUrl = (path: string) => {
   if (isHttpUrl(path)) return buildSameOriginReplacement(path);
 
   if (path === "/uploads" || path.startsWith("/uploads/")) {
-    return joinBaseAndPath(UPLOADS_BASE_URL, path);
+    return joinBaseAndPath(getResolvedUploadsBaseUrl(), path);
   }
 
   if (path === "/api/uploads" || path.startsWith("/api/uploads/")) {
     const normalizedPath = path.replace(/^\/api/, "");
-    return joinBaseAndPath(UPLOADS_BASE_URL, normalizedPath);
+    return joinBaseAndPath(getResolvedUploadsBaseUrl(), normalizedPath);
   }
 
   return path;

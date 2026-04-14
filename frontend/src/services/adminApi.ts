@@ -1453,7 +1453,7 @@ export const adminApi = {
   async uploadImageWithProgress(file: File, folder = "images", onProgress?: (percent: number, loaded: number, total: number) => void) {
     return new Promise<{ url: string }>((resolve, reject) => {
       const xhr = new XMLHttpRequest();
-      xhr.open("POST", "/api/uploads/image", true);
+      xhr.open("POST", resolveApiUrl("/api/uploads/image"), true);
       // Use empty object so only Authorization header is set, NOT Content-Type
       // FormData requires browser to auto-set Content-Type with multipart/form-data boundary
       const headers = withAuthHeaders({});
