@@ -220,7 +220,7 @@ export default function AdminHeader() {
           <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm space-y-4">
             <p className="text-sm font-bold text-slate-800">Logo &amp; Brand</p>
             <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-1.5"><FL>Logo URL</FL><Input className={fCls} placeholder="/ednovate-logo.svg" value={draft.logo} onChange={(e) => syncLogo(e.target.value)} /></div>
+              <div className="space-y-1.5"><FL>Logo URL</FL><Input className={fCls} placeholder="/ednovate-logo.png" value={draft.logo} onChange={(e) => syncLogo(e.target.value)} /></div>
               <div className="flex items-end pb-0.5">
                 <div className="flex items-center justify-between w-full rounded-xl border border-slate-200 px-4 py-2.5">
                   <span className="text-xs font-semibold text-slate-700">Show brand text beside logo</span>

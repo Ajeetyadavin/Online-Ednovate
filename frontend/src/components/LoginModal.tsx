@@ -756,7 +756,7 @@ const LoginModal = ({
             <div className="pointer-events-none absolute -bottom-6 -left-6 h-24 w-24 rounded-full bg-white/10" />
 
             {/* logo */}
-            <img src="/ednovate-logo.svg" alt="Ednovate" className={`relative z-10 w-auto rounded-lg bg-white shadow ${isSignup && !showForgotPassword ? "h-7 px-2 py-1" : "h-9 px-2.5 py-1.5"}`} />
+            <img src="/ednovate-logo.png" alt="Ednovate" className={`relative z-10 w-auto rounded-lg bg-white shadow ${isSignup && !showForgotPassword ? "h-9 px-2.5 py-1.5" : "h-11 px-3 py-2"}`} />
 
             {/* title + subtitle */}
             <div className={`relative z-10 ${isSignup && !showForgotPassword ? "mt-2" : "mt-5"}`}>

@@ -159,7 +159,7 @@ const parseFirstPositiveInt = (value: unknown): number | null => {
 const CourseDetails = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { courses, getCurriculumForCourse } = usePlatformData();
+  const { courses, categories, getCurriculumForCourse } = usePlatformData();
   const { addToCart, removeFromCart, isInCart, isPurchased } = useCart();
   const { isLoggedIn } = useAuth();
   const [activeTab, setActiveTab] = useState<"content" | "ratings" | "reviews">("content");
@@ -213,6 +213,32 @@ const CourseDetails = () => {
 
   const matchedCourse = courses.find((c) => c.id === id);
   const course = matchedCourse ?? FALLBACK_COURSE;
+  const breadcrumbCategoryLabel = useMemo(() => {
+    const raw = String(course.category || "").trim();
+    if (!raw) return "Courses";
+
+    const rawLower = raw.toLowerCase();
+    const matchedCategory = categories.find(
+      (category) =>
+        category.id === raw ||
+        category.slug === raw ||
+        category.name.toLowerCase() === rawLower,
+    );
+
+    if (matchedCategory?.name?.trim()) {
+      return matchedCategory.name.trim();
+    }
+
+    if (/^cat[-_\s]*\d+$/i.test(raw)) {
+      return "Courses";
+    }
+
+    return raw
+      .replace(/[-_]+/g, " ")
+      .replace(/\s+/g, " ")
+      .trim()
+      .replace(/\b\w/g, (char) => char.toUpperCase());
+  }, [categories, course.category]);
   const resolvedMasterConfig = useMemo(() => {
     const raw = (course as { masterConfig?: unknown }).masterConfig;
     if (raw && typeof raw === "object") return raw as NonNullable<ManagedCourse["masterConfig"]>;
@@ -891,7 +917,7 @@ const CourseDetails = () => {
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-1.5 text-xs sm:text-sm text-muted-foreground overflow-x-auto whitespace-nowrap">
           <Link to="/" className="hover:text-primary transition-colors">Home</Link>
           <ChevronRight className="w-3.5 h-3.5 shrink-0" />
-          <Link to="/packages" className="hover:text-primary transition-colors capitalize">{course.category.replace("-", " ")}</Link>
+          <Link to="/packages" className="hover:text-primary transition-colors">{breadcrumbCategoryLabel}</Link>
           <ChevronRight className="w-3.5 h-3.5 shrink-0" />
           <span className="text-foreground font-medium truncate max-w-[200px]">{course.title}</span>
         </div>

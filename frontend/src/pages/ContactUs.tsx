@@ -24,6 +24,9 @@ const INITIAL_FORM_STATE: ContactFormState = {
   query: "",
 };
 
+const BRAND_BLUE = "rgb(38,71,150)";
+const BRAND_ORANGE = "#e74723";
+
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
 const WhatsAppIcon = ({ className }: { className?: string }) => (
@@ -104,12 +107,12 @@ const ContactUs = () => {
   };
 
   return (
-    <div className="min-h-screen bg-[#f7f7f5]">
+    <div className="min-h-screen bg-[#f7f7f5] text-slate-900 [font-family:-apple-system,BlinkMacSystemFont,'SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',Arial,sans-serif] [&_h1]:[font-family:-apple-system,BlinkMacSystemFont,'SF_Pro_Display','SF_Pro_Text','Helvetica_Neue',Arial,sans-serif] [&_h2]:[font-family:-apple-system,BlinkMacSystemFont,'SF_Pro_Display','SF_Pro_Text','Helvetica_Neue',Arial,sans-serif] [&_h3]:[font-family:-apple-system,BlinkMacSystemFont,'SF_Pro_Display','SF_Pro_Text','Helvetica_Neue',Arial,sans-serif]">
       {/* Hero Section */}
-      <section className="relative overflow-hidden border-b border-slate-200 bg-white">
+      <section className="relative overflow-hidden bg-white">
         <div className="relative mx-auto max-w-6xl px-4 py-12 md:py-16">
           <div className="max-w-3xl">
-            <h1 className="font-serif text-3xl font-bold leading-tight text-slate-900 md:text-5xl">
+            <h1 className="text-3xl font-bold leading-tight md:text-5xl" style={{ color: BRAND_BLUE }}>
               We&apos;re Here to Help
             </h1>
             
@@ -120,7 +123,8 @@ const ContactUs = () => {
             <div className="mt-8 flex flex-wrap gap-4">
               <a
                 href={telLink || undefined}
-                className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-2.5 font-semibold text-slate-800 transition-colors hover:bg-slate-50"
+                className="inline-flex items-center gap-2 rounded-xl border bg-white px-5 py-2.5 font-semibold transition-colors hover:bg-slate-50"
+                style={{ borderColor: BRAND_BLUE, color: BRAND_BLUE }}
               >
                 <PhoneCall className="w-5 h-5" />
                 {callValue}
@@ -147,7 +151,7 @@ const ContactUs = () => {
           <div className="lg:col-span-2">
             <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
               <div className="border-b border-slate-200 bg-slate-900 px-6 py-5 sm:px-8">
-                <h2 className="font-serif text-2xl font-bold text-white">Send us a Message</h2>
+                <h2 className="text-2xl font-bold text-white">Send us a Message</h2>
                 <p className="mt-1 text-sm text-slate-300">We typically respond as soon as possible</p>
               </div>
 
@@ -158,7 +162,8 @@ const ContactUs = () => {
                     <Input
                       value={form.name}
                       onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))}
-                      className="h-12 rounded-lg border-slate-300 focus:border-slate-700 focus:ring-slate-700/20"
+                      className="h-12 rounded-lg border-slate-300"
+                      style={{ borderColor: "#cbd5e1" }}
                     />
                   </div>
 
@@ -168,7 +173,8 @@ const ContactUs = () => {
                       type="email"
                       value={form.email}
                       onChange={(e) => setForm((p) => ({ ...p, email: e.target.value }))}
-                      className="h-12 rounded-lg border-slate-300 focus:border-slate-700 focus:ring-slate-700/20"
+                      className="h-12 rounded-lg border-slate-300"
+                      style={{ borderColor: "#cbd5e1" }}
                     />
                   </div>
 
@@ -178,7 +184,8 @@ const ContactUs = () => {
                       value={form.mobile}
                       onChange={(e) => setForm((p) => ({ ...p, mobile: e.target.value }))}
                       inputMode="numeric"
-                      className="h-12 rounded-lg border-slate-300 focus:border-slate-700 focus:ring-slate-700/20"
+                      className="h-12 rounded-lg border-slate-300"
+                      style={{ borderColor: "#cbd5e1" }}
                     />
                   </div>
 
@@ -187,7 +194,8 @@ const ContactUs = () => {
                     <Textarea
                       value={form.query}
                       onChange={(e) => setForm((p) => ({ ...p, query: e.target.value }))}
-                      className="min-h-[140px] resize-none rounded-lg border-slate-300 focus:border-slate-700 focus:ring-slate-700/20"
+                      className="min-h-[140px] resize-none rounded-lg border-slate-300"
+                      style={{ borderColor: "#cbd5e1" }}
                     />
                   </div>
                 </div>
@@ -196,7 +204,8 @@ const ContactUs = () => {
                   <Button 
                     type="submit" 
                     disabled={isSubmitting}
-                    className="h-12 rounded-lg bg-slate-900 px-8 text-base font-semibold text-white hover:bg-slate-800"
+                    className="h-12 rounded-lg px-8 text-base font-semibold text-white"
+                    style={{ backgroundColor: BRAND_ORANGE }}
                   >
                     {isSubmitting ? (
                       <span className="flex items-center gap-2">
@@ -226,10 +235,11 @@ const ContactUs = () => {
             <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
               <a 
                 href={telLink || undefined}
-                className="group rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-slate-300"
+                className="group rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-all"
+                style={{ borderColor: "rgba(38,71,150,0.28)" }}
               >
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 transition-colors group-hover:bg-slate-900">
-                  <PhoneCall className="h-6 w-6 text-slate-700 transition-colors group-hover:text-white" />
+                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg transition-colors" style={{ backgroundColor: "rgba(38,71,150,0.12)" }}>
+                  <PhoneCall className="h-6 w-6" style={{ color: BRAND_BLUE }} />
                 </div>
                 <h3 className="text-lg font-bold text-slate-900">Call Us</h3>
                 <p className="text-sm text-slate-500 mt-1">Mon-Sat, 9AM-8PM</p>
@@ -256,13 +266,13 @@ const ContactUs = () => {
           <div className="space-y-6">
             {/* Contact Info Card */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="font-serif text-xl font-bold text-slate-900">Get in Touch</h3>
+              <h3 className="text-xl font-bold" style={{ color: BRAND_BLUE }}>Get in Touch</h3>
               <p className="text-sm text-slate-500 mt-1">Prefer face-to-face? Visit us!</p>
 
               <div className="mt-6 space-y-4">
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-[#E74623]/10 rounded-lg flex items-center justify-center shrink-0">
-                    <PhoneCall className="w-5 h-5 text-[#E74623]" />
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "rgba(231,71,35,0.12)" }}>
+                    <PhoneCall className="w-5 h-5" style={{ color: BRAND_ORANGE }} />
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-slate-400 uppercase">Phone</p>
@@ -271,8 +281,8 @@ const ContactUs = () => {
                 </div>
 
                 <div className="flex items-start gap-3">
-                  <div className="w-10 h-10 bg-[#1e3a8a]/10 rounded-lg flex items-center justify-center shrink-0">
-                    <Mail className="w-5 h-5 text-[#1e3a8a]" />
+                  <div className="w-10 h-10 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "rgba(38,71,150,0.12)" }}>
+                    <Mail className="w-5 h-5" style={{ color: BRAND_BLUE }} />
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-slate-400 uppercase">Email</p>
@@ -318,7 +328,7 @@ const ContactUs = () => {
 
             {/* Bank Details Card */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm text-slate-800">
-              <div className="flex items-center gap-2 mb-4">
+              <div className="flex items-center gap-2 mb-4" style={{ color: BRAND_BLUE }}>
                 <QrCode className="w-5 h-5" />
                 <h3 className="text-lg font-bold">Bank Details</h3>
               </div>
@@ -340,13 +350,14 @@ const ContactUs = () => {
 
             {/* Quick Links */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Quick Links</h3>
+              <h3 className="text-lg font-bold mb-4" style={{ color: BRAND_BLUE }}>Quick Links</h3>
               <div className="space-y-2">
                 {quickLinks.map((item) => (
                   <Link
                     key={item.to}
                     to={item.to}
-                    className="flex items-center justify-between rounded-lg bg-slate-50 p-3 font-medium text-slate-700 transition-colors hover:bg-slate-100"
+                    className="flex items-center justify-between rounded-lg p-3 font-medium transition-colors"
+                    style={{ backgroundColor: "rgba(38,71,150,0.08)", color: BRAND_BLUE }}
                   >
                     {item.label}
                     <ArrowRight className="w-4 h-4" />
@@ -363,19 +374,19 @@ const ContactUs = () => {
         <div className="max-w-6xl mx-auto px-4">
           <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
             <div>
-              <p className="text-4xl font-black text-slate-900">15+</p>
+              <p className="text-4xl font-black" style={{ color: BRAND_BLUE }}>15+</p>
               <p className="text-sm text-slate-500 mt-1">Years Experience</p>
             </div>
             <div>
-              <p className="text-4xl font-black text-slate-900">50K+</p>
+              <p className="text-4xl font-black" style={{ color: BRAND_ORANGE }}>50K+</p>
               <p className="text-sm text-slate-500 mt-1">Students Trained</p>
             </div>
             <div>
-              <p className="text-4xl font-black text-slate-900">500+</p>
+              <p className="text-4xl font-black" style={{ color: BRAND_BLUE }}>500+</p>
               <p className="text-sm text-slate-500 mt-1">Courses</p>
             </div>
             <div>
-              <p className="text-4xl font-black text-slate-900">98%</p>
+              <p className="text-4xl font-black" style={{ color: BRAND_ORANGE }}>98%</p>
               <p className="text-sm text-slate-500 mt-1">Satisfaction Rate</p>
             </div>
           </div>

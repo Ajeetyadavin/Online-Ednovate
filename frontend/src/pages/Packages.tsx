@@ -804,57 +804,88 @@ const Packages = () => {
 
       {/* Breadcrumb + Sort */}
       <div className="bg-background border-b border-border">
-        <div className="container mx-auto px-3 md:px-4 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
-          <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <a href="/" className="hover:text-accent transition-colors">Home</a>
-            <span className="text-border">›</span>
-            <span className="text-foreground font-bold">Courses</span>
-            <span className="ml-2 bg-accent/10 text-accent px-2 py-0.5 rounded-full text-[10px] font-bold">
-              {filtered.length} results
-            </span>
-          </div>
-          <div className="flex items-center gap-2">
-            {/* Mobile filter toggle */}
-            <button
-              onClick={() => setMobileFiltersOpen(true)}
-              className="md:hidden flex items-center gap-1.5 px-3 py-2 bg-primary text-primary-foreground text-xs font-bold rounded-lg shadow-sm"
-            >
-              <Filter className="w-3.5 h-3.5" />
-              Filters
-              {activeFilterCount > 0 && (
-                <span className="bg-accent text-accent-foreground text-[9px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
-                  {activeFilterCount}
-                </span>
-              )}
-            </button>
+        <div className="container mx-auto px-3 md:px-4 py-3">
+          {/* Mobile: breadcrumb + filter/sort on same line, search below */}
+          <div className="md:hidden">
+            <div className="flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs text-muted-foreground min-w-0">
+                <a href="/" className="hover:text-accent transition-colors">Home</a>
+                <span className="text-border">›</span>
+                <span className="text-foreground font-bold">Courses</span>
+              </div>
 
-            <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-muted-foreground font-medium hidden sm:inline">Sort:</span>
-              <select
-                value={sortBy}
-                onChange={(e) => setSortBy(e.target.value)}
-                className="text-[11px] border border-border rounded-lg px-2.5 py-1.5 bg-background text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
-              >
-                {sortOptions.map((opt) => (
-                  <option key={opt.id} value={opt.id}>{opt.label}</option>
-                ))}
-              </select>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  onClick={() => setMobileFiltersOpen(true)}
+                  className="flex items-center gap-1 px-2.5 py-1.5 bg-primary text-primary-foreground text-[11px] font-bold rounded-lg shadow-sm"
+                >
+                  <Filter className="w-3 h-3" />
+                  Filter
+                  {activeFilterCount > 0 && (
+                    <span className="bg-accent text-accent-foreground text-[9px] font-bold w-5 h-5 rounded-full flex items-center justify-center">
+                      {activeFilterCount}
+                    </span>
+                  )}
+                </button>
+
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="text-[11px] border border-border rounded-lg px-2 py-1.5 bg-background text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                >
+                  {sortOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+
+            <div className="mt-2 relative w-full">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search courses, professors..."
+                className="pl-9 h-9 text-xs bg-secondary border-border rounded-lg w-full"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+              />
             </div>
           </div>
-        </div>
-      </div>
 
-      {/* Search bar */}
-      <div className="bg-background border-b border-border">
-        <div className="container mx-auto px-3 md:px-4 py-2">
-          <div className="relative max-w-md">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-            <Input
-              placeholder="Search courses, professors..."
-              className="pl-9 h-9 text-xs bg-secondary border-border rounded-lg"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
+          {/* Desktop: everything in one line */}
+          <div className="hidden md:flex items-center justify-between gap-3">
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              <a href="/" className="hover:text-accent transition-colors">Home</a>
+              <span className="text-border">›</span>
+              <span className="text-foreground font-bold">Courses</span>
+              <span className="ml-2 bg-accent/10 text-accent px-2 py-0.5 rounded-full text-[10px] font-bold">
+                {filtered.length} results
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2.5">
+              <div className="relative w-[300px] lg:w-[340px]">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search courses, professors..."
+                  className="pl-9 h-9 text-xs bg-secondary border-border rounded-lg w-full"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+              </div>
+
+              <div className="flex items-center gap-1.5">
+                <span className="text-[11px] text-muted-foreground font-medium">Sort:</span>
+                <select
+                  value={sortBy}
+                  onChange={(e) => setSortBy(e.target.value)}
+                  className="text-[11px] border border-border rounded-lg px-2.5 py-1.5 bg-background text-foreground font-semibold focus:outline-none focus:ring-2 focus:ring-accent/30 focus:border-accent"
+                >
+                  {sortOptions.map((opt) => (
+                    <option key={opt.id} value={opt.id}>{opt.label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
           </div>
         </div>
       </div>

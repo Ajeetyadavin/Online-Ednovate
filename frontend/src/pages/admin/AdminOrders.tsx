@@ -302,7 +302,7 @@ export default function AdminOrders() {
     const taxableAmount = Math.max(0, Number(line.baseAmount || 0));
     const taxAmount = Math.max(0, Number(line.taxAmount || 0));
     const totalAmount = Math.max(0, Number(line.amount || 0));
-    const logoUrl = `${window.location.origin}${resolveUploadAssetUrl(settings.logo, "/ednovate-logo.svg")}`;
+    const logoUrl = `${window.location.origin}${resolveUploadAssetUrl(settings.logo, "/ednovate-logo.png")}`;
     const companyName = String(settings.header?.brandTitle || "Ednovate").trim() || "Ednovate";
     const companyAddress = "4th floor, Ajanta Square Building, near Borivali court, Sundar Nagar, Borivali West, Mumbai, Maharashtra 400092";
     const billingAddress = buildAddressText(line) || "Address unavailable";

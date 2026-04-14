@@ -84,11 +84,6 @@ const PopularCourses = () => {
             Choose from our wide range of professional courses
           </p>
 
-          <div className="mt-4 inline-flex items-center gap-2 rounded-xl border border-border/70 bg-card px-3 py-2 text-xs md:text-sm font-semibold text-foreground shadow-sm">
-            <Flame className="w-4 h-4 text-accent" />
-            Showing <span className="text-primary">{Math.min(filtered.length, 8)}</span> of {homepageCourses.length} curated courses
-            <span className="text-muted-foreground">in</span> {activeTabLabel}
-          </div>
         </div>
 
         <div className={`flex justify-center mb-7 md:mb-8 reveal-up ${titleVisible ? "visible" : ""}`}>

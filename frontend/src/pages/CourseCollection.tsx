@@ -6,6 +6,9 @@ import { usePlatformData } from "@/context/PlatformDataContext";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import { Input } from "@/components/ui/input";
 
+const BRAND_BLUE = "rgb(38,71,150)";
+const BRAND_ORANGE = "#e74723";
+
 const CourseCollection = () => {
   const { slug = "" } = useParams();
   const { courses: managedCourses, categories } = usePlatformData();
@@ -106,12 +109,13 @@ const CourseCollection = () => {
   return (
     <div className="min-h-screen bg-[#f7f5f2] text-slate-900">
       <section className="relative overflow-hidden border-b border-slate-200 bg-white">
+        <div className="h-1 w-full" style={{ background: `linear-gradient(90deg, ${BRAND_BLUE} 0%, ${BRAND_ORANGE} 100%)` }} />
         <div
           className="absolute inset-0"
           style={{
             background: collection.heroImageUrl
               ? `linear-gradient(130deg, rgba(15,23,42,0.72), rgba(15,23,42,0.4)), url(${collection.heroImageUrl}) center/cover no-repeat`
-              : "linear-gradient(145deg, #0f172a 0%, #1e293b 55%, #334155 100%)",
+              : `linear-gradient(145deg, ${BRAND_BLUE} 0%, #1f4aa3 55%, ${BRAND_ORANGE} 100%)`,
           }}
         />
         <div className="relative container mx-auto px-4 py-10 text-white md:py-14">
@@ -131,7 +135,7 @@ const CourseCollection = () => {
               Curated Collection
             </p>
 
-            <h1 className="mt-2 max-w-2xl font-serif text-3xl font-bold leading-tight md:text-5xl">{collection.title}</h1>
+            <h1 className="mt-2 max-w-2xl text-3xl font-bold leading-tight md:text-5xl">{collection.title}</h1>
 
             <p className="mt-4 max-w-2xl text-sm text-white/85 md:text-base">
               {collection.description || "Curated collection selected by the academic team."}
@@ -164,7 +168,8 @@ const CourseCollection = () => {
                 <button
                   type="button"
                   onClick={clearFilters}
-                  className="rounded-lg border border-slate-300 px-3 py-1.5 text-xs font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+                  className="rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors hover:bg-slate-50"
+                  style={{ borderColor: BRAND_BLUE, color: BRAND_BLUE }}
                 >
                   Clear Filters
                 </button>
@@ -176,7 +181,7 @@ const CourseCollection = () => {
                 <div>
                   <label className="text-xs font-semibold uppercase tracking-[0.1em] text-slate-500">Search Courses</label>
                   <div className="relative mt-1.5">
-                    <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <Search className="absolute left-2.5 top-1/2 h-4 w-4 -translate-y-1/2" style={{ color: BRAND_BLUE }} />
                     <Input
                       value={searchQuery}
                       onChange={(e) => setSearchQuery(e.target.value)}
@@ -202,9 +207,10 @@ const CourseCollection = () => {
                           onClick={() => toggleCategory(category.id)}
                           className={`rounded-full border px-3 py-1.5 text-xs font-semibold transition-colors ${
                             checked
-                              ? "border-slate-800 bg-slate-800 text-white"
-                              : "border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+                              ? "text-white"
+                              : "bg-white text-slate-700 hover:bg-slate-50"
                           }`}
+                          style={checked ? { borderColor: BRAND_ORANGE, backgroundColor: BRAND_ORANGE } : { borderColor: "#cbd5e1" }}
                         >
                           {category.name}
                         </button>
@@ -225,13 +231,14 @@ const CourseCollection = () => {
           </div>
         ) : (
           <div className="rounded-2xl border border-slate-200 bg-white p-10 text-center shadow-sm">
-            <p className="font-serif text-2xl font-semibold text-slate-900">{collection.emptyStateText || "No courses found"}</p>
+            <p className="text-2xl font-semibold" style={{ color: BRAND_BLUE }}>{collection.emptyStateText || "No courses found"}</p>
             <p className="mt-2 text-sm text-slate-600">
               Admin can edit this collection from Header module in admin panel.
             </p>
             <Link
               to="/packages"
-              className="mt-5 inline-flex items-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white hover:bg-slate-800"
+              className="mt-5 inline-flex items-center rounded-lg px-4 py-2 text-sm font-semibold text-white"
+              style={{ backgroundColor: BRAND_ORANGE }}
             >
               Browse all courses
             </Link>

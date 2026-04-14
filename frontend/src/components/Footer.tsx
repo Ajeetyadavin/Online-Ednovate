@@ -8,7 +8,7 @@ import { usePlatformData } from "@/context/PlatformDataContext";
 import { resolveApiUrl, resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 
 const normalizeLogoUrl = (url?: string) => {
-  return resolveUploadAssetUrl(url, "/ednovate-logo.svg");
+  return resolveUploadAssetUrl(url, "/ednovate-logo.png");
 };
 
 const Footer = () => {
@@ -137,11 +137,11 @@ const Footer = () => {
                 <img
                   src={logoUrl}
                   alt="Ednovate"
-                  className="h-14 md:h-16 w-auto"
+                  className="h-20 md:h-24 w-auto"
                   onError={(event) => {
                     const target = event.currentTarget;
-                    if (target.src.endsWith("/ednovate-logo.svg")) return;
-                    target.src = "/ednovate-logo.svg";
+                    if (target.src.endsWith("/ednovate-logo.png")) return;
+                    target.src = "/ednovate-logo.png";
                   }}
                 />
               </div>

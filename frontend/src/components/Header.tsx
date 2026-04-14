@@ -11,7 +11,7 @@ import { useSiteSettings } from "@/context/SiteSettingsContext";
 import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 
 const normalizeLogoUrl = (url?: string) => {
-  return resolveUploadAssetUrl(url, "/ednovate-logo.svg");
+  return resolveUploadAssetUrl(url, "/ednovate-logo.png");
 };
 
 const Header = () => {
@@ -169,16 +169,16 @@ const Header = () => {
             : "bg-background/90 backdrop-blur-md border-b border-border/60"
         }`}
       >
-        <div className="container mx-auto px-4 flex items-center justify-between h-[60px] sm:h-[66px] gap-2">
+        <div className="container mx-auto px-4 flex items-center justify-between h-[68px] sm:h-[74px] gap-2">
           <Link to="/" className="flex items-center group shrink-0">
             <img
               src={logoUrl}
               alt="Ednovate - Online Learning"
-              className="h-7 sm:h-8 w-auto max-w-[140px] sm:max-w-none"
+              className="h-10 sm:h-11 w-auto max-w-[220px] sm:max-w-none"
               onError={(event) => {
                 const target = event.currentTarget;
-                if (target.src.endsWith("/ednovate-logo.svg")) return;
-                target.src = "/ednovate-logo.svg";
+                if (target.src.endsWith("/ednovate-logo.png")) return;
+                target.src = "/ednovate-logo.png";
               }}
             />
             {headerSettings.showBrandText && (

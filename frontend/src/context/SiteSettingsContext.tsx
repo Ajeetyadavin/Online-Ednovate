@@ -334,7 +334,7 @@ const createDefaultSettings = (): SiteSettings => ({
     body: "Inter",
     baseSizePx: 16,
   },
-  logo: "/ednovate-logo.svg",
+  logo: "/ednovate-logo.png",
   sections: {
     heroBanner: true,
     announcementBar: true,
