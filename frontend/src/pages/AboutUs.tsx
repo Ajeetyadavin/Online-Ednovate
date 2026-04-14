@@ -1,5 +1,5 @@
 import { useEffect } from "react";
-import { ArrowRight, BadgeCheck, BookOpen, Briefcase, HeartHandshake, Sparkles, Target, Users } from "lucide-react";
+import { ArrowRight, BadgeCheck, BookOpen, Briefcase, HeartHandshake, Target, Users } from "lucide-react";
 import { Link } from "react-router-dom";
 import { Button } from "@/components/ui/button";
 
@@ -38,13 +38,6 @@ const ceoHighlights = [
   "Avid musician: synthesizer, flute, harmonium and guitar",
 ];
 
-const stats = [
-  { label: "Years of leadership", value: "14+" },
-  { label: "Scholarships target", value: "1000+" },
-  { label: "Learning philosophy", value: "Fun + Focus" },
-  { label: "Audience", value: "CA / CS / CMA" },
-];
-
 export default function AboutUs() {
   useEffect(() => {
     document.title = "About Us | Ednovate";
@@ -56,9 +49,6 @@ export default function AboutUs() {
         <div className="absolute inset-0 opacity-[0.04]" style={{ backgroundImage: "radial-gradient(circle at 1px 1px, #0f172a 1px, transparent 0)", backgroundSize: "22px 22px" }} />
         <div className="mx-auto grid max-w-6xl gap-8 px-4 py-12 md:gap-10 md:py-14 lg:grid-cols-[1.08fr_0.92fr] lg:px-6 lg:py-16">
           <div className="relative z-10 flex flex-col justify-center text-left">
-            <div className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold uppercase tracking-[0.18em] text-slate-700">
-              <Sparkles className="h-3.5 w-3.5" /> Redefining Commerce Education
-            </div>
             <h1 className="mt-5 max-w-3xl font-serif text-3xl font-bold leading-tight text-slate-950 sm:text-4xl lg:text-5xl">
               Learn with clarity, confidence, and the right kind of fun.
             </h1>
@@ -79,14 +69,6 @@ export default function AboutUs() {
               <Button asChild variant="outline" className="h-11 rounded-xl border-slate-300 px-5 text-sm font-semibold">
                 <Link to="/contact-us">Contact Us</Link>
               </Button>
-            </div>
-            <div className="mt-8 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-              {stats.map((item) => (
-                <div key={item.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                  <p className="text-2xl font-black text-slate-950">{item.value}</p>
-                  <p className="mt-1 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">{item.label}</p>
-                </div>
-              ))}
             </div>
           </div>
 

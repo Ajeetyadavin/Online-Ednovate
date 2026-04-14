@@ -962,9 +962,27 @@ const sanitizePlatformSettings = (payload) => {
   const data = payload && typeof payload === "object" ? payload : {};
   const bunny = data.bunnyStreamApi && typeof data.bunnyStreamApi === "object" ? data.bunnyStreamApi : {};
   const siteSettings = data.siteSettings && typeof data.siteSettings === "object" ? data.siteSettings : {};
+  const socialLinks = siteSettings.socialLinks && typeof siteSettings.socialLinks === "object" ? siteSettings.socialLinks : {};
+  const socialIconUrls = siteSettings.socialIconUrls && typeof siteSettings.socialIconUrls === "object" ? siteSettings.socialIconUrls : {};
   const normalizedSiteSettings = {
     ...siteSettings,
     logo: String(siteSettings.logo || "/ednovate-logo.svg").trim() || "/ednovate-logo.svg",
+    socialLinks: {
+      facebook: String(socialLinks.facebook || ""),
+      instagram: String(socialLinks.instagram || ""),
+      youtube: String(socialLinks.youtube || ""),
+      twitter: String(socialLinks.twitter || ""),
+      linkedin: String(socialLinks.linkedin || ""),
+      whatsapp: String(socialLinks.whatsapp || ""),
+    },
+    socialIconUrls: {
+      facebook: String(socialIconUrls.facebook || ""),
+      instagram: String(socialIconUrls.instagram || ""),
+      youtube: String(socialIconUrls.youtube || ""),
+      twitter: String(socialIconUrls.twitter || ""),
+      linkedin: String(socialIconUrls.linkedin || ""),
+      whatsapp: String(socialIconUrls.whatsapp || ""),
+    },
   };
   const homepage = data.homepage && typeof data.homepage === "object" ? data.homepage : {};
   const smtp = data.smtp && typeof data.smtp === "object" ? data.smtp : {};
