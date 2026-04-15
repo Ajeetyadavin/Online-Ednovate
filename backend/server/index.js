@@ -571,7 +571,8 @@ const normalizeCourseMasterViewModes = (items) => {
       return {
         id: normalizeMasterId(row.id || name, "view-mode", index),
         name,
-        maxViews: Number.isFinite(maxViewsRaw) && maxViewsRaw > 0 ? Math.floor(maxViewsRaw) : null,
+        // Preserve fractional values like 1.5 views while normalizing noisy float precision.
+        maxViews: Number.isFinite(maxViewsRaw) && maxViewsRaw > 0 ? Number(maxViewsRaw.toFixed(2)) : null,
         isLifetime,
         isActive: row.isActive !== false,
         sortOrder: Number.isFinite(Number(row.sortOrder)) ? Number(row.sortOrder) : index + 1,
@@ -3591,8 +3592,13 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
         ? new Date(explicitExpiresAtMs).toISOString()
         : "";
       const explicitUnlimited = typeof rawItem?.isUnlimitedViews === "boolean" ? rawItem.isUnlimitedViews : null;
-      const totalViews = Math.max(1, Number(rawItem?.totalViews || 2));
-      const usedViews = Math.max(0, Number(rawItem?.usedViews || 0));
+      const totalViewsRaw = Number(rawItem?.totalViews || 2);
+      const viewBudgetMultiplier = Number.isFinite(totalViewsRaw) && totalViewsRaw > 0
+        ? Number(totalViewsRaw.toFixed(2))
+        : 2;
+      // DB columns are INTEGER; keep them whole numbers while preserving fractional budget in watch seconds.
+      const totalViews = Math.max(1, Math.ceil(viewBudgetMultiplier));
+      const usedViews = Math.max(0, Math.min(totalViews, Math.floor(Number(rawItem?.usedViews || 0))));
       const isEnabled = rawItem?.isEnabled !== false;
       const baseAmount = Math.max(0, Number(rawItem?.baseAmount ?? rawItem?.amount ?? 0));
       const taxAmount = Math.max(0, Number(rawItem?.taxAmount || 0));
@@ -3626,7 +3632,9 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
         const expiresAt = explicitExpiresAt || new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
         const computedDurationDays = Math.max(1, Math.ceil((new Date(expiresAt).getTime() - Date.now()) / (24 * 60 * 60 * 1000)));
         const courseDurationSeconds = await getCourseDurationSeconds(pool, courseId);
-        const allowedWatchSeconds = isUnlimitedViews ? 0 : Math.max(0, courseDurationSeconds) * totalViews;
+        const allowedWatchSeconds = isUnlimitedViews
+          ? 0
+          : Math.max(0, Math.floor(Math.max(0, courseDurationSeconds) * viewBudgetMultiplier));
         const usedWatchSeconds = isUnlimitedViews ? 0 : Math.min(allowedWatchSeconds, Math.max(0, courseDurationSeconds) * usedViews);
 
         await pool.query(
@@ -5002,8 +5010,10 @@ app.post("/api/students/:id/course-access", requireAdminPermission("users", "edi
     );
     const totalViews = Math.max(
       1,
-      Number(
-        request.body?.totalViews ?? existingRow?.total_views ?? 1,
+      Math.ceil(
+        Number(
+          request.body?.totalViews ?? existingRow?.total_views ?? 1,
+        ),
       ),
     );
     const isUnlimitedViews =
@@ -5014,7 +5024,7 @@ app.post("/api/students/:id/course-access", requireAdminPermission("users", "edi
       0,
       Math.min(
         totalViews,
-        Number(request.body?.usedViews ?? existingRow?.used_views ?? 0),
+        Math.floor(Number(request.body?.usedViews ?? existingRow?.used_views ?? 0)),
       ),
     );
     const isEnabled =
@@ -5116,7 +5126,7 @@ app.post("/api/students/:id/course-access/:courseId/extend", requireAdminPermiss
     const studentId = String(request.params.id || "").trim();
     const courseId = String(request.params.courseId || "").trim();
     const extraDays = Number(request.body?.extraDays || 0);
-    const extraViews = Number(request.body?.extraViews || 0);
+    const extraViews = Math.floor(Number(request.body?.extraViews || 0));
     const extraWatchHours = Number(request.body?.extraWatchHours || 0);
 
     if (!Number.isFinite(extraDays) || !Number.isFinite(extraViews) || !Number.isFinite(extraWatchHours)) {
@@ -5232,14 +5242,14 @@ const updateStudentCourseAccessHandler = async (request, response) => {
     const hasTotalViews = Object.prototype.hasOwnProperty.call(request.body || {}, "totalViews");
     const hasUsedViews = Object.prototype.hasOwnProperty.call(request.body || {}, "usedViews");
     const nextTotalViews = hasTotalViews
-      ? Math.max(1, Number(request.body?.totalViews ?? row.total_views ?? 1))
+      ? Math.max(1, Math.ceil(Number(request.body?.totalViews ?? row.total_views ?? 1)))
       : Math.max(1, Number(row.total_views ?? 1));
     const nextIsUnlimitedViews =
       typeof request.body?.isUnlimitedViews === "boolean"
         ? request.body.isUnlimitedViews
         : row.is_unlimited_views === true;
     const nextUsedViews = hasUsedViews
-      ? Math.max(0, Math.min(nextTotalViews, Number(request.body?.usedViews ?? row.used_views ?? 0)))
+      ? Math.max(0, Math.min(nextTotalViews, Math.floor(Number(request.body?.usedViews ?? row.used_views ?? 0))))
       : Math.max(0, Math.min(nextTotalViews, Number(row.used_views ?? 0)));
     const nextDurationDays = Math.max(1, Number(request.body?.durationDays ?? row.duration_days ?? 30));
     const nextIsEnabled = typeof request.body?.isEnabled === "boolean" ? request.body.isEnabled : row.is_enabled !== false;

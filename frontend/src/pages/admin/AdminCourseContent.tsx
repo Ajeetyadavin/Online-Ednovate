@@ -257,6 +257,31 @@ export default function AdminCourseContent() {
         || levelName.includes(query);
     });
   }, [nonPackageCourses, courseFilterId, levelFilterId, subjectFilter, professorFilter, coursePickerQuery, categoriesById]);
+
+  const lessonFacultyOptions = useMemo(() => {
+    if (!selectedCourseId) return facultyOptions;
+
+    const courseFacultyIds = new Set(
+      (Array.isArray((selectedCourse as { facultyIds?: unknown[] } | undefined)?.facultyIds)
+        ? ((selectedCourse as { facultyIds?: unknown[] }).facultyIds || [])
+        : [])
+        .map((id) => String(id || "").trim())
+        .filter(Boolean),
+    );
+
+    const professorTokens = String((selectedCourse as { professor?: unknown } | undefined)?.professor || "")
+      .split(/,|\||&| and /i)
+      .map((value) => value.trim().toLowerCase())
+      .filter(Boolean);
+
+    return facultyOptions.filter((item) => {
+      if (item.courseIds.includes(selectedCourseId)) return true;
+      if (courseFacultyIds.has(item.id)) return true;
+      if (professorTokens.length > 0 && professorTokens.includes(item.name.trim().toLowerCase())) return true;
+      return false;
+    });
+  }, [facultyOptions, selectedCourse, selectedCourseId]);
+
   const curriculum = useMemo(() => selectedCourse ? getCurriculumForCourse(selectedCourse.id, selectedCourse.title) : [], [selectedCourseId, selectedCourse, getCurriculumForCourse]);
   const selectedChapter = useMemo(() => curriculum.find((ch) => ch.id === selectedChapterId) || curriculum[0] || null, [selectedChapterId, curriculum]);
   const sharedCourseCollection = useMemo(() => {
@@ -1185,7 +1210,7 @@ export default function AdminCourseContent() {
           {saveError && <div className="shrink-0 flex items-center gap-2 border-b border-rose-100 bg-rose-50 px-6 py-2.5 text-xs text-rose-700"><AlertCircle className="h-3.5 w-3.5" />{saveError}</div>}
           <div className="flex-1 overflow-y-auto">
             <LessonForm lesson={newLesson} setLesson={setNewLesson} onSave={handleSaveLesson} isEditing={!!editingLessonId}
-              facultyOptions={facultyOptions.filter((item) => !selectedCourseId || item.courseIds.includes(selectedCourseId))}
+              facultyOptions={lessonFacultyOptions}
               onUploadVideo={handleVideoFileUpload} isUploadingVideo={isUploadingVideo} isSaving={isSaving}
               uploadProgress={lessonUploadState?.status === "uploading" ? lessonUploadState.progress : 0}
               onCancelUpload={handleCancelLessonUpload} />
@@ -1638,7 +1663,6 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, facultyOptions, onUp
                 );
               })}
             </div>
-            <p className="text-[11px] text-slate-500">Tip: Save karte waqt percentages auto-normalize hoke 100% ban jayenge.</p>
           </div>
           <div className="flex items-center justify-between">
             <div>
