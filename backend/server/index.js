@@ -1282,7 +1282,8 @@ const getOtpConfig = async () => {
       String(smsOtp.messageTemplate || "").trim()
       || "Your OTP for {{platformName}} is {{otp}}. It is valid for {{minutes}} minutes.",
     includeCorrelationId: smsOtp.includeCorrelationId === true,
-    platformName: String(settings?.siteSettings?.platformName || "Ednovate").trim() || "Ednovate",
+    // Use SMS-specific platform name to avoid DLT template mismatch with branded site title.
+    platformName: String(smsOtp.platformName || settings?.siteSettings?.platformName || "Ednovate").trim() || "Ednovate",
   };
 };
 
@@ -2861,9 +2862,10 @@ app.post("/api/auth/student/otp/send", async (request, response) => {
     );
 
     const provider = smsResult.raw && typeof smsResult.raw === "object" ? smsResult.raw : null;
+    const txn = provider?.transactionId ? ` Ref: ${provider.transactionId}` : "";
     response.json({
       ok: true,
-      message: "OTP sent successfully.",
+      message: `OTP sent successfully.${txn}`,
       providerState: provider?.state || null,
       providerTransactionId: provider?.transactionId || null,
       providerDescription: provider?.description || null,
