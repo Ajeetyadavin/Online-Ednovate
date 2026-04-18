@@ -24,7 +24,7 @@ interface AuthContextType {
   login: (name?: string) => void;
   loginAsUser: (user: AuthUserProfile) => void;
   logout: () => void;
-  sendOtp: (mobileNo: string) => Promise<AuthActionResult>;
+  sendOtp: (mobileNo: string, purpose?: "login" | "signup" | "reset" | "auth") => Promise<AuthActionResult>;
   verifyOtpCode: (mobileNo: string, otp: string) => Promise<AuthActionResult>;
   resetPassword: (mobileNo: string, password: string, otp: string) => Promise<AuthActionResult>;
   verifyOtpAndLogin: (mobileNo: string, otp: string) => Promise<AuthActionResult>;
@@ -256,8 +256,11 @@ export const AuthProvider = ({ children }: { children: ReactNode }) => {
     }
   }, [applyUser, user?.studentId, user?.name, user?.email, user?.mobile]);
 
-  const sendOtp = async (mobileNo: string): Promise<AuthActionResult> => {
-    return sendLoginOtpApi(mobileNo);
+  const sendOtp = async (
+    mobileNo: string,
+    purpose: "login" | "signup" | "reset" | "auth" = "auth",
+  ): Promise<AuthActionResult> => {
+    return sendLoginOtpApi(mobileNo, purpose);
   };
 
   const verifyOtpCode = async (mobileNo: string, otp: string): Promise<AuthActionResult> => {

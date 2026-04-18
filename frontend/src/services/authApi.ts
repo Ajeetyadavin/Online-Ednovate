@@ -413,7 +413,10 @@ export const loginWithEmailApi = async (
   }
 };
 
-export const sendLoginOtpApi = async (mobileNo: string): Promise<AuthActionResult> => {
+export const sendLoginOtpApi = async (
+  mobileNo: string,
+  purpose: "login" | "signup" | "reset" | "auth" = "auth",
+): Promise<AuthActionResult> => {
   const mobile = normalizeMobile(mobileNo || "");
   if (mobile.length !== 10) {
     return { ok: false, message: "Please enter a valid mobile number." };
@@ -423,7 +426,7 @@ export const sendLoginOtpApi = async (mobileNo: string): Promise<AuthActionResul
     const response = await fetch("/api/auth/student/otp/send", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mobile }),
+      body: JSON.stringify({ mobile, purpose }),
     });
     const parsed = await parseResponseMessage(response, "Failed to send OTP.");
     return { ok: parsed.ok, message: parsed.message || (parsed.ok ? "OTP sent successfully." : "Failed to send OTP.") };

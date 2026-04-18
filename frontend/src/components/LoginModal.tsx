@@ -492,7 +492,7 @@ const LoginModal = ({
     }
     setIsLoginOtpSending(true);
     try {
-      const response = await sendOtp(mobile);
+      const response = await sendOtp(mobile, "login");
       if (!response.ok) {
         toast.error(response.message || "Failed to send OTP.");
         return;
@@ -530,7 +530,7 @@ const LoginModal = ({
     if (loginOtpSeconds > 0 || isLoginOtpSending) return;
     setIsLoginOtpSending(true);
     try {
-      const response = await sendOtp(normalizeMobile(loginOtpMobile));
+      const response = await sendOtp(normalizeMobile(loginOtpMobile), "login");
       if (!response.ok) {
         toast.error(response.message || "Could not resend OTP.");
         return;
@@ -558,7 +558,7 @@ const LoginModal = ({
 
     setIsOtpSending(true);
     try {
-      const response = await sendOtp(signupForm.mobile);
+      const response = await sendOtp(signupForm.mobile, "signup");
       if (!response.ok) {
         toast.error(response.message || "Failed to send OTP.");
         return;
@@ -580,7 +580,7 @@ const LoginModal = ({
 
     setIsOtpSending(true);
     try {
-      const response = await sendOtp(signupForm.mobile);
+      const response = await sendOtp(signupForm.mobile, "signup");
       if (!response.ok) {
         toast.error(response.message || "Could not resend OTP.");
         return;
@@ -670,7 +670,7 @@ const LoginModal = ({
 
     setIsForgotSubmitting(true);
     try {
-      const response = await sendOtp(mobile);
+      const response = await sendOtp(mobile, "reset");
       if (!response.ok) {
         toast.error(response.message || "Failed to send OTP.");
         return;
@@ -691,7 +691,7 @@ const LoginModal = ({
 
     setIsForgotSubmitting(true);
     try {
-      const response = await sendOtp(mobile);
+      const response = await sendOtp(mobile, "reset");
       if (!response.ok) {
         toast.error(response.message || "Could not resend OTP.");
         return;

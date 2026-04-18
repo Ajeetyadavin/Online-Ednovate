@@ -39,7 +39,7 @@ const ForgotPassword = () => {
       setErrorMessage("Please enter a valid 10-digit mobile number.");
       return;
     }
-    const result = await sendLoginOtpApi(phone);
+    const result = await sendLoginOtpApi(phone, "reset");
     if (!result.ok) {
       setErrorMessage(result.message || "Failed to send OTP.");
       return;
@@ -201,7 +201,7 @@ const ForgotPassword = () => {
                 <p className="text-center text-xs">
                   <button type="button" className="text-accent font-medium hover:underline" onClick={() => {
                     void (async () => {
-                      const result = await sendLoginOtpApi(phone);
+                      const result = await sendLoginOtpApi(phone, "reset");
                       if (!result.ok) {
                         setErrorMessage(result.message || "Failed to resend OTP.");
                         return;

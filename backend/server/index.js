@@ -961,6 +961,46 @@ const setPlatformSettings = async (nextData) => {
   );
 };
 
+const syncSmsEnvFromSettings = (settingsPayload) => {
+  const normalized = sanitizePlatformSettings(settingsPayload || {});
+  const sms = normalized?.siteSettings?.smsOtp && typeof normalized.siteSettings.smsOtp === "object"
+    ? normalized.siteSettings.smsOtp
+    : {};
+
+  const apiUrl = String(sms.apiUrl || "").trim();
+  let apiDomain = String(sms.apiDomain || "").trim();
+  let apiPath = String(sms.apiPath || "").trim();
+
+  if ((!apiDomain || !apiPath) && apiUrl) {
+    try {
+      const parsed = new URL(apiUrl);
+      if (!apiDomain) apiDomain = parsed.host;
+      if (!apiPath) apiPath = parsed.pathname || "/api/v1/message";
+    } catch {
+      // Ignore URL parsing errors; existing fields will still be used if valid.
+    }
+  }
+
+  process.env.SMS_API_DOMAIN = apiDomain || process.env.SMS_API_DOMAIN || "";
+  process.env.SMS_API_PATH = apiPath || process.env.SMS_API_PATH || "/api/v1/message";
+  process.env.SMS_API_USERNAME = String(sms.apiUsername || process.env.SMS_API_USERNAME || "").trim();
+  process.env.SMS_API_PASSWORD = String(sms.apiPassword || process.env.SMS_API_PASSWORD || "").trim();
+  process.env.SMS_SENDER_ID = String(sms.senderId || process.env.SMS_SENDER_ID || "").trim();
+  process.env.SMS_DLT_CONTENT_ID = String(sms.dltContentId || sms.templateId || process.env.SMS_DLT_CONTENT_ID || "").trim();
+  process.env.SMS_UNICODE = String(sms.unicode === true);
+  process.env.SMS_OTP_TEMPLATE = String(sms.messageTemplate || process.env.SMS_OTP_TEMPLATE || "").trim();
+};
+
+const getSmsEnvPreview = () => ({
+  SMS_API_DOMAIN: String(process.env.SMS_API_DOMAIN || "").trim(),
+  SMS_API_PATH: String(process.env.SMS_API_PATH || "").trim(),
+  SMS_API_USERNAME: String(process.env.SMS_API_USERNAME || "").trim(),
+  SMS_API_PASSWORD: String(process.env.SMS_API_PASSWORD || "").trim() ? "******" : "",
+  SMS_SENDER_ID: String(process.env.SMS_SENDER_ID || "").trim(),
+  SMS_DLT_CONTENT_ID: String(process.env.SMS_DLT_CONTENT_ID || "").trim(),
+  SMS_OTP_TEMPLATE: String(process.env.SMS_OTP_TEMPLATE || "").trim(),
+});
+
 const sanitizePlatformSettings = (payload) => {
   const data = payload && typeof payload === "object" ? payload : {};
   const bunny = data.bunnyStreamApi && typeof data.bunnyStreamApi === "object" ? data.bunnyStreamApi : {};
@@ -2768,9 +2808,27 @@ app.post("/api/auth/student/login", async (request, response) => {
 app.post("/api/auth/student/otp/send", async (request, response) => {
   try {
     const mobile = normalizeMobile10(request.body?.mobile || request.body?.mobileNo || "");
+    const purpose = String(request.body?.purpose || "auth").trim().toLowerCase();
+    const normalizedPurpose = ["login", "signup", "reset", "auth"].includes(purpose) ? purpose : "auth";
     if (!/^\d{10}$/.test(mobile)) {
       response.status(400).json({ message: "Please enter a valid 10-digit mobile number" });
       return;
+    }
+
+    if (normalizedPurpose === "login" || normalizedPurpose === "reset") {
+      const studentCheck = await pool.query(
+        `
+        SELECT id
+        FROM students
+        WHERE regexp_replace(COALESCE(mobile, ''), '\\D', '', 'g') = $1
+        LIMIT 1
+        `,
+        [mobile],
+      );
+      if (studentCheck.rowCount === 0) {
+        response.status(404).json({ message: "Student not exist" });
+        return;
+      }
     }
 
     const config = await getOtpConfig();
@@ -2788,18 +2846,18 @@ app.post("/api/auth/student/otp/send", async (request, response) => {
       `
       DELETE FROM student_otp_codes
       WHERE mobile = $1
-        AND purpose = 'auth'
+        AND purpose = $2
         AND consumed_at IS NULL
       `,
-      [mobile],
+      [mobile, normalizedPurpose],
     );
 
     await pool.query(
       `
       INSERT INTO student_otp_codes (mobile, purpose, otp_hash, expires_at)
-      VALUES ($1,'auth',$2,$3)
+      VALUES ($1,$2,$3,$4)
       `,
-      [mobile, otpHash, expiresAt.toISOString()],
+      [mobile, normalizedPurpose, otpHash, expiresAt.toISOString()],
     );
 
     const provider = smsResult.raw && typeof smsResult.raw === "object" ? smsResult.raw : null;
@@ -8808,9 +8866,20 @@ app.put("/api/admin/platform-settings", requireAdminPermission("settings", "edit
       },
     });
     await setPlatformSettings(nextData);
+    syncSmsEnvFromSettings(nextData);
     response.json({ ok: true, settings: nextData });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save settings" });
+  }
+});
+
+app.get("/api/admin/sms-env-preview", requireAdminPermission("settings", "read"), async (_request, response) => {
+  try {
+    const settings = sanitizePlatformSettings(await getPlatformSettings());
+    syncSmsEnvFromSettings(settings);
+    response.json({ ok: true, env: getSmsEnvPreview() });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load SMS env preview" });
   }
 });
 
@@ -9015,6 +9084,7 @@ process.on("SIGTERM", shutdown);
 const start = async () => {
   await ensureSchema();
   await mkdir(uploadsDir, { recursive: true });
+  syncSmsEnvFromSettings(await getPlatformSettings());
 
   // Static routes must come AFTER all API routes to avoid intercepting POST /api/uploads/image
   app.use("/uploads", express.static(uploadsDir));
