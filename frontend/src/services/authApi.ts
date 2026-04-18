@@ -450,10 +450,10 @@ export const verifyLoginOtpApi = async (
   }
 
   try {
-    const response = await fetch("/api/auth/student/otp/verify", {
+      const response = await fetch("/api/auth/student/otp/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mobile, otp: enteredOtp, login: true }),
+        body: JSON.stringify({ mobile, otp: enteredOtp, login: true, purpose: "login" }),
     });
     const parsed = await parseResponseMessage(response, "Invalid OTP.");
     if (!parsed.ok) {
@@ -492,10 +492,10 @@ export const verifyStoredOtpApi = async (
   }
 
   try {
-    const response = await fetch("/api/auth/student/otp/verify", {
+      const response = await fetch("/api/auth/student/otp/verify", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mobile, otp: enteredOtp, login: false }),
+        body: JSON.stringify({ mobile, otp: enteredOtp, login: false, purpose: "signup" }),
     });
     const parsed = await parseResponseMessage(response, "Invalid OTP.");
     return { ok: parsed.ok, message: parsed.message || (parsed.ok ? "OTP verified successfully." : "Invalid OTP.") };
@@ -524,10 +524,10 @@ export const resetPasswordByMobileApi = async (
   }
 
   try {
-    const response = await fetch("/api/auth/student/reset-password-mobile", {
+      const response = await fetch("/api/auth/student/reset-password-mobile", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ mobile, password: password.trim(), otp: sanitizedOtp }),
+        body: JSON.stringify({ mobile, password: password.trim(), otp: sanitizedOtp, purpose: "reset" }),
     });
     const parsed = await parseResponseMessage(response, "Password reset failed.");
     return {

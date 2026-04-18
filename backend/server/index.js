@@ -2880,6 +2880,8 @@ app.post("/api/auth/student/otp/verify", async (request, response) => {
     const mobile = normalizeMobile10(request.body?.mobile || request.body?.mobileNo || "");
     const otp = String(request.body?.otp || "").trim();
     const login = request.body?.login === true;
+    const purposeInput = String(request.body?.purpose || (login ? "login" : "signup")).trim().toLowerCase();
+    const purpose = ["login", "signup", "auth"].includes(purposeInput) ? purposeInput : (login ? "login" : "signup");
 
     if (!/^\d{10}$/.test(mobile)) {
       response.status(400).json({ message: "Invalid mobile number." });
@@ -2895,12 +2897,12 @@ app.post("/api/auth/student/otp/verify", async (request, response) => {
       SELECT id, otp_hash, expires_at
       FROM student_otp_codes
       WHERE mobile = $1
-        AND purpose = 'auth'
+        AND purpose = ANY($2::text[])
         AND consumed_at IS NULL
       ORDER BY created_at DESC
       LIMIT 1
       `,
-      [mobile],
+      [mobile, [purpose, "auth"]],
     );
 
     const otpRow = otpResult.rows[0];
@@ -3001,12 +3003,12 @@ app.post("/api/auth/student/reset-password-mobile", async (request, response) =>
       SELECT id, otp_hash, expires_at
       FROM student_otp_codes
       WHERE mobile = $1
-        AND purpose = 'auth'
+        AND purpose = ANY($2::text[])
         AND consumed_at IS NULL
       ORDER BY created_at DESC
       LIMIT 1
       `,
-      [mobile],
+      [mobile, ["reset", "auth"]],
     );
 
     const otpRow = otpResult.rows[0];
