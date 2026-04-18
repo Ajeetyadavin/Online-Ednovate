@@ -20,6 +20,7 @@ type EndpointAudience = "Public" | "Student" | "Admin" | "Faculty" | "System";
 const API_ENDPOINTS: EndpointDoc[] = [
   { method: "POST", path: "/api/auth/student/signup", auth: "Public", module: "Auth", description: "Student signup" },
   { method: "POST", path: "/api/auth/student/login", auth: "Public", module: "Auth", description: "Student login" },
+  { method: "POST", path: "/api/auth/student/login", auth: "Public", module: "Auth", description: "Student force login (send forceLogin=true in body)" },
   { method: "POST", path: "/api/auth/student/otp/send", auth: "Public", module: "Auth", description: "Send login OTP" },
   { method: "POST", path: "/api/auth/student/otp/verify", auth: "Public", module: "Auth", description: "Verify login OTP" },
   { method: "POST", path: "/api/auth/student/reset-password-mobile", auth: "Public", module: "Auth", description: "Reset password using mobile + OTP" },
