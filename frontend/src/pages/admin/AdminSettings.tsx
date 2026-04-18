@@ -34,6 +34,8 @@ type SmtpSettings = {
 type SmsOtpSettings = {
   enabled: boolean;
   apiUrl: string;
+  apiUsername: string;
+  apiPassword: string;
   apiKey: string;
   senderId: string;
   templateId: string;
@@ -206,6 +208,8 @@ export default function AdminSettings() {
     smsOtp: {
       enabled: false,
       apiUrl: "",
+      apiUsername: "",
+      apiPassword: "",
       apiKey: "",
       senderId: "",
       templateId: "",
@@ -352,6 +356,8 @@ export default function AdminSettings() {
           smsOtp: {
             enabled: smsOtpRaw.enabled === true,
             apiUrl: String(smsOtpRaw.apiUrl || ""),
+            apiUsername: String(smsOtpRaw.apiUsername || ""),
+            apiPassword: String(smsOtpRaw.apiPassword || ""),
             apiKey: String(smsOtpRaw.apiKey || ""),
             senderId: String(smsOtpRaw.senderId || ""),
             templateId: String(smsOtpRaw.templateId || ""),
@@ -720,6 +726,8 @@ export default function AdminSettings() {
         smsOtp: {
           enabled: settings.smsOtp.enabled,
           apiUrl: settings.smsOtp.apiUrl,
+          apiUsername: settings.smsOtp.apiUsername,
+          apiPassword: settings.smsOtp.apiPassword,
           apiKey: settings.smsOtp.apiKey,
           senderId: settings.smsOtp.senderId,
           templateId: settings.smsOtp.templateId,
@@ -816,6 +824,8 @@ export default function AdminSettings() {
         smsOtp: {
           enabled: settings.smsOtp.enabled,
           apiUrl: settings.smsOtp.apiUrl,
+          apiUsername: settings.smsOtp.apiUsername,
+          apiPassword: settings.smsOtp.apiPassword,
           apiKey: settings.smsOtp.apiKey,
           senderId: settings.smsOtp.senderId,
           templateId: settings.smsOtp.templateId,
@@ -1462,11 +1472,32 @@ export default function AdminSettings() {
                 </div>
 
                 <div className="grid gap-2">
+                  <Label htmlFor="smsOtpApiUsername">API Username</Label>
+                  <Input
+                    id="smsOtpApiUsername"
+                    placeholder="ednovateotp.trans"
+                    value={settings.smsOtp.apiUsername}
+                    onChange={(e) => handleSmsOtpChange("apiUsername", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="smsOtpApiPassword">API Password</Label>
+                  <Input
+                    id="smsOtpApiPassword"
+                    type="password"
+                    placeholder="••••••••"
+                    value={settings.smsOtp.apiPassword}
+                    onChange={(e) => handleSmsOtpChange("apiPassword", e.target.value)}
+                  />
+                </div>
+
+                <div className="grid gap-2">
                   <Label htmlFor="smsOtpApiKey">API Key</Label>
                   <Input
                     id="smsOtpApiKey"
                     type="password"
-                    placeholder="TimesMobile API Key"
+                    placeholder="Optional API key / bearer token"
                     value={settings.smsOtp.apiKey}
                     onChange={(e) => handleSmsOtpChange("apiKey", e.target.value)}
                   />

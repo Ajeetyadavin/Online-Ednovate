@@ -1,5 +1,4 @@
-import { FormEvent, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { FormEvent, useState } from "react";
 import { ArrowRight, CheckCircle, Mail, MapPin, PhoneCall, QrCode, Send } from "lucide-react";
 import { toast } from "sonner";
 
@@ -47,16 +46,6 @@ const ContactUs = () => {
   const telLink = callDigits ? `tel:+${callDigits}` : "";
   const whatsappLink = whatsappDigits ? `https://wa.me/${whatsappDigits}` : "";
   const emailLink = `mailto:${settings.header.topBarEmail}`;
-
-  const quickLinks = useMemo(
-    () => [
-      { label: "Home", to: "/" },
-      { label: "All Courses", to: "/packages" },
-      { label: "Most Popular", to: "/#courses" },
-      { label: "About Us", to: "/about-us" },
-    ],
-    [],
-  );
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -108,42 +97,6 @@ const ContactUs = () => {
 
   return (
     <div className="min-h-screen bg-[#f7f7f5] text-slate-900 [font-family:-apple-system,BlinkMacSystemFont,'SF_Pro_Text','SF_Pro_Display','Helvetica_Neue',Arial,sans-serif] [&_h1]:[font-family:-apple-system,BlinkMacSystemFont,'SF_Pro_Display','SF_Pro_Text','Helvetica_Neue',Arial,sans-serif] [&_h2]:[font-family:-apple-system,BlinkMacSystemFont,'SF_Pro_Display','SF_Pro_Text','Helvetica_Neue',Arial,sans-serif] [&_h3]:[font-family:-apple-system,BlinkMacSystemFont,'SF_Pro_Display','SF_Pro_Text','Helvetica_Neue',Arial,sans-serif]">
-      {/* Hero Section */}
-      <section className="relative overflow-hidden bg-white">
-        <div className="relative mx-auto max-w-6xl px-4 py-12 md:py-16">
-          <div className="max-w-3xl">
-            <h1 className="text-3xl font-bold leading-tight md:text-5xl" style={{ color: BRAND_BLUE }}>
-              We&apos;re Here to Help
-            </h1>
-            
-            <p className="mt-4 max-w-xl text-base leading-7 text-slate-600 md:text-lg">
-              Have questions about courses, admissions, or payments? Our expert team is ready to assist you.
-            </p>
-
-            <div className="mt-8 flex flex-wrap gap-4">
-              <a
-                href={telLink || undefined}
-                className="inline-flex items-center gap-2 rounded-xl border bg-white px-5 py-2.5 font-semibold transition-colors hover:bg-slate-50"
-                style={{ borderColor: BRAND_BLUE, color: BRAND_BLUE }}
-              >
-                <PhoneCall className="w-5 h-5" />
-                {callValue}
-              </a>
-              <a
-                href={whatsappLink || undefined}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center gap-2 rounded-xl bg-[#25D366] px-5 py-2.5 font-semibold text-white transition-colors hover:bg-[#1fb85a]"
-              >
-                <WhatsAppIcon className="w-5 h-5" />
-                WhatsApp
-              </a>
-            </div>
-          </div>
-
-        </div>
-      </section>
-
       {/* Main Content */}
       <section className="mx-auto max-w-6xl px-4 py-10 md:py-12">
         <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
@@ -348,47 +301,6 @@ const ContactUs = () => {
               </div>
             </div>
 
-            {/* Quick Links */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
-              <h3 className="text-lg font-bold mb-4" style={{ color: BRAND_BLUE }}>Quick Links</h3>
-              <div className="space-y-2">
-                {quickLinks.map((item) => (
-                  <Link
-                    key={item.to}
-                    to={item.to}
-                    className="flex items-center justify-between rounded-lg p-3 font-medium transition-colors"
-                    style={{ backgroundColor: "rgba(38,71,150,0.08)", color: BRAND_BLUE }}
-                  >
-                    {item.label}
-                    <ArrowRight className="w-4 h-4" />
-                  </Link>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Trust Section */}
-      <section className="border-t border-slate-200 bg-[#f7f7f5] py-12">
-        <div className="max-w-6xl mx-auto px-4">
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-8 text-center">
-            <div>
-              <p className="text-4xl font-black" style={{ color: BRAND_BLUE }}>15+</p>
-              <p className="text-sm text-slate-500 mt-1">Years Experience</p>
-            </div>
-            <div>
-              <p className="text-4xl font-black" style={{ color: BRAND_ORANGE }}>50K+</p>
-              <p className="text-sm text-slate-500 mt-1">Students Trained</p>
-            </div>
-            <div>
-              <p className="text-4xl font-black" style={{ color: BRAND_BLUE }}>500+</p>
-              <p className="text-sm text-slate-500 mt-1">Courses</p>
-            </div>
-            <div>
-              <p className="text-4xl font-black" style={{ color: BRAND_ORANGE }}>98%</p>
-              <p className="text-sm text-slate-500 mt-1">Satisfaction Rate</p>
-            </div>
           </div>
         </div>
       </section>

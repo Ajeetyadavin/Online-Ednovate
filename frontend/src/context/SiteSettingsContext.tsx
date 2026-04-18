@@ -237,6 +237,20 @@ export interface SiteSettings {
     whatsapp: FloatingContactChannelSettings;
   };
   paymentGateways: PaymentGatewaySettings;
+  smsOtp: {
+    enabled: boolean;
+    apiUrl: string;
+    apiUsername: string;
+    apiPassword: string;
+    apiKey: string;
+    senderId: string;
+    templateId: string;
+    entityId: string;
+    route: string;
+    countryCode: string;
+    otpTtlSeconds: number;
+    messageTemplate: string;
+  };
   animations: {
     enabled: boolean;
     type: AnimationType;
@@ -601,6 +615,20 @@ const createDefaultSettings = (): SiteSettings => ({
           answer: "Absolutely! All courses run smoothly on mobile, tablet, and desktop. Learn anytime, anywhere.",
         },
       ],
+      smsOtp: {
+        enabled: true,
+        apiUrl: "https://sms.timesapi.in/api/v1/send",
+        apiUsername: "",
+        apiPassword: "",
+        apiKey: "",
+        senderId: "EDNVTE",
+        templateId: "1107177546916134979",
+        entityId: "",
+        route: "otp",
+        countryCode: "91",
+        otpTtlSeconds: 600,
+        messageTemplate: "Your OTP for Ednovate is {{otp}}. It is valid for 10 minutes.",
+      },
     },
     stats: {
       backgroundColor: "#264897",

@@ -4,6 +4,8 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Copy, Search } from "lucide-react";
+import { jsPDF } from "jspdf";
+import autoTable from "jspdf-autotable";
 
 type EndpointDoc = {
   method: "GET" | "POST" | "PUT" | "PATCH" | "DELETE";
@@ -13,9 +15,14 @@ type EndpointDoc = {
   description: string;
 };
 
+type EndpointAudience = "Public" | "Student" | "Admin" | "Faculty" | "System";
+
 const API_ENDPOINTS: EndpointDoc[] = [
   { method: "POST", path: "/api/auth/student/signup", auth: "Public", module: "Auth", description: "Student signup" },
   { method: "POST", path: "/api/auth/student/login", auth: "Public", module: "Auth", description: "Student login" },
+  { method: "POST", path: "/api/auth/student/otp/send", auth: "Public", module: "Auth", description: "Send login OTP" },
+  { method: "POST", path: "/api/auth/student/otp/verify", auth: "Public", module: "Auth", description: "Verify login OTP" },
+  { method: "POST", path: "/api/auth/student/reset-password-mobile", auth: "Public", module: "Auth", description: "Reset password using mobile + OTP" },
   { method: "GET", path: "/api/auth/student/session-status", auth: "Student Token", module: "Auth", description: "Check student session" },
   { method: "POST", path: "/api/auth/student/logout", auth: "Student Token", module: "Auth", description: "Logout student session" },
   { method: "GET", path: "/api/auth/student/profile", auth: "Student Token", module: "Auth", description: "Get student profile" },
@@ -55,8 +62,18 @@ const API_ENDPOINTS: EndpointDoc[] = [
   { method: "POST", path: "/api/marketing/events", auth: "Public", module: "Marketing", description: "Track campaign events" },
 
   { method: "POST", path: "/api/uploads/image", auth: "Admin Token", module: "Uploads", description: "Upload image" },
+  { method: "GET", path: "/api/uploads/storage/:assetId/:fileName", auth: "Public", module: "Uploads", description: "Read uploaded asset by file" },
+  { method: "GET", path: "/api/uploads/storage/:assetId", auth: "Public", module: "Uploads", description: "Read uploaded asset metadata" },
   { method: "POST", path: "/api/uploads/bunny-video", auth: "Admin Token", module: "Uploads", description: "Upload Bunny video" },
   { method: "POST", path: "/api/bunny/signed-playback", auth: "Public", module: "Bunny", description: "Create signed playback URL" },
+
+  { method: "POST", path: "/api/faculty/login", auth: "Public", module: "Faculty Auth", description: "Faculty login" },
+  { method: "POST", path: "/api/faculty/logout", auth: "Public", module: "Faculty Auth", description: "Faculty logout" },
+  { method: "GET", path: "/api/faculty/session-status", auth: "Public", module: "Faculty Auth", description: "Faculty session status" },
+  { method: "GET", path: "/api/faculty/dashboard/monthly", auth: "Public", module: "Faculty Dashboard", description: "Monthly faculty dashboard metrics" },
+  { method: "GET", path: "/api/faculty/dashboard/courses", auth: "Public", module: "Faculty Dashboard", description: "Faculty course metrics" },
+  { method: "GET", path: "/api/faculty/dashboard/sales", auth: "Public", module: "Faculty Dashboard", description: "Faculty sales report" },
+  { method: "GET", path: "/api/faculty/dashboard/payouts", auth: "Public", module: "Faculty Dashboard", description: "Faculty payout report" },
 
   { method: "POST", path: "/api/admin/login", auth: "Public", module: "Admin Auth", description: "Admin login" },
   { method: "GET", path: "/api/admin/session-status", auth: "Admin Token", module: "Admin Auth", description: "Check admin session" },
@@ -174,6 +191,22 @@ const authClass: Record<EndpointDoc["auth"], string> = {
   "Admin Token": "bg-orange-100 text-orange-700 border-orange-200",
 };
 
+const audienceClass: Record<EndpointAudience, string> = {
+  Public: "bg-slate-100 text-slate-700 border-slate-200",
+  Student: "bg-indigo-100 text-indigo-700 border-indigo-200",
+  Admin: "bg-orange-100 text-orange-700 border-orange-200",
+  Faculty: "bg-teal-100 text-teal-700 border-teal-200",
+  System: "bg-cyan-100 text-cyan-700 border-cyan-200",
+};
+
+const getAudience = (item: EndpointDoc): EndpointAudience => {
+  if (item.path === "/api/health" || item.path === "/api/db-check") return "System";
+  if (item.path.startsWith("/api/admin") || item.auth === "Admin Token") return "Admin";
+  if (item.path.startsWith("/api/auth/student") || item.auth === "Student Token") return "Student";
+  if (item.path.startsWith("/api/faculty")) return "Faculty";
+  return "Public";
+};
+
 const normalizeBase = (value: string) => String(value || "").trim().replace(/\/+$/, "");
 
 const getEnvApiBaseUrl = () => normalizeBase(String(import.meta.env.VITE_API_BASE_URL || ""));
@@ -249,6 +282,7 @@ const buildFullUrl = (baseUrl: string, path: string) => {
 export default function AdminApiModule() {
   const [query, setQuery] = useState("");
   const [methodFilter, setMethodFilter] = useState<"ALL" | EndpointDoc["method"]>("ALL");
+  const [audienceFilter, setAudienceFilter] = useState<"ALL" | EndpointAudience>("ALL");
   const [apiBaseUrl, setApiBaseUrl] = useState(getDefaultApiBaseUrl);
   const [detectingBaseUrl, setDetectingBaseUrl] = useState(false);
 
@@ -275,15 +309,28 @@ export default function AdminApiModule() {
     return API_ENDPOINTS.filter((item) => {
       const methodOk = methodFilter === "ALL" || item.method === methodFilter;
       if (!methodOk) return false;
+      const audience = getAudience(item);
+      const audienceOk = audienceFilter === "ALL" || audience === audienceFilter;
+      if (!audienceOk) return false;
       if (!q) return true;
       return (
         item.path.toLowerCase().includes(q)
         || item.module.toLowerCase().includes(q)
         || item.description.toLowerCase().includes(q)
         || item.auth.toLowerCase().includes(q)
+        || audience.toLowerCase().includes(q)
       );
     });
-  }, [query, methodFilter]);
+  }, [query, methodFilter, audienceFilter]);
+
+  const groupedByModule = useMemo(() => {
+    const groups = new Map<string, EndpointDoc[]>();
+    filtered.forEach((item) => {
+      if (!groups.has(item.module)) groups.set(item.module, []);
+      groups.get(item.module)?.push(item);
+    });
+    return Array.from(groups.entries()).sort((a, b) => a[0].localeCompare(b[0]));
+  }, [filtered]);
 
   const modulesCount = useMemo(() => new Set(API_ENDPOINTS.map((item) => item.module)).size, []);
 
@@ -293,6 +340,89 @@ export default function AdminApiModule() {
     } catch {
       // ignore clipboard errors on unsupported browsers
     }
+  };
+
+  const downloadText = (fileName: string, content: string, mimeType = "text/plain;charset=utf-8") => {
+    const blob = new Blob([content], { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = fileName;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  };
+
+  const toCsv = (rows: EndpointDoc[]) => {
+    const head = ["method", "path", "auth", "audience", "module", "description"];
+    const lines = rows.map((row) => {
+      const values = [row.method, row.path, row.auth, getAudience(row), row.module, row.description];
+      return values
+        .map((value) => `"${String(value).replace(/"/g, '""')}"`)
+        .join(",");
+    });
+    return [head.join(","), ...lines].join("\n");
+  };
+
+  const getRowsByScope = (scope: "all" | EndpointAudience) =>
+    scope === "all" ? API_ENDPOINTS : API_ENDPOINTS.filter((item) => getAudience(item) === scope);
+
+  const exportCsv = (scope: "all" | EndpointAudience) => {
+    const rows = getRowsByScope(scope);
+    downloadText(`api-catalog-${scope}.csv`, toCsv(rows), "text/csv;charset=utf-8");
+  };
+
+  const exportPdf = (scope: "all" | EndpointAudience) => {
+    const rows = getRowsByScope(scope);
+    const doc = new jsPDF({ orientation: "landscape", unit: "pt", format: "a4" });
+    const title = `API Catalog - ${scope === "all" ? "All" : scope}`;
+
+    doc.setFontSize(14);
+    doc.text(title, 40, 34);
+    doc.setFontSize(9);
+    doc.text(`Generated: ${new Date().toLocaleString()}`, 40, 52);
+
+    autoTable(doc, {
+      startY: 64,
+      head: [["Method", "Path", "Auth", "Audience", "Module", "Description"]],
+      body: rows.map((row) => [
+        row.method,
+        row.path,
+        row.auth,
+        getAudience(row),
+        row.module,
+        row.description,
+      ]),
+      styles: { fontSize: 8, cellPadding: 4, overflow: "linebreak" },
+      headStyles: { fillColor: [30, 41, 59], textColor: 255 },
+      columnStyles: {
+        0: { cellWidth: 55 },
+        1: { cellWidth: 230 },
+        2: { cellWidth: 85 },
+        3: { cellWidth: 70 },
+        4: { cellWidth: 110 },
+        5: { cellWidth: 190 },
+      },
+      margin: { left: 30, right: 30 },
+      didDrawPage: (data) => {
+        const pageCount = doc.getNumberOfPages();
+        doc.setFontSize(8);
+        doc.text(`Page ${data.pageNumber} of ${pageCount}`, doc.internal.pageSize.width - 90, doc.internal.pageSize.height - 12);
+      },
+    });
+
+    doc.save(`api-catalog-${scope}.pdf`);
+  };
+
+  const exportGroupedJson = () => {
+    const grouped = API_ENDPOINTS.reduce<Record<string, Array<EndpointDoc & { audience: EndpointAudience }>>>((acc, item) => {
+      const key = item.module;
+      if (!acc[key]) acc[key] = [];
+      acc[key].push({ ...item, audience: getAudience(item) });
+      return acc;
+    }, {});
+    downloadText("api-catalog-section-wise.json", JSON.stringify(grouped, null, 2), "application/json;charset=utf-8");
   };
 
   return (
@@ -309,6 +439,18 @@ export default function AdminApiModule() {
           </p>
         </CardHeader>
         <CardContent>
+          <div className="mb-3 flex flex-wrap gap-2">
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => exportCsv("all")}>Export All CSV</Button>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => exportCsv("Student")}>Export Student CSV</Button>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => exportCsv("Admin")}>Export Admin CSV</Button>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={exportGroupedJson}>Export Section-wise JSON</Button>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => exportPdf("all")}>Export All PDF</Button>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => exportPdf("Student")}>Student PDF</Button>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => exportPdf("Admin")}>Admin PDF</Button>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => exportPdf("Public")}>Public PDF</Button>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => exportPdf("Faculty")}>Faculty PDF</Button>
+            <Button type="button" variant="outline" className="h-8 px-3 text-xs" onClick={() => exportPdf("System")}>System PDF</Button>
+          </div>
           <div className="grid gap-3 sm:grid-cols-3">
             <div className="rounded-lg border border-slate-200 bg-white p-3">
               <p className="text-xs text-slate-500">Total Endpoints</p>
@@ -351,6 +493,19 @@ export default function AdminApiModule() {
                 </Button>
               ))}
             </div>
+            <div className="flex items-center gap-2 md:col-span-2">
+              {(["ALL", "Public", "Student", "Admin", "Faculty", "System"] as const).map((audience) => (
+                <Button
+                  key={audience}
+                  type="button"
+                  variant={audienceFilter === audience ? "default" : "outline"}
+                  className="h-9 px-3 text-xs"
+                  onClick={() => setAudienceFilter(audience)}
+                >
+                  {audience}
+                </Button>
+              ))}
+            </div>
           </div>
         </CardContent>
       </Card>
@@ -358,21 +513,32 @@ export default function AdminApiModule() {
       <Card>
         <CardHeader>
           <CardTitle className="text-lg">Endpoint Catalog</CardTitle>
-          <CardDescription>Tip: Verify the full flow from app open to login, dashboard, purchase, lecture, and watch progress.</CardDescription>
+          <CardDescription>Section-wise documentation with auth and audience tags. Use audience filters for student/admin-specific API export.</CardDescription>
         </CardHeader>
         <CardContent className="space-y-2">
-          {filtered.map((item) => (
-            <div key={`${item.method}-${item.path}`} className="rounded-lg border border-slate-200 bg-white p-3">
-              <div className="flex flex-wrap items-center gap-2">
-                <Badge variant="outline" className={methodClass[item.method]}>{item.method}</Badge>
-                <code className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{item.path}</code>
-                <Badge variant="outline" className={authClass[item.auth]}>{item.auth}</Badge>
-                <Badge variant="outline">{item.module}</Badge>
-                <Button type="button" variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs" onClick={() => void copyPath(item.path)}>
-                  <Copy className="mr-1 h-3.5 w-3.5" /> Copy URL
-                </Button>
+          {groupedByModule.map(([module, rows]) => (
+            <div key={module} className="space-y-2 rounded-lg border border-slate-200 bg-slate-50/50 p-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold text-slate-800">{module}</h3>
+                <Badge variant="outline" className="bg-white">{rows.length} endpoint(s)</Badge>
               </div>
-              <p className="mt-2 text-sm text-slate-600">{item.description}</p>
+              {rows.map((item) => {
+                const audience = getAudience(item);
+                return (
+                  <div key={`${item.method}-${item.path}`} className="rounded-lg border border-slate-200 bg-white p-3">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Badge variant="outline" className={methodClass[item.method]}>{item.method}</Badge>
+                      <code className="rounded bg-slate-100 px-2 py-1 text-xs font-semibold text-slate-700">{item.path}</code>
+                      <Badge variant="outline" className={authClass[item.auth]}>{item.auth}</Badge>
+                      <Badge variant="outline" className={audienceClass[audience]}>{audience}</Badge>
+                      <Button type="button" variant="ghost" size="sm" className="ml-auto h-7 px-2 text-xs" onClick={() => void copyPath(item.path)}>
+                        <Copy className="mr-1 h-3.5 w-3.5" /> Copy URL
+                      </Button>
+                    </div>
+                    <p className="mt-2 text-sm text-slate-600">{item.description}</p>
+                  </div>
+                );
+              })}
             </div>
           ))}
           {filtered.length === 0 && (

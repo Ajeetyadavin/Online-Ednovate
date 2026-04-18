@@ -1,4 +1,4 @@
-import "dotenv/config";
+import dotenv from "dotenv";
 import cors from "cors";
 import express from "express";
 import nodemailer from "nodemailer";
@@ -13,6 +13,10 @@ import { fileURLToPath } from "node:url";
 
 import { checkDatabaseConnection, ensureSchema, pool } from "./db.js";
 
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+dotenv.config({ path: path.resolve(__dirname, "../../.env") });
+
 const app = express();
 const port = Number(process.env.API_PORT ?? process.env.PORT ?? 4000);
 const bodyLimit = process.env.BODY_LIMIT || "25mb";
@@ -25,8 +29,6 @@ app.use(cors({ origin: corsOrigin }));
 app.use(express.json({ limit: bodyLimit }));
 app.use(express.urlencoded({ extended: true, limit: bodyLimit }));
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 const uploadsDir = path.join(__dirname, "uploads");
 
 const mapStudentRow = (row) => ({
@@ -965,9 +967,61 @@ const sanitizePlatformSettings = (payload) => {
   const siteSettings = data.siteSettings && typeof data.siteSettings === "object" ? data.siteSettings : {};
   const socialLinks = siteSettings.socialLinks && typeof siteSettings.socialLinks === "object" ? siteSettings.socialLinks : {};
   const socialIconUrls = siteSettings.socialIconUrls && typeof siteSettings.socialIconUrls === "object" ? siteSettings.socialIconUrls : {};
+  const smsOtp = siteSettings.smsOtp && typeof siteSettings.smsOtp === "object" ? siteSettings.smsOtp : {};
+  const smsDomain = String(process.env.SMS_API_DOMAIN || "").trim();
+  const smsPath = String(process.env.SMS_API_PATH || "").trim();
+  const smsUrl = String(process.env.SMS_OTP_API_URL || "").trim();
+  const smsUrlObject = smsUrl ? new URL(smsUrl) : null;
+  const smsOtpEnvDefaults = {
+    enabled: String(process.env.SMS_OTP_ENABLED || "true").toLowerCase() === "true",
+    apiDomain: smsDomain || (smsUrlObject ? smsUrlObject.host : "sms.timesapi.in"),
+    apiPath: smsPath || (smsUrlObject ? smsUrlObject.pathname : "/api/v1/message"),
+    apiUrl: smsDomain || smsPath
+      ? `https://${smsDomain || (smsUrlObject ? smsUrlObject.host : "sms.timesapi.in")}${smsPath || (smsUrlObject ? smsUrlObject.pathname : "/api/v1/message")}`
+      : smsUrl || "https://sms.timesapi.in/api/v1/message",
+    apiUsername: String(process.env.SMS_API_USERNAME || process.env.SMS_OTP_API_USERNAME || process.env.SMS_OTP_USERNAME || "").trim(),
+    apiPassword: String(process.env.SMS_API_PASSWORD || process.env.SMS_OTP_API_PASSWORD || process.env.SMS_OTP_PASSWORD || "").trim(),
+    senderId: String(process.env.SMS_SENDER_ID || process.env.SMS_OTP_SENDER_ID || "EDNVTE").trim(),
+    dltContentId: String(process.env.SMS_DLT_CONTENT_ID || process.env.SMS_OTP_TEMPLATE_ID || process.env.SMS_OTP_ENTITY_ID || "").trim(),
+    unicode: String(process.env.SMS_UNICODE || "false").toLowerCase() === "true",
+    platformName: String(process.env.SMS_PLATFORM_NAME || "Ednovate").trim() || "Ednovate",
+    timeoutMs: Math.max(1000, Math.min(60000, Number(process.env.SMS_TIMEOUT_MS || 12000))),
+    countryCode: String(process.env.SMS_OTP_COUNTRY_CODE || "91").replace(/\D/g, "") || "91",
+    messageTemplate:
+      String(process.env.SMS_OTP_TEMPLATE || process.env.SMS_OTP_MESSAGE_TEMPLATE || "Your OTP for Ednovate is {{otp}}. It is valid for 10 minutes.").trim()
+      || "Your OTP for Ednovate is {{otp}}. It is valid for 10 minutes.",
+    includeCorrelationId: String(process.env.SMS_INCLUDE_CORRELATION_ID || "false").toLowerCase() === "true",
+    apiKey: String(process.env.SMS_OTP_API_KEY || "").trim(),
+    route: String(process.env.SMS_OTP_ROUTE || "").trim(),
+    otpTtlSeconds: Math.max(60, Math.min(900, Number(process.env.SMS_OTP_TTL_SECONDS || 300))),
+    entityId: String(process.env.SMS_OTP_ENTITY_ID || "").trim(),
+  };
   const normalizedSiteSettings = {
     ...siteSettings,
     logo: String(siteSettings.logo || "/ednovate-logo.svg").trim() || "/ednovate-logo.svg",
+    smsOtp: {
+      enabled: typeof smsOtp.enabled === "boolean" ? smsOtp.enabled : smsOtpEnvDefaults.enabled,
+      apiDomain: String(smsOtp.apiDomain || smsOtpEnvDefaults.apiDomain || "").trim(),
+      apiPath: String(smsOtp.apiPath || smsOtpEnvDefaults.apiPath || "").trim(),
+      apiUrl: String(smsOtp.apiUrl || smsOtpEnvDefaults.apiUrl || "").trim(),
+      apiUsername: String(smsOtp.apiUsername || smsOtpEnvDefaults.apiUsername || "").trim(),
+      apiPassword: String(smsOtp.apiPassword || smsOtpEnvDefaults.apiPassword || "").trim(),
+      apiKey: String(smsOtp.apiKey || smsOtpEnvDefaults.apiKey || "").trim(),
+      senderId: String(smsOtp.senderId || smsOtpEnvDefaults.senderId || "").trim(),
+      dltContentId: String(smsOtp.dltContentId || smsOtp.templateId || smsOtpEnvDefaults.dltContentId || "").trim(),
+      templateId: String(smsOtp.templateId || smsOtp.dltContentId || smsOtpEnvDefaults.dltContentId || "").trim(),
+      entityId: String(smsOtp.entityId || smsOtpEnvDefaults.entityId || "").trim(),
+      route: String(smsOtp.route || smsOtpEnvDefaults.route || "").trim(),
+      unicode: typeof smsOtp.unicode === "boolean" ? smsOtp.unicode : smsOtpEnvDefaults.unicode,
+      platformName: String(smsOtp.platformName || smsOtpEnvDefaults.platformName || "Ednovate").trim() || "Ednovate",
+      timeoutMs: Math.max(1000, Math.min(60000, Number(smsOtp.timeoutMs || smsOtpEnvDefaults.timeoutMs || 12000))),
+      countryCode: String(smsOtp.countryCode || smsOtpEnvDefaults.countryCode || "91").replace(/\D/g, "") || "91",
+      otpTtlSeconds: Math.max(60, Math.min(900, Number(smsOtp.otpTtlSeconds || smsOtpEnvDefaults.otpTtlSeconds || 300))),
+      messageTemplate:
+        String(smsOtp.messageTemplate || smsOtpEnvDefaults.messageTemplate || "").trim()
+        || "Your OTP for Ednovate is {{otp}}. It is valid for 10 minutes.",
+      includeCorrelationId: typeof smsOtp.includeCorrelationId === "boolean" ? smsOtp.includeCorrelationId : smsOtpEnvDefaults.includeCorrelationId,
+    },
     socialLinks: {
       facebook: String(socialLinks.facebook || ""),
       instagram: String(socialLinks.instagram || ""),
@@ -1163,24 +1217,31 @@ const normalizeMobile10 = (value) => String(value || "").replace(/\D/g, "").slic
 
 const getOtpConfig = async () => {
   const settings = sanitizePlatformSettings(await getPlatformSettings());
-  const smsOtp =
-    settings?.siteSettings && typeof settings.siteSettings === "object" && settings.siteSettings.smsOtp && typeof settings.siteSettings.smsOtp === "object"
-      ? settings.siteSettings.smsOtp
-      : {};
+  const smsOtp = settings?.siteSettings && typeof settings.siteSettings === "object" && settings.siteSettings.smsOtp && typeof settings.siteSettings.smsOtp === "object"
+    ? settings.siteSettings.smsOtp
+    : {};
 
   return {
     enabled: smsOtp.enabled === true,
+    apiDomain: String(smsOtp.apiDomain || "").trim(),
+    apiPath: String(smsOtp.apiPath || "").trim(),
     apiUrl: String(smsOtp.apiUrl || "").trim(),
+    apiUsername: String(smsOtp.apiUsername || "").trim(),
+    apiPassword: String(smsOtp.apiPassword || "").trim(),
     apiKey: String(smsOtp.apiKey || "").trim(),
     senderId: String(smsOtp.senderId || "").trim(),
-    templateId: String(smsOtp.templateId || "").trim(),
+    dltContentId: String(smsOtp.dltContentId || smsOtp.templateId || "").trim(),
+    templateId: String(smsOtp.templateId || smsOtp.dltContentId || "").trim(),
     entityId: String(smsOtp.entityId || "").trim(),
     route: String(smsOtp.route || "").trim(),
+    unicode: smsOtp.unicode === true,
+    timeoutMs: Math.max(1000, Math.min(60000, Number(smsOtp.timeoutMs || 12000))),
     countryCode: String(smsOtp.countryCode || "91").replace(/\D/g, "") || "91",
     otpTtlSeconds: Math.max(60, Math.min(900, Number(smsOtp.otpTtlSeconds || 300))),
     messageTemplate:
       String(smsOtp.messageTemplate || "").trim()
       || "Your OTP for {{platformName}} is {{otp}}. It is valid for {{minutes}} minutes.",
+    includeCorrelationId: smsOtp.includeCorrelationId === true,
     platformName: String(settings?.siteSettings?.platformName || "Ednovate").trim() || "Ednovate",
   };
 };
@@ -1195,8 +1256,11 @@ const sendTimesMobileOtp = async ({ mobile, otp, config }) => {
   if (!config.enabled) {
     return { sent: false, reason: "TimesMobile OTP is disabled in Settings." };
   }
-  if (!config.apiUrl || !config.apiKey || !config.senderId) {
-    return { sent: false, reason: "TimesMobile API URL, API Key and Sender ID are required." };
+  if (!config.senderId) {
+    return { sent: false, reason: "TimesMobile Sender ID is required." };
+  }
+  if (!config.apiUsername || !config.apiPassword) {
+    return { sent: false, reason: "TimesMobile API Username and API Password are required." };
   }
 
   const minutes = Math.max(1, Math.round(Number(config.otpTtlSeconds || 300) / 60));
@@ -1208,47 +1272,65 @@ const sendTimesMobileOtp = async ({ mobile, otp, config }) => {
   });
 
   const fullMobile = `${config.countryCode}${mobile}`;
-  const form = new URLSearchParams();
-  form.set("to", fullMobile);
-  form.set("mobile", fullMobile);
-  form.set("phone", fullMobile);
-  form.set("sender", config.senderId);
-  form.set("senderid", config.senderId);
-  form.set("from", config.senderId);
-  form.set("message", message);
-  form.set("text", message);
-  if (config.templateId) {
-    form.set("template_id", config.templateId);
-    form.set("templateId", config.templateId);
+  const apiUrl = String(config.apiUrl || `https://${String(config.apiDomain || "sms.timesapi.in").replace(/^https?:\/\//i, "")}${String(config.apiPath || "/api/v1/message")}`).trim();
+  const requestBody = {
+    sender: config.senderId,
+    unicode: config.unicode === true,
+    message: {
+      recipient: fullMobile,
+      text: message,
+    },
+  };
+
+  const extra = {};
+  if (config.dltContentId) {
+    extra.dltContentId = config.dltContentId;
   }
-  if (config.entityId) {
-    form.set("entity_id", config.entityId);
-    form.set("entityId", config.entityId);
+  if (config.includeCorrelationId) {
+    extra.corelationid = randomUUID();
   }
-  if (config.route) {
-    form.set("route", config.route);
+  if (Object.keys(extra).length > 0) {
+    requestBody.extra = extra;
   }
 
-  const response = await fetch(config.apiUrl, {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(new Error("TimesMobile request timed out")), Number(config.timeoutMs || 12000));
+  const response = await fetch(apiUrl, {
     method: "POST",
     headers: {
-      "Content-Type": "application/x-www-form-urlencoded",
-      Authorization: `Bearer ${config.apiKey}`,
-      "x-api-key": config.apiKey,
-      "api-key": config.apiKey,
+      "Content-Type": "application/json",
+      Authorization: `Basic ${Buffer.from(`${config.apiUsername}:${config.apiPassword}`).toString("base64")}`,
     },
-    body: form.toString(),
+    body: JSON.stringify(requestBody),
+    signal: controller.signal,
   });
+  clearTimeout(timeout);
 
   const raw = await response.text().catch(() => "");
+  let parsed = null;
+  try {
+    parsed = raw ? JSON.parse(raw) : null;
+  } catch {
+    parsed = null;
+  }
   if (!response.ok) {
     return {
       sent: false,
-      reason: raw || `TimesMobile request failed with status ${response.status}`,
+      reason: (parsed && (parsed.description || parsed.message || parsed.error)) || raw || `TimesMobile request failed with status ${response.status}`,
     };
   }
 
-  return { sent: true, raw };
+  // Times Mobile can return HTTP 200 with a failed semantic state.
+  const providerState = String(parsed?.state || "").trim().toUpperCase();
+  if (providerState && providerState !== "SUBMIT_ACCEPTED") {
+    return {
+      sent: false,
+      reason: String(parsed?.description || parsed?.message || `TimesMobile rejected message with state ${providerState}`),
+      raw: parsed || raw,
+    };
+  }
+
+  return { sent: true, raw: parsed || raw };
 };
 
 const getResendConfig = () => {
@@ -2720,7 +2802,14 @@ app.post("/api/auth/student/otp/send", async (request, response) => {
       [mobile, otpHash, expiresAt.toISOString()],
     );
 
-    response.json({ ok: true, message: "OTP sent successfully." });
+    const provider = smsResult.raw && typeof smsResult.raw === "object" ? smsResult.raw : null;
+    response.json({
+      ok: true,
+      message: "OTP sent successfully.",
+      providerState: provider?.state || null,
+      providerTransactionId: provider?.transactionId || null,
+      providerDescription: provider?.description || null,
+    });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to send OTP" });
   }
