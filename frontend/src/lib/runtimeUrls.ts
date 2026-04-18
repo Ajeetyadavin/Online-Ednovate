@@ -22,9 +22,19 @@ const LEGACY_PORTAL_API_FALLBACK_URLS = String(import.meta.env.VITE_LEGACY_PORTA
   .filter(Boolean);
 const PROD_DEFAULT_API_BASE_URL = "https://online-ednovate-api.onrender.com";
 
+const isLocalHost = (hostname: string) => {
+  const normalized = String(hostname || "").toLowerCase();
+  if (normalized === "localhost" || normalized === "127.0.0.1" || normalized === "::1") return true;
+  return /^192\.168\./.test(normalized) || /^10\./.test(normalized);
+};
+
 const isProductionFrontendHost = () => {
   if (typeof window === "undefined") return false;
   const hostname = window.location.hostname.toLowerCase();
+
+  // Any non-local hostname should be treated as production unless explicitly overridden by env.
+  if (!isLocalHost(hostname)) return true;
+
   return hostname.includes("vercel.app") || hostname.includes("netlify.app") || hostname.includes("github.io");
 };
 
