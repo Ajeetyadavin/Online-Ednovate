@@ -34,9 +34,9 @@ const API_ENDPOINTS: EndpointDoc[] = [
   { method: "PUT", path: "/api/auth/student/profile", auth: "Student Token", module: "Auth", description: "Update student profile" },
   { method: "POST", path: "/api/auth/student/change-password", auth: "Student Token", module: "Auth", description: "Change student password" },
 
-  { method: "GET", path: "/api/auth/student/dashboard", auth: "Student Token", module: "Student Dashboard", description: "Student dashboard data" },
-  { method: "GET", path: "/api/auth/student/orders", auth: "Student Token", module: "Student Dashboard", description: "Student order list" },
-  { method: "GET", path: "/api/auth/student/course-access", auth: "Student Token", module: "Student Dashboard", description: "Purchased course access list" },
+  { method: "GET", path: "/api/auth/student/dashboard", auth: "Student Token", module: "Student Dashboard", description: "Student dashboard data with orders, notifications, and access summary" },
+  { method: "GET", path: "/api/auth/student/orders", auth: "Student Token", module: "Student Dashboard", description: "Student purchase/order history" },
+  { method: "GET", path: "/api/auth/student/course-access", auth: "Student Token", module: "Student Dashboard", description: "Purchased courses list for the logged-in student" },
   { method: "PATCH", path: "/api/auth/student/course-access/:courseId/video-quality", auth: "Student Token", module: "Student Dashboard", description: "Set preferred video quality" },
   { method: "POST", path: "/api/auth/student/purchase", auth: "Student Token", module: "Student Dashboard", description: "Create purchase + grant access" },
 
@@ -55,8 +55,8 @@ const API_ENDPOINTS: EndpointDoc[] = [
 
   { method: "GET", path: "/api/categories", auth: "Public", module: "Catalog", description: "Public category list" },
   { method: "GET", path: "/api/course-masters", auth: "Public", module: "Catalog", description: "Public course masters" },
-  { method: "GET", path: "/api/courses", auth: "Public", module: "Catalog", description: "Public courses list" },
-  { method: "GET", path: "/api/courses/:id/curriculum", auth: "Public", module: "Catalog", description: "Get course curriculum" },
+  { method: "GET", path: "/api/courses", auth: "Public", module: "Catalog", description: "Public courses list plus saved curricula map" },
+  { method: "GET", path: "/api/courses/:id/curriculum", auth: "Public", module: "Catalog", description: "Fetch chapters and lesson names for a course; lesson.videoUrl is the playback source" },
   { method: "GET", path: "/api/faculty", auth: "Public", module: "Catalog", description: "Public faculty list" },
   { method: "GET", path: "/api/homepage", auth: "Public", module: "Catalog", description: "Homepage banners list" },
   { method: "GET", path: "/api/homepage", auth: "Public", module: "Catalog", description: "Homepage testimonials list" },
@@ -72,7 +72,7 @@ const API_ENDPOINTS: EndpointDoc[] = [
   { method: "GET", path: "/api/uploads/storage/:assetId/:fileName", auth: "Public", module: "Uploads", description: "Read uploaded asset by file" },
   { method: "GET", path: "/api/uploads/storage/:assetId", auth: "Public", module: "Uploads", description: "Read uploaded asset metadata" },
   { method: "POST", path: "/api/uploads/bunny-video", auth: "Admin Token", module: "Uploads", description: "Upload Bunny video" },
-  { method: "POST", path: "/api/bunny/signed-playback", auth: "Public", module: "Bunny", description: "Create signed playback URL" },
+  { method: "POST", path: "/api/bunny/signed-playback", auth: "Public", module: "Bunny", description: "Create signed HLS playbackUrl for Bunny videos using videoId + cdnHostname" },
 
   { method: "POST", path: "/api/faculty/login", auth: "Public", module: "Faculty Auth", description: "Faculty login" },
   { method: "POST", path: "/api/faculty/logout", auth: "Public", module: "Faculty Auth", description: "Faculty logout" },
@@ -151,9 +151,8 @@ const API_ENDPOINTS: EndpointDoc[] = [
   { method: "PUT", path: "/api/homepage", auth: "Admin Token", module: "Admin Homepage", description: "Save homepage banners" },
   { method: "PUT", path: "/api/homepage", auth: "Admin Token", module: "Admin Homepage", description: "Save homepage testimonials" },
   { method: "PUT", path: "/api/homepage", auth: "Admin Token", module: "Admin Homepage", description: "Save homepage announcements" },
-  { method: "GET", path: "/api/admin/homepage/platform-settings", auth: "Admin Token", module: "Admin Homepage", description: "Homepage platform settings" },
-  { method: "GET", path: "/api/admin/homepage/platform-settings", auth: "Admin Token", module: "Admin Homepage", description: "Homepage section visibility and labels" },
-  { method: "PUT", path: "/api/admin/homepage/platform-settings", auth: "Admin Token", module: "Admin Homepage", description: "Save homepage section visibility and labels" },
+  { method: "GET", path: "/api/admin/homepage/platform-settings", auth: "Admin Token", module: "Admin Homepage", description: "Read homepage section visibility, labels, and layout settings" },
+  { method: "PUT", path: "/api/admin/homepage/platform-settings", auth: "Admin Token", module: "Admin Homepage", description: "Save homepage section visibility, labels, and layout settings" },
 
   { method: "GET", path: "/api/admin/lead-form-settings", auth: "Admin Token", module: "Admin Leads", description: "Lead form settings" },
   { method: "PUT", path: "/api/admin/lead-form-settings", auth: "Admin Token", module: "Admin Leads", description: "Save lead form settings" },
