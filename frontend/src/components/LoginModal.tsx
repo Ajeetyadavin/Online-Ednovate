@@ -807,7 +807,7 @@ const LoginModal = ({
           </div>
 
           {/* ── SCROLLABLE FORM BODY ── */}
-          <div className={`flex-1 bg-white ${isSignup && !showForgotPassword ? "overflow-hidden px-5 py-3" : "overflow-y-auto px-7 py-5"}`}>
+          <div className={`flex-1 bg-white ${isSignup && !showForgotPassword ? "overflow-y-auto px-5 py-3" : "overflow-y-auto px-7 py-5"}`}>
 
             {/* LOGIN */}
             {!isSignup && !showForgotPassword && (
