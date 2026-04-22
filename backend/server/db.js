@@ -652,12 +652,12 @@ export async function ensureSchema() {
     await pool.query(
       `
       INSERT INTO students
-      (id, name, email, mobile, city, state, country, status, courses_enrolled, courses_completed, education_level)
+      (name, email, mobile, city, state, country, status, courses_enrolled, courses_completed, education_level)
       VALUES
-      ('std-1', 'Raj Kumar', 'raj@example.com', '9876543210', 'Delhi', 'Delhi', 'India', 'Active', 3, 1, '12th Pass'),
-      ('std-2', 'Priya Singh', 'priya@example.com', '9123456789', 'Mumbai', 'Maharashtra', 'India', 'Active', 2, 0, 'Bachelor'),
-      ('std-3', 'Arjun Patel', 'arjun@example.com', '9012345678', 'Bangalore', 'Karnataka', 'India', 'Inactive', 1, 1, 'Masters')
-      ON CONFLICT (id) DO NOTHING;
+      ('Raj Kumar', 'raj@example.com', '9876543210', 'Delhi', 'Delhi', 'India', 'Active', 3, 1, '12th Pass'),
+      ('Priya Singh', 'priya@example.com', '9123456789', 'Mumbai', 'Maharashtra', 'India', 'Active', 2, 0, 'Bachelor'),
+      ('Arjun Patel', 'arjun@example.com', '9012345678', 'Bangalore', 'Karnataka', 'India', 'Inactive', 1, 1, 'Masters')
+      ON CONFLICT (email) DO NOTHING;
       `,
     );
   }
