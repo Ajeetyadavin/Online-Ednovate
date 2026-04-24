@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { toast } from "sonner";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { adminApi } from "@/services/adminApi";
 import { useSiteSettings, type SiteSettings } from "@/context/SiteSettingsContext";
@@ -88,8 +89,15 @@ export default function AdminHomepage() {
 
   const persistHomepage = async (nextBanners = banners, nextTestimonials = testimonials, nextAnnouncements = announcements) => {
     setIsSaving(true);
-    try { await adminApi.updateHomepage({ banners: nextBanners, testimonials: nextTestimonials, announcements: nextAnnouncements }); }
-    catch (error) { alert(error instanceof Error ? error.message : "Failed to save homepage data"); }
+    try {
+      await adminApi.updateHomepage({ banners: nextBanners, testimonials: nextTestimonials, announcements: nextAnnouncements });
+        toast.success("Homepage saved successfully");
+      return true;
+    }
+    catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to save homepage data");
+      return false;
+    }
     finally { setIsSaving(false); }
   };
 
@@ -151,7 +159,8 @@ export default function AdminHomepage() {
         setSiteDraft(nextDraft);
         updateSettings(nextDraft);
       }
-    } catch (error) { alert(error instanceof Error ? error.message : "Failed to save site settings"); }
+      toast.success("Settings saved successfully");
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to save site settings"); }
     finally { setIsSaving(false); }
   };
 
@@ -204,8 +213,12 @@ export default function AdminHomepage() {
 
   const handleBannerFileInput = async (file?: File | null) => {
     if (!file) return;
-    try { const url = await uploadImageFile(file, "homepage-banners"); setNewBanner((prev) => ({ ...prev, imageUrl: url })); }
-    catch (error) { alert(error instanceof Error ? error.message : "Image upload failed"); }
+    try { 
+      const url = await uploadImageFile(file, "homepage-banners"); 
+      setNewBanner((prev) => ({ ...prev, imageUrl: url }));
+      toast.success("Image uploaded successfully");
+    }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Image upload failed"); }
   };
 
   const handleTestimonialImage = async (file?: File | null) => {
@@ -233,30 +246,93 @@ export default function AdminHomepage() {
 
   const handleAddBanner = async () => {
     if (!newBanner.title.trim() || !newBanner.imageUrl.trim()) { alert("Banner title and image are required"); return; }
+    const previous = banners;
     const next = [...banners, { id: `banner_${Date.now()}`, title: newBanner.title, imageUrl: newBanner.imageUrl, isVisible: true, sortOrder: banners.length + 1 }];
-    setBanners(next); await persistHomepage(next, testimonials, announcements); setNewBanner({ title: "", imageUrl: "" });
+    setBanners(next);
+    const ok = await persistHomepage(next, testimonials, announcements);
+    if (!ok) {
+      setBanners(previous);
+      return;
+    }
+    setNewBanner({ title: "", imageUrl: "" });
   };
 
-  const handleToggleBanner = async (id: string) => { const next = banners.map((b) => (b.id === id ? { ...b, isVisible: !b.isVisible } : b)); setBanners(next); await persistHomepage(next, testimonials, announcements); };
-  const handleDeleteBanner = async (id: string) => { if (!confirm("Delete this banner?")) return; const next = banners.filter((b) => b.id !== id); setBanners(next); await persistHomepage(next, testimonials, announcements); };
+  const handleToggleBanner = async (id: string) => {
+    const previous = banners;
+    const next = banners.map((b) => (b.id === id ? { ...b, isVisible: !b.isVisible } : b));
+    setBanners(next);
+    const ok = await persistHomepage(next, testimonials, announcements);
+    if (!ok) setBanners(previous);
+  };
+
+  const handleDeleteBanner = async (id: string) => {
+    if (!confirm("Delete this banner?")) return;
+    const previous = banners;
+    const next = banners.filter((b) => b.id !== id);
+    setBanners(next);
+    const ok = await persistHomepage(next, testimonials, announcements);
+    if (!ok) setBanners(previous);
+  };
 
   const handleAddAnnouncement = async () => {
     if (!newAnnouncement.title.trim()) { alert("Announcement title is required"); return; }
+    const previous = announcements;
     const next = [...announcements, { id: `ann_${Date.now()}`, title: newAnnouncement.title, content: newAnnouncement.content, link: newAnnouncement.link, isVisible: true }];
-    setAnnouncements(next); await persistHomepage(banners, testimonials, next); setNewAnnouncement({ title: "", content: "", link: "" });
+    setAnnouncements(next);
+    const ok = await persistHomepage(banners, testimonials, next);
+    if (!ok) {
+      setAnnouncements(previous);
+      return;
+    }
+    setNewAnnouncement({ title: "", content: "", link: "" });
   };
 
-  const handleUpdateAnnouncement = async (id: string, updates: Record<string, unknown>) => { const next = announcements.map((a) => (a.id === id ? { ...a, ...updates } : a)); setAnnouncements(next); await persistHomepage(banners, testimonials, next); };
-  const handleDeleteAnnouncement = async (id: string) => { if (!confirm("Delete announcement?")) return; const next = announcements.filter((a) => a.id !== id); setAnnouncements(next); await persistHomepage(banners, testimonials, next); };
+  const handleUpdateAnnouncement = async (id: string, updates: Record<string, unknown>) => {
+    const previous = announcements;
+    const next = announcements.map((a) => (a.id === id ? { ...a, ...updates } : a));
+    setAnnouncements(next);
+    const ok = await persistHomepage(banners, testimonials, next);
+    if (!ok) setAnnouncements(previous);
+  };
+
+  const handleDeleteAnnouncement = async (id: string) => {
+    if (!confirm("Delete announcement?")) return;
+    const previous = announcements;
+    const next = announcements.filter((a) => a.id !== id);
+    setAnnouncements(next);
+    const ok = await persistHomepage(banners, testimonials, next);
+    if (!ok) setAnnouncements(previous);
+  };
 
   const handleAddTestimonial = async () => {
     if (!newTestimonial.authorName.trim() || !newTestimonial.content.trim()) { alert("Name and testimonial content are required"); return; }
+    const previous = testimonials;
     const next = [...testimonials, { id: `test_${Date.now()}`, authorName: newTestimonial.authorName, authorRole: newTestimonial.authorRole, content: newTestimonial.content, rating: newTestimonial.rating, isVisible: true, avatarUrl: newTestimonial.avatarUrl }];
-    setTestimonials(next as any); await persistHomepage(banners, next as any, announcements); setNewTestimonial({ authorName: "", authorRole: "", content: "", rating: 5, avatarUrl: "" });
+    setTestimonials(next as any);
+    const ok = await persistHomepage(banners, next as any, announcements);
+    if (!ok) {
+      setTestimonials(previous as any);
+      return;
+    }
+    setNewTestimonial({ authorName: "", authorRole: "", content: "", rating: 5, avatarUrl: "" });
   };
 
-  const handleUpdateTestimonial = async (id: string, updates: Record<string, unknown>) => { const next = testimonials.map((t) => (t.id === id ? { ...t, ...updates } : t)); setTestimonials(next as any); await persistHomepage(banners, next as any, announcements); };
-  const handleDeleteTestimonial = async (id: string) => { if (!confirm("Delete testimonial?")) return; const next = testimonials.filter((t) => t.id !== id); setTestimonials(next as any); await persistHomepage(banners, next as any, announcements); };
+  const handleUpdateTestimonial = async (id: string, updates: Record<string, unknown>) => {
+    const previous = testimonials;
+    const next = testimonials.map((t) => (t.id === id ? { ...t, ...updates } : t));
+    setTestimonials(next as any);
+    const ok = await persistHomepage(banners, next as any, announcements);
+    if (!ok) setTestimonials(previous as any);
+  };
+
+  const handleDeleteTestimonial = async (id: string) => {
+    if (!confirm("Delete testimonial?")) return;
+    const previous = testimonials;
+    const next = testimonials.filter((t) => t.id !== id);
+    setTestimonials(next as any);
+    const ok = await persistHomepage(banners, next as any, announcements);
+    if (!ok) setTestimonials(previous as any);
+  };
 
   const editingAnn = editingAnnId ? announcements.find((a) => a.id === editingAnnId) : null;
   const editingTest = editingTestId ? testimonials.find((t) => t.id === editingTestId) : null;

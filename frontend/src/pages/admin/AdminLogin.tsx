@@ -14,6 +14,9 @@ export default function AdminLogin() {
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [showConfirmModal, setShowConfirmModal] = useState(false);
+  const [confirmationMessage, setConfirmationMessage] = useState("");
+  const [isConfirmingLogin, setIsConfirmingLogin] = useState(false);
   const redirectTo = typeof location.state === "object" && location.state && "from" in location.state
     ? String((location.state as { from?: { pathname?: string } }).from?.pathname || "/admin/dashboard")
     : "/admin/dashboard";
@@ -30,15 +33,8 @@ export default function AdminLogin() {
     const result = await login(email, password);
     if (!result.success) {
       if (result.requiresConfirmation) {
-        const shouldContinue = window.confirm(result.error || "This account is already active on another device. Continue login?");
-        if (shouldContinue) {
-          const forcedResult = await login(email, password, { forceLogin: true });
-          if (!forcedResult.success) {
-            setError(forcedResult.error || "Login failed");
-          } else {
-            setError("");
-          }
-        }
+        setConfirmationMessage(result.error || "This account is already logged in from another place. Do you want to login here?");
+        setShowConfirmModal(true);
       } else {
         setError(result.error || "Login failed");
       }
@@ -47,6 +43,19 @@ export default function AdminLogin() {
     }
 
     setIsSubmitting(false);
+  };
+
+  const handleConfirmLogin = async () => {
+    setIsConfirmingLogin(true);
+    const forcedResult = await login(email, password, { forceLogin: true });
+    if (!forcedResult.success) {
+      setError(forcedResult.error || "Login failed");
+      setShowConfirmModal(false);
+    } else {
+      setError("");
+      setShowConfirmModal(false);
+    }
+    setIsConfirmingLogin(false);
   };
 
   return (
@@ -133,6 +142,51 @@ export default function AdminLogin() {
 
         <p className="text-center text-gray-500 text-xs mt-6">Protected Admin Area © Ednovate {new Date().getFullYear()}</p>
       </div>
+
+      {/* Confirmation Modal */}
+      {showConfirmModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white shadow-2xl animate-in fade-in zoom-in-95 duration-200">
+            <div className="border-b border-gray-200 bg-gradient-to-r from-amber-50 to-orange-50 px-6 py-6">
+              <h2 className="text-xl font-bold text-gray-900">Account Already Active</h2>
+              <p className="mt-1 text-sm text-gray-600">Session detected from another location</p>
+            </div>
+            
+            <div className="px-6 py-6">
+              <div className="mb-6 space-y-3">
+                <div className="flex items-start gap-3 rounded-lg bg-amber-50 p-3">
+                  <AlertCircle className="h-5 w-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-sm text-amber-900 font-medium">{confirmationMessage}</p>
+                </div>
+                
+                <div className="space-y-2 text-sm text-gray-600">
+                  <p>Your account is currently logged in from another location. If you continue, that session will be logged out.</p>
+                </div>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmModal(false)}
+                  disabled={isConfirmingLogin}
+                  className="flex-1 rounded-lg border border-gray-300 bg-white px-4 py-2.5 text-sm font-medium text-gray-700 transition-colors hover:bg-gray-50 disabled:opacity-50"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={handleConfirmLogin}
+                  disabled={isConfirmingLogin}
+                  className="flex-1 rounded-lg bg-gradient-to-r from-orange-500 to-orange-600 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:from-orange-600 hover:to-orange-700 disabled:opacity-50 flex items-center justify-center gap-2"
+                >
+                  {isConfirmingLogin && <Loader2 className="h-4 w-4 animate-spin" />}
+                  {isConfirmingLogin ? "Logging in..." : "Login Here"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { toast } from "sonner";
 import { type Chapter, type ManagedCourse, usePlatformData } from "@/context/PlatformDataContext";
 import {
   adminApi,
@@ -196,7 +197,7 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
 });
 
 const BLANK_FORM: CourseForm = {
-  id: "", title: "", category: "", subcategory: "general", price: 0, originalPrice: 0, taxPercentage: 0,
+  id: "", title: "", category: "", subcategory: "", price: 0, originalPrice: 0, taxPercentage: 0,
   subject: "", chapter: "", selectedChapters: [],
   language: "English", professor: "Ednovate Faculty", facultyIds: [], lectures: 0, hours: 0, thumbnail: "",
   demoVideoTitle: "", demoVideoDescription: "", demoVideoSource: "youtube", demoVideoUrl: "",
@@ -1111,14 +1112,12 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
   };
 
   const openCreateDialog = () => {
-    const initialCategory = parentCategories[0]?.id || "general";
-    const initialSubcategory = categories.find((c) => c.parentId === initialCategory)?.id || "general";
     setEditingId(null);
     setForm({
       ...BLANK_FORM,
-      id: getNextCategoryCourseCode(initialCategory),
-      category: initialCategory,
-      subcategory: initialSubcategory,
+      id: getNextCategoryCourseCode("general"),
+      category: "",
+      subcategory: "",
       subject: "",
       selectedChapters: [],
       chapter: "",
@@ -1148,8 +1147,9 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       const base64Data = await fileToBase64(file);
       const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "courses");
       sf({ thumbnail: uploaded.url });
+      toast.success("Thumbnail uploaded successfully");
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Thumbnail upload failed");
+      toast.error(e instanceof Error ? e.message : "Thumbnail upload failed");
     } finally {
       setCourseThumbnailUploading(false);
     }
@@ -1211,6 +1211,8 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
 
   const handleSaveCourse = async () => {
     if (!form.title.trim()) { alert("Please add a valid course title"); return; }
+    if (!form.category) { alert("Please select category"); return; }
+    if (!form.subcategory) { alert("Please select level/subcategory"); return; }
     const UNLIMITED_VALIDITY_DAYS = 36500;
     const hasValidCourseComboPrice = form.masterCombinationsEnabled !== false && (form.masterCombinationRows || []).some(
       (row) => row.isActive !== false
@@ -1463,10 +1465,10 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
           originalPrice: item.originalPrice,
         })),
         combinationBasis: {
-          useView: Boolean(form.combinationUseView),
-          useValidity: Boolean(form.combinationUseValidity),
-          useAttempt: Boolean(form.combinationUseAttempt),
-          useMode: Boolean(form.combinationUseMode),
+          useView: hasMasterCombinationPricing ? Boolean(form.combinationUseView) : false,
+          useValidity: hasMasterCombinationPricing ? Boolean(form.combinationUseValidity) : false,
+          useAttempt: hasMasterCombinationPricing ? Boolean(form.combinationUseAttempt) : false,
+          useMode: hasMasterCombinationPricing ? Boolean(form.combinationUseMode) : false,
         },
       },
     };
@@ -1476,7 +1478,11 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       await adminApi.upsertCourse(nextCourse);
       await syncSelectedChaptersToCurriculum(nextCourse.id, form.selectedChapters);
       setDialogOpen(false);
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed to save"); }
+    } catch (e) { 
+      toast.error(e instanceof Error ? e.message : "Failed to save course");
+      setIsSaving(false);
+      return;
+    }
     finally { setIsSaving(false); }
   };
 
@@ -1503,8 +1509,10 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       }
       upsertCourse({ ...JSON.parse(JSON.stringify(course)), id: duplicateId, title: nextTitle.trim(), isVisible: false, enrollmentCount: 0 });
       await loadCurriculumMeta();
-      alert("Course duplicated successfully");
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed to duplicate course"); }
+      toast.success("Course duplicated successfully");
+    } catch (e) { 
+      toast.error(e instanceof Error ? e.message : "Failed to duplicate course");
+    }
   };
 
   // ── Package Builder helpers ──────────────────────────────────
@@ -1885,17 +1893,19 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
             originalPrice: item.originalPrice === null || item.originalPrice === undefined ? null : Number(item.originalPrice || 0),
           })),
           combinationBasis: {
-            useView: pkgMasterCombinationsEnabled ? pkgCombinationUseView : false,
-            useValidity: pkgMasterCombinationsEnabled ? pkgCombinationUseValidity : false,
-            useAttempt: pkgMasterCombinationsEnabled ? pkgCombinationUseAttempt : false,
-            useMode: pkgMasterCombinationsEnabled ? pkgCombinationUseMode : false,
+            useView: normalizedPkgCombos.length > 0 ? pkgCombinationUseView : false,
+            useValidity: normalizedPkgCombos.length > 0 ? pkgCombinationUseValidity : false,
+            useAttempt: normalizedPkgCombos.length > 0 ? pkgCombinationUseAttempt : false,
+            useMode: normalizedPkgCombos.length > 0 ? pkgCombinationUseMode : false,
           },
         },
       };
       upsertCourse(pkg);
       await adminApi.upsertCourse(pkg);
       setPkgOpen(false);
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed to save package"); }
+    } catch (e) { 
+      toast.error(e instanceof Error ? e.message : "Failed to save package");
+    }
     finally { setPkgSaving(false); }
   };
 
@@ -2740,11 +2750,11 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                   <div className="mt-auto pt-3 border-t border-slate-200 space-y-1.5">
                     <p className="text-[9px] font-bold uppercase tracking-widest text-slate-400 px-1">Auto Stats</p>
                     <div className="rounded-xl bg-white border border-slate-200 px-2 py-2 text-center">
-                      <p className="text-lg font-black text-slate-800">{autoMeta.lectures}</p>
+                      <p className="text-lg font-black text-slate-800">{autoMeta?.lectures ?? 0}</p>
                       <p className="text-[10px] text-slate-400">Lectures</p>
                     </div>
                     <div className="rounded-xl bg-white border border-slate-200 px-2 py-2 text-center">
-                      <p className="text-base font-black text-slate-800 tabular-nums">{autoMeta.formattedDuration.slice(0,5)}</p>
+                      <p className="text-base font-black text-slate-800 tabular-nums">{autoMeta?.formattedDuration?.slice(0,5) ?? "0:00"}</p>
                       <p className="text-[10px] text-slate-400">Duration</p>
                     </div>
                   </div>

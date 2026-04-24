@@ -127,6 +127,8 @@ interface PlatformDataState {
 }
 
 interface PlatformDataContextType extends PlatformDataState {
+  isBackendConnected: boolean;
+  isBootstrapped: boolean;
   upsertCourse: (course: ManagedCourse) => void;
   updateCourseDemoVideo: (
     courseId: string,
@@ -667,6 +669,8 @@ const PlatformDataContext = createContext<PlatformDataContextType | null>(null);
 
 export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<PlatformDataState>(() => loadInitialState());
+  const [isBackendConnected, setIsBackendConnected] = useState(true);
+  const [isBootstrapped, setIsBootstrapped] = useState(false);
 
   useEffect(() => {
     let isMounted = true;
@@ -685,7 +689,15 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
           (!categoriesResponse || !categoriesResponse.ok) &&
           (!homepageResponse || !homepageResponse.ok)
         ) {
+          if (isMounted) {
+            setIsBackendConnected(false);
+            setIsBootstrapped(true);
+          }
           return;
+        }
+
+        if (isMounted) {
+          setIsBackendConnected(true);
         }
 
         const data = coursesResponse.ok
@@ -776,9 +788,16 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
             curricula: ensureCourseScopedDemos(nextCurricula),
           };
         });
+        if (isMounted) {
+          setIsBootstrapped(true);
+        }
       } catch {
         // Keep local storage as fallback when API is unavailable.
         console.error('[PlatformDataProvider] Error syncing from API');
+        if (isMounted) {
+          setIsBackendConnected(false);
+          setIsBootstrapped(true);
+        }
       }
     };
 
@@ -1050,6 +1069,8 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
 
     return {
       ...state,
+      isBackendConnected,
+      isBootstrapped,
       upsertCourse,
       updateCourseDemoVideo,
       deleteCourse,
@@ -1070,7 +1091,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
       setCourseDemoLesson,
       resetPlatformData,
     };
-  }, [state]);
+  }, [state, isBackendConnected, isBootstrapped]);
 
   return <PlatformDataContext.Provider value={value}>{children}</PlatformDataContext.Provider>;
 };

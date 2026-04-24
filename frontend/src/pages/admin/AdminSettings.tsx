@@ -189,6 +189,7 @@ export default function AdminSettings() {
     maintenanceMode: false,
     antiInspectEnabled: false,
     disableCopyPaste: false,
+    allowMultipleAdminLogins: false,
     bunnyStreamEnabled: false,
     bunnyStreamLibraryId: "",
     bunnyStreamApiKey: "",
@@ -342,6 +343,7 @@ export default function AdminSettings() {
           maintenanceMode: site.maintenanceMode === true,
           antiInspectEnabled: security.antiInspectEnabled === true,
           disableCopyPaste: security.disableCopyPaste === true,
+          allowMultipleAdminLogins: security.allowMultipleAdminLogins === true,
           smtp: {
             enabled: smtpRaw.enabled === true,
             host: String(smtpRaw.host || ""),
@@ -471,6 +473,7 @@ export default function AdminSettings() {
           security: {
             antiInspectEnabled: security.antiInspectEnabled === true,
             disableCopyPaste: security.disableCopyPaste === true,
+            allowMultipleAdminLogins: security.allowMultipleAdminLogins === true,
           },
           bunnyStreamApi: {
             enabled: bunny?.enabled === true,
@@ -711,6 +714,7 @@ export default function AdminSettings() {
         security: {
           antiInspectEnabled: settings.antiInspectEnabled,
           disableCopyPaste: settings.disableCopyPaste,
+          allowMultipleAdminLogins: settings.allowMultipleAdminLogins,
         },
         smtp: {
           enabled: settings.smtp.enabled,
@@ -767,6 +771,7 @@ export default function AdminSettings() {
         security: {
           antiInspectEnabled: settings.antiInspectEnabled,
           disableCopyPaste: settings.disableCopyPaste,
+          allowMultipleAdminLogins: settings.allowMultipleAdminLogins,
         },
         bunnyStreamApi: payload.bunnyStreamApi,
         socialLinks: settings.socialLinks,
@@ -809,6 +814,7 @@ export default function AdminSettings() {
         security: {
           antiInspectEnabled: settings.antiInspectEnabled,
           disableCopyPaste: settings.disableCopyPaste,
+          allowMultipleAdminLogins: settings.allowMultipleAdminLogins,
         },
         smtp: {
           enabled: settings.smtp.enabled,
@@ -1220,6 +1226,13 @@ export default function AdminSettings() {
                   <p className="text-sm text-gray-600">Disable right-click, copy, cut, paste &amp; text selection on public pages</p>
                 </div>
                 <Switch id="disableCopyPaste" checked={settings.disableCopyPaste} onCheckedChange={(value) => handleInputChange("disableCopyPaste", value)} />
+              </div>
+              <div className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-4">
+                <div className="space-y-0.5">
+                  <Label htmlFor="allowMultipleAdminLogins" className="text-gray-900 font-medium cursor-pointer">👥 Allow Multiple Admin Logins</Label>
+                  <p className="text-sm text-gray-600">Allow admin to login from multiple places simultaneously without logging out from other sessions</p>
+                </div>
+                <Switch id="allowMultipleAdminLogins" checked={settings.allowMultipleAdminLogins} onCheckedChange={(value) => handleInputChange("allowMultipleAdminLogins", value)} />
               </div>
             </CardContent>
           </Card>

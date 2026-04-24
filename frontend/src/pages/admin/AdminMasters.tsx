@@ -137,6 +137,7 @@ export default function AdminMasters() {
   const [dragLevelId, setDragLevelId] = useState('');
   const [dragSubjectId, setDragSubjectId] = useState('');
   const [dragChapterId, setDragChapterId] = useState('');
+  const [chapterSerialDrafts, setChapterSerialDrafts] = useState<Record<string, string>>({});
 
   const openSubjectPopup = (id: string, name: string, type: 'course' | 'level') => {
     setSubjectPopup({ open: true, targetId: id, targetName: name, targetType: type });
@@ -525,6 +526,49 @@ export default function AdminMasters() {
     const reordered = reorderArray(ordered, fromIndex, toIndex).map((item, index) => ({ ...item, sortOrder: index + 1 }));
     setSubjects((prev) => prev.map((item) => item.id === selectedSubjectId ? { ...item, chapters: reordered } : item));
     setDragChapterId('');
+  };
+
+  const moveChapterToSerial = (subjectId: string, chapterId: string, serialRaw: string | number) => {
+    const numeric = Number(serialRaw);
+    if (!Number.isFinite(numeric)) return;
+    const targetSerial = Math.max(1, Math.floor(numeric));
+
+    setSubjects((prev) => prev.map((item) => {
+      if (item.id !== subjectId) return item;
+      const ordered = [...(item.chapters || [])];
+      const currentIndex = ordered.findIndex((chapter) => chapter.id === chapterId);
+      if (currentIndex < 0 || ordered.length <= 1) return item;
+
+      const boundedTarget = Math.min(ordered.length, targetSerial);
+      if (boundedTarget === currentIndex + 1) {
+        return {
+          ...item,
+          chapters: ordered.map((chapter, index) => ({ ...chapter, sortOrder: index + 1 })),
+        };
+      }
+
+      const [moved] = ordered.splice(currentIndex, 1);
+      ordered.splice(boundedTarget - 1, 0, moved);
+
+      return {
+        ...item,
+        chapters: ordered.map((chapter, index) => ({ ...chapter, sortOrder: index + 1 })),
+      };
+    }));
+  };
+
+  const applyChapterSerialMove = (subjectId: string, chapterId: string, fallbackOrder: number) => {
+    const draft = String(chapterSerialDrafts[chapterId] ?? "").trim();
+    if (!draft) {
+      setChapterSerialDrafts((prev) => ({ ...prev, [chapterId]: String(fallbackOrder) }));
+      return;
+    }
+    moveChapterToSerial(subjectId, chapterId, draft);
+    setChapterSerialDrafts((prev) => {
+      const next = { ...prev };
+      delete next[chapterId];
+      return next;
+    });
   };
 
   const removeSubjectFromTarget = (subjectId: string) => {
@@ -1027,7 +1071,7 @@ export default function AdminMasters() {
                         </div>
                       ) : masterChapters.length > 0 ? (
                         <div className="relative before:absolute before:left-3.5 before:top-2 before:bottom-3 before:w-px before:bg-slate-200 pl-1 py-1 space-y-2">
-                          {masterChapters.map((chapter) => (
+                          {masterChapters.map((chapter, index) => (
                             <div
                               key={chapter.id}
                               className="relative pl-8 pr-3 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-100 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)] hover:border-amber-200 hover:shadow-md transition-all group"
@@ -1044,6 +1088,21 @@ export default function AdminMasters() {
                                 {chapter.name}
                                 </span>
                                 <span className="flex items-center gap-0.5">
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    className="h-6 w-14 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] font-semibold text-slate-600 focus:border-amber-400 focus:outline-none"
+                                    title="Move to serial number"
+                                    value={chapterSerialDrafts[chapter.id] ?? String(chapter.sortOrder || index + 1)}
+                                    onChange={(event) => setChapterSerialDrafts((prev) => ({ ...prev, [chapter.id]: event.target.value }))}
+                                    onBlur={() => applyChapterSerialMove(selectedSubjectId, chapter.id, chapter.sortOrder || index + 1)}
+                                    onKeyDown={(event) => {
+                                      if (event.key === 'Enter') {
+                                        event.preventDefault();
+                                        applyChapterSerialMove(selectedSubjectId, chapter.id, chapter.sortOrder || index + 1);
+                                      }
+                                    }}
+                                  />
                                   <button
                                     type="button"
                                     className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-amber-100 hover:text-amber-600"
@@ -1594,7 +1653,7 @@ export default function AdminMasters() {
 
             {chapterPopupSubjects.length > 0 ? (
               <div className="max-h-72 space-y-2 overflow-auto">
-                {chapterPopupSubjects.map((chapter) => (
+                {chapterPopupSubjects.map((chapter, index) => (
                   <div key={chapter.id} className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
                     {chapterEditingId === chapter.id ? (
                       <>
@@ -1632,6 +1691,21 @@ export default function AdminMasters() {
                     ) : (
                       <>
                         <span className="flex-1 text-sm font-medium text-slate-900">{chapter.name}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          className="h-6 w-14 rounded-md border border-slate-200 bg-white px-1.5 text-[11px] font-semibold text-slate-600 focus:border-primary focus:outline-none"
+                          title="Move to serial number"
+                          value={chapterSerialDrafts[chapter.id] ?? String(chapter.sortOrder || index + 1)}
+                          onChange={(event) => setChapterSerialDrafts((prev) => ({ ...prev, [chapter.id]: event.target.value }))}
+                          onBlur={() => applyChapterSerialMove(chapterPopup.subjectId, chapter.id, chapter.sortOrder || index + 1)}
+                          onKeyDown={(event) => {
+                            if (event.key === 'Enter') {
+                              event.preventDefault();
+                              applyChapterSerialMove(chapterPopup.subjectId, chapter.id, chapter.sortOrder || index + 1);
+                            }
+                          }}
+                        />
                         <button
                           type="button"
                           onClick={() => {

@@ -172,44 +172,12 @@ const CourseDetails = () => {
   const [selectedAttemptOptionId, setSelectedAttemptOptionId] = useState<string>("");
   const [selectedDeliveryModeIds, setSelectedDeliveryModeIds] = useState<string[]>([]);
   const [selectedBookAddonIds, setSelectedBookAddonIds] = useState<string[]>([]);
-  const [openMobileOptionSections, setOpenMobileOptionSections] = useState({
-    modes: false,
-    books: false,
-    views: false,
-    validity: false,
-    attempts: false,
-  });
-  const [showMobileConfigurator, setShowMobileConfigurator] = useState(true);
+  const [mobileSelectorSection, setMobileSelectorSection] = useState<"modes" | "books" | "views" | "validity" | "attempts" | null>(null);
   const [showCombinationsDialog, setShowCombinationsDialog] = useState(false);
   const [installPromptOpen, setInstallPromptOpen] = useState(false);
 
   const PLAY_STORE_URL = "https://play.google.com/store";
   const APP_STORE_URL = "https://www.apple.com/app-store/";
-
-  const toggleMobileOptionSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
-    setOpenMobileOptionSections((prev) => {
-      const nextOpen = !prev[section];
-      return {
-        modes: false,
-        books: false,
-        views: false,
-        validity: false,
-        attempts: false,
-        [section]: nextOpen,
-      };
-    });
-  };
-
-  const openMobileConfiguratorSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
-    setShowMobileConfigurator(true);
-    setOpenMobileOptionSections({
-      modes: section === "modes",
-      books: section === "books",
-      views: section === "views",
-      validity: section === "validity",
-      attempts: section === "attempts",
-    });
-  };
 
   const matchedCourse = courses.find((c) => c.id === id);
   const course = matchedCourse ?? FALLBACK_COURSE;
@@ -454,8 +422,14 @@ const CourseDetails = () => {
     if (combinationRows.length === 0) return null;
     const defaultId = String(resolvedMasterConfig?.defaultSelectedCombinationId || "").trim();
     if (!defaultId) return combinationRows[0];
-    return combinationRows.find((row) => row.id === defaultId) || combinationRows[0];
-  }, [combinationRows, resolvedMasterConfig?.defaultSelectedCombinationId]);
+    const byId = combinationRows.find((row) => row.id === defaultId);
+    if (byId) return byId;
+    if (useLanguagePricing && selectedLanguageName) {
+      const byLanguage = combinationRows.find((row) => String(row.languageName || "").trim() === selectedLanguageName);
+      if (byLanguage) return byLanguage;
+    }
+    return combinationRows[0];
+  }, [combinationRows, resolvedMasterConfig?.defaultSelectedCombinationId, selectedLanguageName, useLanguagePricing]);
 
   const viewOptions = useMemo(() => {
     const comboValues = combinationRows.map((row) => Number(row.viewCount || 0)).filter((value) => value >= 1);
@@ -568,11 +542,14 @@ const CourseDetails = () => {
     [course.bookAddons],
   );
   const combinationBasis = resolvedMasterConfig?.combinationBasis;
-  const hasMasterBasis = Boolean(combinationBasis);
+  const hasMasterBasis = hasCombinationPricing && Boolean(combinationBasis);
   const useViewPricing = hasMasterBasis ? Boolean(combinationBasis?.useView) : Boolean(course.viewPricingEnabled);
   const useValidityPricing = hasMasterBasis ? Boolean(combinationBasis?.useValidity) : Boolean(course.validityPricingEnabled);
   const useAttemptPricing = Boolean(combinationBasis?.useAttempt);
   const useDeliveryModePricing = hasMasterBasis ? Boolean(combinationBasis?.useMode) : Boolean(course.deliveryModePricingEnabled);
+  const selectedLanguageName = String(course.language || "").trim();
+  const useLanguagePricing = hasMasterBasis
+    && combinationRows.some((item) => Boolean(item.languageId || String(item.languageName || "").trim()));
 
   useEffect(() => {
     const defaultViews = Math.max(1, Number(course.selectedViews || viewOptions[0] || 1));
@@ -638,14 +615,16 @@ const CourseDetails = () => {
       const validityMatch = !useValidityPricing || row.validityDays === Number(selectedValidityDays);
       const attemptMatch = !useAttemptPricing || row.attemptOptionId === selectedAttemptOptionId;
       const modeMatch = !useDeliveryModePricing || row.modeId === selectedModeId;
-      return viewMatch && validityMatch && attemptMatch && modeMatch;
+      const languageMatch = !useLanguagePricing || String(row.languageName || "").trim() === selectedLanguageName;
+      return viewMatch && validityMatch && attemptMatch && modeMatch && languageMatch;
     });
     if (exact) return;
 
     const fallback = combinationRows.find((row) => {
       const attemptMatch = !useAttemptPricing || row.attemptOptionId === selectedAttemptOptionId;
       const modeMatch = !useDeliveryModePricing || row.modeId === selectedModeId;
-      return attemptMatch && modeMatch;
+      const languageMatch = !useLanguagePricing || String(row.languageName || "").trim() === selectedLanguageName;
+      return attemptMatch && modeMatch && languageMatch;
     }) || combinationRows[0];
     if (!fallback) return;
 
@@ -667,6 +646,8 @@ const CourseDetails = () => {
     useValidityPricing,
     useAttemptPricing,
     useDeliveryModePricing,
+    useLanguagePricing,
+    selectedLanguageName,
     selectedViews,
     selectedValidityDays,
     selectedAttemptOptionId,
@@ -695,7 +676,8 @@ const CourseDetails = () => {
     const validityMatch = !useValidityPricing || (combo.validityDays === Number(selectedValidityDays));
     const attemptMatch = !useAttemptPricing || (combo.attemptOptionId === selectedAttemptOptionId);
     const modeMatch = !useDeliveryModePricing || (combo.modeId === selectedDeliveryModeIds[0]);
-    return viewMatch && validityMatch && attemptMatch && modeMatch;
+    const languageMatch = !useLanguagePricing || String(combo.languageName || "").trim() === selectedLanguageName;
+    return viewMatch && validityMatch && attemptMatch && modeMatch && languageMatch;
   });
 
   // Get combination price if found, otherwise fall back to dynamic calculation
@@ -714,7 +696,8 @@ const CourseDetails = () => {
             (!useViewPricing || row.viewCount === Number(selectedViews))
             && (!useValidityPricing || row.validityDays === Number(selectedValidityDays))
             && (!useAttemptPricing || row.attemptOptionId === selectedAttemptOptionId)
-            && (!useDeliveryModePricing || row.modeId === selectedDeliveryModeIds[0]),
+            && (!useDeliveryModePricing || row.modeId === selectedDeliveryModeIds[0])
+            && (!useLanguagePricing || String(row.languageName || "").trim() === selectedLanguageName),
         }))
         .sort((a, b) => {
           if (a.viewCount !== b.viewCount) return a.viewCount - b.viewCount;
@@ -1413,217 +1396,55 @@ const CourseDetails = () => {
         <div className="bg-card border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
           <div className="px-4 py-2.5 space-y-2">
               {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && (
-                <button
-                  type="button"
-                  onClick={() => setShowMobileConfigurator((prev) => !prev)}
-                  className="mx-auto flex h-6 w-12 items-center justify-center rounded-full border border-border bg-background text-muted-foreground"
-                  aria-label={showMobileConfigurator ? "Hide purchase options" : "Show purchase options"}
-                >
-                  <ChevronUp className={`h-4 w-4 transition-transform ${showMobileConfigurator ? "rotate-180" : "rotate-0"}`} />
-                </button>
-              )}
-              {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && showMobileConfigurator && (
-                <div className="relative rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5">
-                  {combinationMatrixRows.length > 0 && (
+                <div className="space-y-1.5 pb-0.5">
+                  <p className="text-center text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Select Customization</p>
+                  <div className="flex flex-wrap gap-1.5">
+                  {useDeliveryModePricing && deliveryModes.length > 0 && (
                     <button
                       type="button"
-                      onClick={() => setShowCombinationsDialog(true)}
-                      className="absolute top-2 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-primary/30 bg-background text-primary shadow-sm transition-colors hover:bg-primary/10"
-                      aria-label="View combinations"
-                      title="View combinations"
+                      onClick={() => setMobileSelectorSection("modes")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
                     >
-                      <HelpCircle className="h-3.5 w-3.5" />
+                      Mode: {deliveryModes.find((mode) => mode.id === selectedDeliveryModeIds[0])?.label || deliveryModes[0]?.label || "Select"}
                     </button>
                   )}
-                  <div className="grid grid-cols-1 gap-2">
-                  {useDeliveryModePricing && deliveryModes.length > 0 && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("modes")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Select Mode</span>
-                      </button>
-                      {openMobileOptionSections.modes && (
-                        <select
-                          value={selectedDeliveryModeIds[0] || deliveryModes[0]?.id || ""}
-                          onChange={(e) => setSelectedDeliveryModeIds(e.target.value ? [e.target.value] : [])}
-                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                        >
-                          {deliveryModes.map((mode) => (
-                            <option key={mode.id} value={mode.id}>
-                              {mode.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  )}
                   {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("books")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Books / Notes</span>
-                      </button>
-                      {openMobileOptionSections.books && (
-                        <div className="space-y-1.5 pt-1">
-                          {enabledBookAddons.map((addon) => {
-                            const checked = selectedBookAddonIds.includes(addon.id);
-                            return (
-                            <label
-                              key={addon.id}
-                              className={`flex items-center justify-between gap-1.5 rounded border px-2 py-1.5 text-xs ${
-                                checked ? "border-primary/40 bg-primary/10" : "border-input bg-background"
-                              }`}
-                            >
-                              <span className="flex items-center gap-1.5 truncate font-medium">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    setSelectedBookAddonIds((prev) => {
-                                      if (e.target.checked) return Array.from(new Set([...prev, addon.id]));
-                                      return prev.filter((id) => id !== addon.id);
-                                    });
-                                  }}
-                                  className="w-3.5 h-3.5 accent-primary"
-                                />
-                                <span className="truncate">{addon.label}</span>
-                              </span>
-                              <span className="font-semibold text-primary">+₹{Number(addon.price || 0).toLocaleString()}</span>
-                            </label>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMobileSelectorSection("books")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
+                    >
+                      Books: {selectedBookAddonIds.length}
+                    </button>
                   )}
                   {useViewPricing && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("views")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Select Views</span>
-                      </button>
-                      {openMobileOptionSections.views && (
-                        <select
-                          value={selectedViews}
-                          onChange={(e) => setSelectedViews(Number(e.target.value) || 1)}
-                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                        >
-                          {viewOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option} view{option > 1 ? "s" : ""}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMobileSelectorSection("views")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
+                    >
+                      Views: {selectedViews}
+                    </button>
                   )}
                   {useValidityPricing && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("validity")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Select Validity</span>
-                      </button>
-                      {openMobileOptionSections.validity && (
-                        <select
-                          value={selectedValidityDays}
-                          onChange={(e) => setSelectedValidityDays(Number(e.target.value) || backendDefaultValidityDays)}
-                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                        >
-                          {validityOptionsDays.map((days) => (
-                            <option key={days} value={days}>
-                              {days} days
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMobileSelectorSection("validity")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
+                    >
+                      Validity: {selectedValidityDays}d
+                    </button>
                   )}
                   {useAttemptPricing && attemptOptions.length > 0 && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("attempts")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Select Attempt</span>
-                      </button>
-                      {openMobileOptionSections.attempts && (
-                        <select
-                          value={selectedAttemptOptionId}
-                          onChange={(e) => setSelectedAttemptOptionId(e.target.value)}
-                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                        >
-                          {attemptOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setMobileSelectorSection("attempts")}
+                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
+                    >
+                      Attempt
+                    </button>
                   )}
                   </div>
-                </div>
-              )}
-              {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && (
-                <div className="flex flex-wrap gap-1.5 pb-0.5">
-                  {useDeliveryModePricing && deliveryModes.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("modes")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Select Mode
-                    </button>
-                  )}
-                  {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("books")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Books / Notes
-                    </button>
-                  )}
-                  {useViewPricing && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("views")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Select Views
-                    </button>
-                  )}
-                  {useValidityPricing && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("validity")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Select Validity
-                    </button>
-                  )}
-                  {useAttemptPricing && attemptOptions.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("attempts")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Select Attempt
-                    </button>
-                  )}
                 </div>
               )}
               <div className="flex items-center gap-3">
@@ -1685,7 +1506,7 @@ const CourseDetails = () => {
       <Dialog open={showCombinationsDialog} onOpenChange={setShowCombinationsDialog}>
         <DialogContent className="max-w-xl rounded-2xl border border-border p-0 overflow-hidden">
           <DialogHeader className="border-b border-border bg-card px-5 py-4">
-            <DialogTitle className="text-base font-bold text-foreground">Available Combinations</DialogTitle>
+            <DialogTitle className="text-base font-bold text-foreground">Customization Options</DialogTitle>
           </DialogHeader>
           <div className="max-h-[65vh] overflow-auto px-4 py-3 space-y-2">
             {combinationMatrixRows.map((row) => (
@@ -1714,6 +1535,128 @@ const CourseDetails = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      <Dialog open={Boolean(mobileSelectorSection)} onOpenChange={(open) => { if (!open) setMobileSelectorSection(null); }}>
+        <DialogContent className="max-w-sm rounded-2xl border border-border p-0 overflow-hidden">
+          <DialogHeader className="border-b border-border bg-card px-4 py-3">
+            <DialogTitle className="text-sm font-bold text-foreground">
+              {mobileSelectorSection === "modes" && "Select Mode"}
+              {mobileSelectorSection === "books" && "Books / Notes"}
+              {mobileSelectorSection === "views" && "Select Views"}
+              {mobileSelectorSection === "validity" && "Select Validity"}
+              {mobileSelectorSection === "attempts" && "Select Attempt"}
+            </DialogTitle>
+          </DialogHeader>
+
+          <div className="max-h-[60vh] overflow-auto p-3 space-y-2">
+            {mobileSelectorSection === "modes" && deliveryModes.map((mode) => {
+              const active = (selectedDeliveryModeIds[0] || deliveryModes[0]?.id || "") === mode.id;
+              return (
+                <button
+                  key={mode.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedDeliveryModeIds(mode.id ? [mode.id] : []);
+                    setMobileSelectorSection(null);
+                  }}
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${active ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-background text-foreground"}`}
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span>{mode.label}</span>
+                    <span className="text-xs font-semibold">₹{Number(mode.price || 0).toLocaleString()}</span>
+                  </div>
+                </button>
+              );
+            })}
+
+            {mobileSelectorSection === "books" && enabledBookAddons.map((addon) => {
+              const checked = selectedBookAddonIds.includes(addon.id);
+              return (
+                <label
+                  key={addon.id}
+                  className={`flex items-center justify-between gap-2 rounded-lg border px-3 py-2 text-sm ${checked ? "border-primary/50 bg-primary/10" : "border-border bg-background"}`}
+                >
+                  <span className="flex items-center gap-2 font-medium text-foreground">
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={(e) => {
+                        setSelectedBookAddonIds((prev) => {
+                          if (e.target.checked) return Array.from(new Set([...prev, addon.id]));
+                          return prev.filter((id) => id !== addon.id);
+                        });
+                      }}
+                      className="h-4 w-4 accent-primary"
+                    />
+                    {addon.label}
+                  </span>
+                  <span className="text-xs font-semibold text-primary">+₹{Number(addon.price || 0).toLocaleString()}</span>
+                </label>
+              );
+            })}
+
+            {mobileSelectorSection === "views" && viewOptions.map((option) => {
+              const active = Number(selectedViews) === Number(option);
+              return (
+                <button
+                  key={option}
+                  type="button"
+                  onClick={() => {
+                    setSelectedViews(Number(option) || 1);
+                    setMobileSelectorSection(null);
+                  }}
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${active ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-background text-foreground"}`}
+                >
+                  {option} view{Number(option) > 1 ? "s" : ""}
+                </button>
+              );
+            })}
+
+            {mobileSelectorSection === "validity" && validityOptionsDays.map((days) => {
+              const active = Number(selectedValidityDays) === Number(days);
+              return (
+                <button
+                  key={days}
+                  type="button"
+                  onClick={() => {
+                    setSelectedValidityDays(Number(days) || backendDefaultValidityDays);
+                    setMobileSelectorSection(null);
+                  }}
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${active ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-background text-foreground"}`}
+                >
+                  {days} days
+                </button>
+              );
+            })}
+
+            {mobileSelectorSection === "attempts" && attemptOptions.map((option) => {
+              const active = selectedAttemptOptionId === option.id;
+              return (
+                <button
+                  key={option.id}
+                  type="button"
+                  onClick={() => {
+                    setSelectedAttemptOptionId(option.id);
+                    setMobileSelectorSection(null);
+                  }}
+                  className={`w-full rounded-lg border px-3 py-2 text-left text-sm font-medium transition-colors ${active ? "border-primary/50 bg-primary/10 text-primary" : "border-border bg-background text-foreground"}`}
+                >
+                  {option.label}
+                </button>
+              );
+            })}
+
+            {mobileSelectorSection === "books" && (
+              <div className="pt-1">
+                <Button type="button" className="h-9 w-full rounded-lg" onClick={() => setMobileSelectorSection(null)}>
+                  Done
+                </Button>
+              </div>
+            )}
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <Dialog open={installPromptOpen} onOpenChange={setInstallPromptOpen}>
         <DialogContent className="max-w-md rounded-2xl border border-slate-200">
           <DialogHeader>

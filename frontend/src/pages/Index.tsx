@@ -12,9 +12,22 @@ import FAQ from "@/components/FAQ";
 import DynamicHomepageSection from "@/components/DynamicHomepageSection";
 import FacultySection from "@/components/FacultySection";
 import { useSiteSettings, type HomepageSectionAnchor } from "@/context/SiteSettingsContext";
+import { usePlatformData } from "@/context/PlatformDataContext";
 
 const Index = () => {
   const { settings } = useSiteSettings();
+  const { isBackendConnected, isBootstrapped } = usePlatformData();
+
+  if (isBootstrapped && !isBackendConnected) {
+    return (
+      <div className="flex min-h-[55vh] items-center justify-center px-4 py-14">
+        <div className="w-full max-w-md rounded-xl border border-amber-200 bg-amber-50 p-5 text-center">
+          <h2 className="text-base font-bold text-amber-900">Server not connected</h2>
+        </div>
+      </div>
+    );
+  }
+
   const s = settings.sections;
   const sectionGapPxRaw = Number(settings.layout?.sectionGapPx || 0);
   // Keep homepage compact by default; admin can still increase spacing via Site Config.

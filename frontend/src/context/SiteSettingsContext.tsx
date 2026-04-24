@@ -171,6 +171,7 @@ export interface SiteSettings {
   security: {
     antiInspectEnabled: boolean;
     disableCopyPaste: boolean;
+    allowMultipleAdminLogins: boolean;
   };
   colors: {
     primary: string;
@@ -334,6 +335,7 @@ const createDefaultSettings = (): SiteSettings => ({
   security: {
     antiInspectEnabled: false,
     disableCopyPaste: false,
+    allowMultipleAdminLogins: false,
   },
   colors: {
     primary: "#1E3A5F",
@@ -365,7 +367,7 @@ const createDefaultSettings = (): SiteSettings => ({
     sectionGapPx: 0,
   },
   header: {
-    topBarVisible: true,
+    topBarVisible: false,
     topBarPhone: "+91 98765 43210",
     topBarEmail: "info@ednovate.in",
     topBarPrimaryText: "Download App",
