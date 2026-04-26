@@ -27,6 +27,7 @@ import {
   ChevronDown,
   X,
 } from "lucide-react";
+import { useConfirm } from "@/context/ConfirmContext";
 
 /* ─── Static config ───────────────────────────────────────────── */
 const FILTER_DEFAULTS = { search: "", status: "all", priority: "all", issueCategory: "all", courseId: "", subject: "" };
@@ -81,6 +82,7 @@ export default function AdminTechnicalSupport() {
   const { hasPermission } = useAdminAuth();
   const canEdit = hasPermission("technical-support", "edit");
   const canDelete = hasPermission("technical-support", "delete");
+  const { confirm } = useConfirm();
 
   const [tickets, setTickets] = useState<TechnicalSupportTicket[]>([]);
   const [selectedTicket, setSelectedTicket] = useState<TechnicalSupportTicket | null>(null);
@@ -165,10 +167,11 @@ export default function AdminTechnicalSupport() {
   const deleteTicket = async () => {
     if (!selectedTicket || !canDelete) return;
 
-    const confirmed = window.confirm(
-      `Delete ticket ${selectedTicket.ticketCode}? This will remove it from both admin and student side.`,
-    );
-    if (!confirmed) return;
+    const isConfirmed = await confirm({
+      title: "Delete Ticket?",
+      description: `Delete ticket ${selectedTicket.ticketCode}? This will remove it from both admin and student side.`,
+    });
+    if (!isConfirmed) return;
 
     setIsUpdating(true);
     try {

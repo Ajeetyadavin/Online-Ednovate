@@ -24,6 +24,8 @@ import { Badge } from "@/components/ui/badge";
 import { Plus, Edit2, Trash2, Power, Search, Eye } from "lucide-react";
 import { adminApi, type StudentRecord } from "@/services/adminApi";
 import { useAdminAuth } from "@/context/AdminAuthContext";
+import { toast } from "sonner";
+import { useConfirm } from "@/context/ConfirmContext";
 
 const weekDays = [
   { value: 0, label: "Sun" },
@@ -139,6 +141,7 @@ export default function AdminCoupons() {
   const [form, setForm] = useState<CouponForm>(defaultForm());
   const [auditOpen, setAuditOpen] = useState(false);
   const [auditCoupon, setAuditCoupon] = useState<ManagedCoupon | null>(null);
+  const { confirm } = useConfirm();
   const [courseSearch, setCourseSearch] = useState("");
   const [studentSearch, setStudentSearch] = useState("");
   const [students, setStudents] = useState<StudentRecord[]>([]);
@@ -262,11 +265,11 @@ export default function AdminCoupons() {
 
   const save = async () => {
     if (!form.code.trim()) {
-      alert("Coupon code is required");
+      toast.error("Coupon code is required");
       return;
     }
     if (form.discountValue <= 0) {
-      alert("Discount value must be greater than 0");
+      toast.error("Discount value must be greater than 0");
       return;
     }
 
@@ -309,9 +312,10 @@ export default function AdminCoupons() {
     try {
       upsertCoupon(payload);
       await persistCoupons(nextCoupons);
+      toast.success("Coupon saved successfully");
       setOpen(false);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to save coupon");
+      toast.error(error instanceof Error ? error.message : "Failed to save coupon");
     } finally {
       setIsSavingCoupon(false);
     }
@@ -326,19 +330,22 @@ export default function AdminCoupons() {
       await persistCoupons(nextCoupons);
     } catch (error) {
       toggleCouponActive(couponId);
-      alert(error instanceof Error ? error.message : "Failed to update coupon status");
+      toast.error(error instanceof Error ? error.message : "Failed to update coupon status");
     }
   };
 
   const handleDeleteCoupon = async (couponId: string) => {
+    const isConfirmed = await confirm({ title: "Delete Coupon?", description: "Delete this coupon permanently?" });
+    if (!isConfirmed) return;
     const deleted = coupons.find((coupon) => coupon.id === couponId);
     const nextCoupons = coupons.filter((coupon) => coupon.id !== couponId);
     deleteCoupon(couponId);
     try {
       await persistCoupons(nextCoupons);
+      toast.success("Coupon deleted");
     } catch (error) {
       if (deleted) upsertCoupon(deleted);
-      alert(error instanceof Error ? error.message : "Failed to delete coupon");
+      toast.error(error instanceof Error ? error.message : "Failed to delete coupon");
     }
   };
 

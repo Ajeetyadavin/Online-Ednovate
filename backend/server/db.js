@@ -1,5 +1,6 @@
 import pg from "pg";
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
+import bcrypt from "bcryptjs";
 
 const { Pool } = pg;
 
@@ -11,7 +12,7 @@ const getConnectionConfig = () => {
   if (databaseUrl) {
     return {
       connectionString: databaseUrl,
-      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : undefined,
+      ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: process.env.DB_SSL_REJECT_UNAUTHORIZED !== "false" } : undefined,
     };
   }
 
@@ -55,7 +56,7 @@ export async function ensureSchema() {
       courses_completed INTEGER NOT NULL DEFAULT 0,
       bio TEXT,
       education_level TEXT,
-      password TEXT NOT NULL DEFAULT 'student123',
+      password TEXT NOT NULL,
       created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
       updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
     );
@@ -626,10 +627,18 @@ export async function ensureSchema() {
   `);
   await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_payouts_faculty_date ON faculty_payouts(faculty_id, payout_date DESC)");
 
-  const superAdminEmail = String(process.env.ADMIN_EMAIL || "admin@ednovate.com").trim().toLowerCase();
-  const superAdminPassword = String(process.env.ADMIN_PASSWORD || "admin123");
+  const superAdminEmail = String(process.env.ADMIN_EMAIL || "").trim().toLowerCase();
+  if (!superAdminEmail) {
+    console.error("[WARN] ADMIN_EMAIL not set. Skipping super-admin seeding.");
+    return;
+  }
+  const superAdminPassword = process.env.ADMIN_PASSWORD || (() => {
+    const generated = randomUUID();
+    console.error(`[WARN] ADMIN_PASSWORD not set. Generated temporary password: ${generated}`);
+    return generated;
+  })();
   const superAdminName = String(process.env.ADMIN_NAME || "Super Admin").trim();
-  const superAdminHash = createHash("sha256").update(superAdminPassword).digest("hex");
+  const superAdminHash = await bcrypt.hash(superAdminPassword, 12);
 
   await pool.query(
     `

@@ -507,11 +507,11 @@ const Dashboard = () => {
                     const isAccessAllowed = accessEntry ? isCourseAccessActive(accessEntry) : true;
                     return (
                   <Card key={`${course.id}:${(course as { purchaseRefId?: string }).purchaseRefId || index}`} className="overflow-hidden hover:shadow-xl transition-all duration-300 group border-slate-200/60">
-                    <div className="relative h-36 sm:h-40 overflow-hidden">
+                    <div className="relative aspect-video overflow-hidden">
                       <img
                         src={resolveUploadAssetUrl(course.thumbnail || course.image || "", "/placeholder.svg")}
                         alt={course.title}
-                        className="w-full h-full object-cover group-hover:scale-110 transition-transform duration-500"
+                        className="absolute inset-0 w-full h-full object-cover"
                       />
                       <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-transparent to-transparent" />
                       {course.progress === 100 && (

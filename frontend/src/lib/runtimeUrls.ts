@@ -13,10 +13,18 @@ const joinBaseAndPath = (base: string, path: string) => {
   return `${normalizedBase}${path}`;
 };
 
-const API_BASE_URL = trimTrailingSlash(import.meta.env.VITE_API_BASE_URL || "");
-const UPLOADS_BASE_URL = trimTrailingSlash(import.meta.env.VITE_UPLOADS_BASE_URL || API_BASE_URL);
-const LEGACY_PORTAL_API_BASE_URL = trimTrailingSlash(import.meta.env.VITE_LEGACY_PORTAL_API_BASE_URL || "");
-const LEGACY_PORTAL_API_FALLBACK_URLS = String(import.meta.env.VITE_LEGACY_PORTAL_API_FALLBACK_URLS || "")
+const getRuntimeConfig = (key: string) => {
+  if (typeof window !== "undefined" && (window as any).__RUNTIME_CONFIG__) {
+    return (window as any).__RUNTIME_CONFIG__[key];
+  }
+  return import.meta.env[key];
+};
+
+const API_BASE_URL = trimTrailingSlash(getRuntimeConfig("VITE_API_BASE_URL") || "");
+
+const UPLOADS_BASE_URL = trimTrailingSlash(getRuntimeConfig("VITE_UPLOADS_BASE_URL") || API_BASE_URL);
+const LEGACY_PORTAL_API_BASE_URL = trimTrailingSlash(getRuntimeConfig("VITE_LEGACY_PORTAL_API_BASE_URL") || "");
+const LEGACY_PORTAL_API_FALLBACK_URLS = String(getRuntimeConfig("VITE_LEGACY_PORTAL_API_FALLBACK_URLS") || "")
   .split(",")
   .map((item) => trimTrailingSlash(item.trim()))
   .filter(Boolean);
@@ -30,8 +38,12 @@ const isLocalHost = (hostname: string) => {
 
 const isProductionFrontendHost = () => {
   if (typeof window === "undefined") return false;
-  const hostname = window.location.hostname.toLowerCase();
+  
+  // If Vite's dev flag is true, we are definitely NOT in production.
+  if (import.meta.env.DEV) return false;
 
+  const hostname = window.location.hostname.toLowerCase();
+  
   // Any non-local hostname should be treated as production unless explicitly overridden by env.
   if (!isLocalHost(hostname)) return true;
 
@@ -40,6 +52,10 @@ const isProductionFrontendHost = () => {
 
 const getResolvedApiBaseUrl = () => {
   if (API_BASE_URL) return API_BASE_URL;
+  
+  // In dev mode, always use relative paths to rely on Vite proxy.
+  if (import.meta.env.DEV) return "";
+  
   return isProductionFrontendHost() ? PROD_DEFAULT_API_BASE_URL : "";
 };
 
@@ -69,7 +85,8 @@ export const resolveApiUrl = (path: string) => {
   if (!path) return path;
   if (isHttpUrl(path)) return buildSameOriginReplacement(path);
   if (path === "/api" || path.startsWith("/api/")) {
-    return joinBaseAndPath(getResolvedApiBaseUrl(), path);
+    const base = getResolvedApiBaseUrl();
+    return joinBaseAndPath(base, path);
   }
   return path;
 };

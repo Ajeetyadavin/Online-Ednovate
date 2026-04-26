@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link } from "react-router-dom";
-import { Loader2 } from "lucide-react";
+import { Loader2, GraduationCap } from "lucide-react";
 import { FacultyProfile } from "@/services/adminApi";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 
@@ -28,12 +28,11 @@ const FacultySection = () => {
     });
   }, [faculty]);
 
-  // Check if section is visible
-  if (!settings.sections.faculty) {
-    return null;
-  }
-
   useEffect(() => {
+    if (!settings.sections.faculty) {
+      setLoading(false);
+      return;
+    }
     const fetchFaculty = async () => {
       try {
         setLoading(true);
@@ -48,7 +47,11 @@ const FacultySection = () => {
       }
     };
     fetchFaculty();
-  }, []);
+  }, [settings.sections.faculty]);
+
+  if (!settings.sections.faculty) {
+    return null;
+  }
 
   if (loading) {
     return (
@@ -61,89 +64,64 @@ const FacultySection = () => {
   if (sortedFaculty.length === 0) return null;
 
   return (
-    <section className="relative py-16 md:py-20 overflow-hidden" style={{ background: `linear-gradient(135deg, ${backgroundColor}, #ffffff)`, color: textColor }} aria-label="Faculty section">
-      {/* Decorative blobs */}
+    <section
+      className="relative overflow-hidden py-8 md:py-10"
+      style={{ background: `linear-gradient(135deg, ${backgroundColor}, #ffffff)` }}
+      aria-label="Faculty section"
+    >
       <div className="pointer-events-none absolute -top-20 -right-20 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
-      <div className="pointer-events-none absolute -bottom-20 -left-20 h-72 w-72 rounded-full bg-accent/10 blur-3xl" />
+      <div className="pointer-events-none absolute -bottom-16 -left-16 h-64 w-64 rounded-full bg-accent/10 blur-3xl" />
 
-      <div className="relative max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex flex-col lg:flex-row gap-10 lg:gap-16 items-start">
-
-          {/* ── LEFT SIDEBAR ─────────────────────────────── */}
-          <div className="lg:w-64 shrink-0 sticky top-28 self-start">
-            {/* label pill */}
-            <div className="inline-flex items-center gap-2 rounded-full bg-primary/10 px-3 py-1.5 mb-4">
-              <span className="h-2 w-2 rounded-full bg-primary animate-pulse" />
-              <span className="text-xs font-bold uppercase tracking-widest" style={{ color: textColor }}>Our Faculty</span>
-            </div>
-
-            <h2 className="text-3xl md:text-4xl font-extrabold leading-snug mb-4" style={{ color: textColor }}>
-              {settings.homepageContent.faculty.title}
-            </h2>
-
-            <p className="text-sm leading-relaxed mb-6" style={{ color: textColor, opacity: 0.85 }}>
-              {settings.homepageContent.faculty.subtitle}
-            </p>
+      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <div className="mb-4 md:mb-5">
+          <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-primary">
+            <GraduationCap className="h-3 w-3" />
+            Our Faculty
           </div>
+          <h2 className="mt-2 text-xl font-extrabold leading-tight md:text-3xl" style={{ color: textColor }}>
+            {settings.homepageContent.faculty.title}
+          </h2>
+          <p className="mt-1.5 max-w-2xl text-xs md:text-sm" style={{ color: textColor, opacity: 0.82 }}>
+            {settings.homepageContent.faculty.subtitle}
+          </p>
+        </div>
 
-          {/* ── RIGHT: FLOATING CIRCLES GRID ─────────────── */}
-          <div className="flex-1">
-            <div className="flex flex-wrap gap-6 items-center">
-              {sortedFaculty.map((member, index) => (
-                <Link
-                  key={member.id}
-                  to={`/faculty/${member.id}`}
-                  className="group flex flex-col items-center gap-2"
-                  style={{ animationDelay: `${index * 60}ms` }}
-                >
-                  {/* Circle avatar */}
-                  <div className="relative">
-                    {/* Floating animated ring */}
-                    <div className="absolute -inset-1 rounded-full bg-gradient-to-br from-primary/40 via-accent/30 to-transparent opacity-0 group-hover:opacity-100 transition-all duration-300 blur-sm scale-110" />
-                    <div className="absolute -inset-0.5 rounded-full border-2 border-primary/0 group-hover:border-primary/60 transition-all duration-300" />
-
-                    {/* Avatar circle */}
-                    <div className={`relative h-[72px] w-[72px] rounded-full overflow-hidden shadow-md ring-2 ring-white group-hover:shadow-xl group-hover:scale-105 transition-all duration-300 ${
+        <div className="grid grid-cols-3 gap-2.5 sm:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+          {sortedFaculty.map((member, index) => (
+            <Link
+              key={member.id}
+              to={`/faculty/${member.id}`}
+              className="group rounded-xl border border-slate-200 bg-white/90 p-2.5 shadow-sm transition-all hover:-translate-y-0.5 hover:border-primary/30 hover:shadow-md"
+              style={{ animationDelay: `${index * 50}ms` }}
+            >
+              <div className="mx-auto h-14 w-14 overflow-hidden rounded-full ring-2 ring-slate-100 sm:h-16 sm:w-16 md:h-18 md:w-18">
+                {member.photoUrl ? (
+                  <img src={member.photoUrl} alt={member.name} className="h-full w-full object-cover" />
+                ) : (
+                  <div
+                    className={`flex h-full w-full items-center justify-center text-lg font-extrabold text-white ${
                       [
-                        "bg-gradient-to-br from-violet-400 to-purple-600",
-                        "bg-gradient-to-br from-sky-400 to-blue-600",
-                        "bg-gradient-to-br from-emerald-400 to-teal-600",
-                        "bg-gradient-to-br from-amber-400 to-orange-600",
-                        "bg-gradient-to-br from-rose-400 to-pink-600",
-                        "bg-gradient-to-br from-indigo-400 to-blue-600",
+                        "bg-gradient-to-br from-violet-500 to-purple-600",
+                        "bg-gradient-to-br from-sky-500 to-blue-600",
+                        "bg-gradient-to-br from-emerald-500 to-teal-600",
+                        "bg-gradient-to-br from-amber-500 to-orange-600",
+                        "bg-gradient-to-br from-rose-500 to-pink-600",
+                        "bg-gradient-to-br from-indigo-500 to-blue-700",
                       ][index % 6]
-                    }`}>
-                      {member.photoUrl ? (
-                        <img
-                          src={member.photoUrl}
-                          alt={member.name}
-                          className="w-full h-full object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full w-full items-center justify-center">
-                          <span className="text-2xl font-extrabold text-white/90">
-                            {member.name.charAt(0).toUpperCase()}
-                          </span>
-                        </div>
-                      )}
-                    </div>
-
-                    {/* Active dot */}
-                    <span className="absolute bottom-0.5 right-0.5 h-3 w-3 rounded-full border-2 border-white bg-emerald-400 shadow-sm" />
+                    }`}
+                  >
+                    {member.name.charAt(0).toUpperCase()}
                   </div>
-
-
-                </Link>
-              ))}
-            </div>
-
-            {/* Bottom CTA */}
-            <div className="mt-10 border-t border-slate-100 pt-7">
-              <p className="text-xs" style={{ color: textColor, opacity: 0.75 }}>
-                Click on any instructor's photo to explore their full profile &amp; courses.
-              </p>
-            </div>
-          </div>
+                )}
+              </div>
+              <div className="mt-2 text-center">
+                <p className="line-clamp-1 text-xs font-semibold text-slate-900 sm:text-[13px]">{member.name}</p>
+                <p className="mt-0.5 line-clamp-1 text-[10px] text-slate-500 sm:text-[11px]">
+                  {member.courses?.length ? `${member.courses.length} Course${member.courses.length > 1 ? "s" : ""}` : "Faculty"}
+                </p>
+              </div>
+            </Link>
+          ))}
         </div>
       </div>
     </section>

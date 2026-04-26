@@ -18,32 +18,30 @@ export default function AdminLogin() {
     ? String((location.state as { from?: { pathname?: string } }).from?.pathname || "/admin/dashboard")
     : "/admin/dashboard";
 
+  const [requiresForce, setRequiresForce] = useState(false);
+  const [forceMessage, setForceMessage] = useState("");
+
   if (isAuthenticated) {
     return <Navigate to={redirectTo} replace />;
   }
 
-  const handleLogin = async (e: React.FormEvent) => {
+  const handleLogin = async (e: React.FormEvent, force = false) => {
     e.preventDefault();
     setError("");
     setIsSubmitting(true);
 
-    const result = await login(email, password);
+    const result = await login(email, password, { forceLogin: force });
     if (!result.success) {
       if (result.requiresConfirmation) {
-        const shouldContinue = window.confirm(result.error || "This account is already active on another device. Continue login?");
-        if (shouldContinue) {
-          const forcedResult = await login(email, password, { forceLogin: true });
-          if (!forcedResult.success) {
-            setError(forcedResult.error || "Login failed");
-          } else {
-            setError("");
-          }
-        }
+        setRequiresForce(true);
+        setForceMessage(result.error || "This account is already active on another device.");
       } else {
         setError(result.error || "Login failed");
+        setRequiresForce(false);
       }
     } else {
       setError("");
+      setRequiresForce(false);
     }
 
     setIsSubmitting(false);
@@ -82,6 +80,25 @@ export default function AdminLogin() {
                 </Alert>
               )}
 
+              {requiresForce && (
+                <Alert className="bg-orange-50 border-orange-200">
+                  <AlertCircle className="h-4 w-4 text-orange-600" />
+                  <AlertDescription className="text-orange-800 flex flex-col gap-3">
+                    <p>{forceMessage}</p>
+                    <Button
+                      type="button"
+                      onClick={(e) => handleLogin(e, true)}
+                      disabled={isSubmitting || isLoading}
+                      variant="destructive"
+                      size="sm"
+                      className="w-full"
+                    >
+                      {isSubmitting || isLoading ? "Logging in..." : "Force Login Here"}
+                    </Button>
+                  </AlertDescription>
+                </Alert>
+              )}
+
               <div className="space-y-2">
                 <label className="text-sm font-semibold text-gray-700">Email Address</label>
                 <div className="relative">
@@ -90,7 +107,7 @@ export default function AdminLogin() {
                     type="email"
                     placeholder="admin@ednovate.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => { setEmail(e.target.value); setRequiresForce(false); }}
                     disabled={isSubmitting || isLoading}
                     className="pl-10 bg-gray-50 border-gray-200 focus:bg-white focus:border-orange-400 transition"
                   />
@@ -105,27 +122,29 @@ export default function AdminLogin() {
                     type="password"
                     placeholder="••••••••"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    onChange={(e) => { setPassword(e.target.value); setRequiresForce(false); }}
                     disabled={isSubmitting || isLoading}
                     className="pl-10 bg-gray-50 border-gray-200 focus:bg-white focus:border-orange-400 transition"
                   />
                 </div>
               </div>
 
-              <Button
-                type="submit"
-                disabled={isSubmitting || isLoading}
-                className="w-full h-11 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold shadow-lg"
-              >
-                {isSubmitting || isLoading ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Signing in...
-                  </>
-                ) : (
-                  "Sign In to Admin"
-                )}
-              </Button>
+              {!requiresForce && (
+                <Button
+                  type="submit"
+                  disabled={isSubmitting || isLoading}
+                  className="w-full h-11 bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white font-semibold shadow-lg"
+                >
+                  {isSubmitting || isLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    "Sign In to Admin"
+                  )}
+                </Button>
+              )}
 
             </form>
           </CardContent>

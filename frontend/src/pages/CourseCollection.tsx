@@ -40,24 +40,23 @@ const CourseCollection = () => {
     [settings.header.courseCollections, slug],
   );
 
-  if (!collection) {
-    return <Navigate to="/packages" replace />;
-  }
-
-  const selectedIds = new Set(collection.courseIds);
-  const allowedCategorySet = new Set(collection.categoryIds || []);
-  const now = new Date();
-  const visibleFromDate = collection.courseVisibleFrom ? new Date(collection.courseVisibleFrom) : null;
-  const visibleUntilDate = collection.courseVisibleUntil ? new Date(collection.courseVisibleUntil) : null;
-  const startsOk = !collection.enableCourseSchedule || !visibleFromDate || Number.isNaN(visibleFromDate.getTime()) || now >= visibleFromDate;
-  const endsOk = !collection.enableCourseSchedule || !visibleUntilDate || Number.isNaN(visibleUntilDate.getTime()) || now <= visibleUntilDate;
-  const isWithinCollectionWindow = startsOk && endsOk;
-  const selectedCourses = visibleCourses.filter(
-    (course) =>
-      isWithinCollectionWindow &&
-      selectedIds.has(course.id) &&
-      (allowedCategorySet.size === 0 || allowedCategorySet.has(course.category)),
-  );
+  const selectedIds = useMemo(() => new Set(collection?.courseIds || []), [collection?.courseIds]);
+  const allowedCategorySet = useMemo(() => new Set(collection?.categoryIds || []), [collection?.categoryIds]);
+  const selectedCourses = useMemo(() => {
+    if (!collection) return [];
+    const now = new Date();
+    const visibleFromDate = collection.courseVisibleFrom ? new Date(collection.courseVisibleFrom) : null;
+    const visibleUntilDate = collection.courseVisibleUntil ? new Date(collection.courseVisibleUntil) : null;
+    const startsOk = !collection.enableCourseSchedule || !visibleFromDate || Number.isNaN(visibleFromDate.getTime()) || now >= visibleFromDate;
+    const endsOk = !collection.enableCourseSchedule || !visibleUntilDate || Number.isNaN(visibleUntilDate.getTime()) || now <= visibleUntilDate;
+    const isWithinCollectionWindow = startsOk && endsOk;
+    return visibleCourses.filter(
+      (course) =>
+        isWithinCollectionWindow &&
+        selectedIds.has(course.id) &&
+        (allowedCategorySet.size === 0 || allowedCategorySet.has(course.category)),
+    );
+  }, [allowedCategorySet, collection, selectedIds, visibleCourses]);
 
   const collectionCategorySet = useMemo(() => {
     return new Set(
@@ -78,12 +77,12 @@ const CourseCollection = () => {
   const filteredCourses = useMemo(() => {
     let result = selectedCourses;
 
-    if (collection.enableCategoryFilter && selectedCategories.length > 0) {
+    if (collection?.enableCategoryFilter && selectedCategories.length > 0) {
       const selectedSet = new Set(selectedCategories);
       result = result.filter((course) => selectedSet.has(course.category));
     }
 
-    if (collection.enableSearch && searchQuery.trim()) {
+    if (collection?.enableSearch && searchQuery.trim()) {
       const query = searchQuery.toLowerCase();
       result = result.filter((course) =>
         [course.title, course.professor, course.language].join(" ").toLowerCase().includes(query),
@@ -91,7 +90,7 @@ const CourseCollection = () => {
     }
 
     return result;
-  }, [collection.enableCategoryFilter, collection.enableSearch, searchQuery, selectedCategories, selectedCourses]);
+  }, [collection?.enableCategoryFilter, collection?.enableSearch, searchQuery, selectedCategories, selectedCourses]);
 
   const hasActiveFilters = Boolean(searchQuery.trim()) || selectedCategories.length > 0;
 
@@ -105,6 +104,10 @@ const CourseCollection = () => {
       prev.includes(categoryId) ? prev.filter((id) => id !== categoryId) : [...prev, categoryId],
     );
   };
+
+  if (!collection) {
+    return <Navigate to="/packages" replace />;
+  }
 
   return (
     <div className="min-h-screen bg-[#f7f5f2] text-slate-900">

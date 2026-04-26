@@ -27,6 +27,7 @@ import { AuthProvider, useAuth } from "./context/AuthContext";
 import { AdminAuthProvider } from "./context/AdminAuthContext";
 import { SiteSettingsProvider, useSiteSettings } from "./context/SiteSettingsContext";
 import { PlatformDataProvider } from "./context/PlatformDataContext";
+import { ConfirmProvider } from "./context/ConfirmContext";
 import ScrollToTop from "./components/ScrollToTop";
 
 import AdminLogin from "./pages/admin/AdminLogin";
@@ -143,12 +144,7 @@ const SiteSecurityGuard = () => {
     const heightGap = window.outerHeight - window.innerHeight;
     const hasDevtoolsBySize = widthGap > 120 || heightGap > 120;
 
-    const debugStart = performance.now();
-    debugger;
-    const debugDuration = performance.now() - debugStart;
-    const hasDevtoolsByDebugger = debugDuration > 80;
-
-    return hasDevtoolsBySize || hasDevtoolsByDebugger;
+    return hasDevtoolsBySize;
   };
 
   useLayoutEffect(() => {
@@ -350,8 +346,9 @@ const ForcedLogoutNoticeOverlay = () => {
 // Main app content wrapped in context providers
 const AppContent = () => (
   <QueryClientProvider client={queryClient}>
-    <SiteSettingsProvider>
-      <PlatformDataProvider>
+    <ConfirmProvider>
+      <SiteSettingsProvider>
+        <PlatformDataProvider>
         <AuthProvider>
           <CartProvider>
             <ProfessorAuthProvider>
@@ -426,7 +423,8 @@ const AppContent = () => (
           </CartProvider>
         </AuthProvider>
       </PlatformDataProvider>
-    </SiteSettingsProvider>
+      </SiteSettingsProvider>
+    </ConfirmProvider>
   </QueryClientProvider>
 );
 

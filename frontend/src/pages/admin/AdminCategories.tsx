@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Plus, Search, Edit2, Trash2, Eye, EyeOff, Tag, ChevronRight, FolderOpen, BookOpen } from "lucide-react";
+import { toast } from "sonner";
+import { useConfirm } from "@/context/ConfirmContext";
 
 type CategoryForm = {
   id: string;
@@ -38,6 +40,7 @@ type AdminCategoriesProps = {
 
 export default function AdminCategories({ embedded = false, onManageSubjects }: AdminCategoriesProps) {
   const { categories, upsertCategory, deleteCategory, toggleCategoryVisibility } = usePlatformData();
+  const { confirm } = useConfirm();
   const [searchTerm, setSearchTerm] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -91,20 +94,23 @@ export default function AdminCategories({ embedded = false, onManageSubjects }: 
       const response = await adminApi.upsertCategory(payload);
       upsertCategory(response.item as any);
       setDialogOpen(false);
+      toast.success("Category saved successfully");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to save category");
+      toast.error(error instanceof Error ? error.message : "Failed to save category");
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDelete = async (id: string) => {
-    if (!confirm("Delete this category?")) return;
+    const isConfirmed = await confirm({ title: "Delete Category?", description: "Delete this category?" });
+    if (!isConfirmed) return;
     try {
       await adminApi.deleteCategory(id);
       deleteCategory(id);
+      toast.success("Category deleted");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to delete category");
+      toast.error(error instanceof Error ? error.message : "Failed to delete category");
     }
   };
 
@@ -116,7 +122,7 @@ export default function AdminCategories({ embedded = false, onManageSubjects }: 
       await adminApi.toggleCategory(id, nextVisible);
       toggleCategoryVisibility(id);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to update category visibility");
+      toast.error(error instanceof Error ? error.message : "Failed to update category visibility");
     }
   };
 

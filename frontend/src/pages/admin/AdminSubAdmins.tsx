@@ -16,6 +16,7 @@ import {
   TableRow,
 } from "@/components/ui/table";
 import { Loader2, Plus, Shield, Trash2, Users, UserCog, Clock, MapPin, Check, X } from "lucide-react";
+import { useConfirm } from "@/context/ConfirmContext";
 
 type PermissionCell = Record<AdminAction, boolean>;
 type PermissionMap = Record<AdminModuleKey, PermissionCell>;
@@ -89,6 +90,7 @@ const formatDateTime = (value?: string | null) => {
 
 export default function AdminSubAdmins() {
   const { hasPermission } = useAdminAuth();
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<SubAdminItem[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLogItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -194,7 +196,8 @@ export default function AdminSubAdmins() {
 
   const handleDelete = async (item: SubAdminItem) => {
     if (!canDelete || item.isSuperAdmin) return;
-    if (!confirm(`Delete ${item.email}?`)) return;
+    const isConfirmed = await confirm({ title: "Delete Sub-Admin?", description: `Delete ${item.email}?` });
+    if (!isConfirmed) return;
     try {
       await adminApi.deleteSubAdmin(item.id);
       await loadData();

@@ -981,6 +981,15 @@ export const adminApi = {
     );
   },
 
+  async deleteLead(id: number) {
+    return parseResponse<{ ok: boolean; id: number }>(
+      await fetch(`/api/admin/leads/${encodeURIComponent(String(id))}`, {
+        method: "DELETE",
+        headers: withAuthHeaders({}),
+      }),
+    );
+  },
+
   async addLeadFollowUp(
     id: number,
     payload: { commentText: string; status?: LeadRecord["status"]; nextFollowUpAt?: string },

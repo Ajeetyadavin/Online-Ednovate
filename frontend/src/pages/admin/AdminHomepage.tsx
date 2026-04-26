@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { adminApi } from "@/services/adminApi";
 import { useSiteSettings, type SiteSettings } from "@/context/SiteSettingsContext";
@@ -8,7 +8,17 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
-import { Eye, EyeOff, Edit2, Trash2, Star, Upload, Loader2, Image, Megaphone, MessageSquare, LayoutDashboard, Settings2, Plus } from "lucide-react";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
+import { Eye, EyeOff, Edit2, Trash2, Star, Upload, Loader2, Image, Megaphone, MessageSquare, LayoutDashboard, Settings2, Plus, Save } from "lucide-react";
 import AdminHomepageSectionBuilder from "./AdminHomepageSectionBuilder";
 
 /* ─── Types ─────────────────────────────────────────────────── */
@@ -68,9 +78,14 @@ export default function AdminHomepage() {
   const [newTestimonial, setNewTestimonial] = useState({ authorName: "", authorRole: "", content: "", rating: 5, avatarUrl: "" });
   const [editingAnnId, setEditingAnnId] = useState<string | null>(null);
   const [editingTestId, setEditingTestId] = useState<string | null>(null);
-  const settingsSaveQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const [deleteConfirmInfo, setDeleteConfirmInfo] = useState<{ id: string; type: "banner" | "announcement" | "testimonial" | "reset" | null } | null>(null);
 
   useEffect(() => { setSiteDraft(settings); }, [settings]);
+
+  const hasUnsavedSiteChanges = useMemo(
+    () => JSON.stringify(siteDraft) !== JSON.stringify(settings),
+    [siteDraft, settings],
+  );
 
   const buildHomepagePlatformSettingsPayload = (draft: SiteSettings) => ({
     bunnyStreamApi: {
@@ -88,8 +103,8 @@ export default function AdminHomepage() {
 
   const persistHomepage = async (nextBanners = banners, nextTestimonials = testimonials, nextAnnouncements = announcements) => {
     setIsSaving(true);
-    try { await adminApi.updateHomepage({ banners: nextBanners, testimonials: nextTestimonials, announcements: nextAnnouncements }); }
-    catch (error) { alert(error instanceof Error ? error.message : "Failed to save homepage data"); }
+    try { await adminApi.updateHomepage({ banners: nextBanners, testimonials: nextTestimonials, announcements: nextAnnouncements }); toast.success("Homepage data saved successfully"); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Failed to save homepage data"); }
     finally { setIsSaving(false); }
   };
 
@@ -150,8 +165,9 @@ export default function AdminHomepage() {
         } as SiteSettings;
         setSiteDraft(nextDraft);
         updateSettings(nextDraft);
+        toast.success("Site settings saved successfully");
       }
-    } catch (error) { alert(error instanceof Error ? error.message : "Failed to save site settings"); }
+    } catch (error) { toast.error(error instanceof Error ? error.message : "Failed to save site settings"); }
     finally { setIsSaving(false); }
   };
 
@@ -179,14 +195,7 @@ export default function AdminHomepage() {
       const next = checked
         ? Array.from(new Set([...current, categoryId]))
         : current.filter((id) => id !== categoryId);
-      const nextDraft = { ...prev, exploreCategoryIds: next };
-
-      updateSettings(nextDraft);
-      settingsSaveQueueRef.current = settingsSaveQueueRef.current
-        .then(() => persistSiteSettings(nextDraft, false))
-        .catch(() => undefined);
-
-      return nextDraft;
+      return { ...prev, exploreCategoryIds: next };
     });
   };
 
@@ -205,13 +214,13 @@ export default function AdminHomepage() {
   const handleBannerFileInput = async (file?: File | null) => {
     if (!file) return;
     try { const url = await uploadImageFile(file, "homepage-banners"); setNewBanner((prev) => ({ ...prev, imageUrl: url })); }
-    catch (error) { alert(error instanceof Error ? error.message : "Image upload failed"); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Image upload failed"); }
   };
 
   const handleTestimonialImage = async (file?: File | null) => {
     if (!file) return;
     try { const url = await uploadImageFile(file, "testimonials"); setNewTestimonial((prev) => ({ ...prev, avatarUrl: url })); }
-    catch (error) { alert(error instanceof Error ? error.message : "Image upload failed"); }
+    catch (error) { toast.error(error instanceof Error ? error.message : "Image upload failed"); }
   };
 
   const handleLogoFileInput = async (file?: File | null) => {
@@ -219,47 +228,53 @@ export default function AdminHomepage() {
     try {
       const url = await uploadImageFile(file, "branding");
       setSiteDraft((prev) => {
-        const nextDraft = { ...prev, logo: url };
-        updateSettings(nextDraft);
-        settingsSaveQueueRef.current = settingsSaveQueueRef.current
-          .then(() => persistSiteSettings(nextDraft, false))
-          .catch(() => undefined);
-        return nextDraft;
+        return { ...prev, logo: url };
       });
+      toast.success("Logo uploaded. Click Save Homepage Settings to publish it.");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Logo upload failed");
+      toast.error(error instanceof Error ? error.message : "Logo upload failed");
     }
   };
 
   const handleAddBanner = async () => {
-    if (!newBanner.title.trim() || !newBanner.imageUrl.trim()) { alert("Banner title and image are required"); return; }
+    if (!newBanner.title.trim() || !newBanner.imageUrl.trim()) { toast.error("Banner title and image are required"); return; }
     const next = [...banners, { id: `banner_${Date.now()}`, title: newBanner.title, imageUrl: newBanner.imageUrl, isVisible: true, sortOrder: banners.length + 1 }];
     setBanners(next); await persistHomepage(next, testimonials, announcements); setNewBanner({ title: "", imageUrl: "" });
   };
 
   const handleToggleBanner = async (id: string) => { const next = banners.map((b) => (b.id === id ? { ...b, isVisible: !b.isVisible } : b)); setBanners(next); await persistHomepage(next, testimonials, announcements); };
-  const handleDeleteBanner = async (id: string) => { if (!confirm("Delete this banner?")) return; const next = banners.filter((b) => b.id !== id); setBanners(next); await persistHomepage(next, testimonials, announcements); };
+  const handleDeleteBanner = async (id: string) => { const next = banners.filter((b) => b.id !== id); setBanners(next); await persistHomepage(next, testimonials, announcements); };
 
   const handleAddAnnouncement = async () => {
-    if (!newAnnouncement.title.trim()) { alert("Announcement title is required"); return; }
+    if (!newAnnouncement.title.trim()) { toast.error("Announcement title is required"); return; }
     const next = [...announcements, { id: `ann_${Date.now()}`, title: newAnnouncement.title, content: newAnnouncement.content, link: newAnnouncement.link, isVisible: true }];
     setAnnouncements(next); await persistHomepage(banners, testimonials, next); setNewAnnouncement({ title: "", content: "", link: "" });
   };
 
   const handleUpdateAnnouncement = async (id: string, updates: Record<string, unknown>) => { const next = announcements.map((a) => (a.id === id ? { ...a, ...updates } : a)); setAnnouncements(next); await persistHomepage(banners, testimonials, next); };
-  const handleDeleteAnnouncement = async (id: string) => { if (!confirm("Delete announcement?")) return; const next = announcements.filter((a) => a.id !== id); setAnnouncements(next); await persistHomepage(banners, testimonials, next); };
+  const handleDeleteAnnouncement = async (id: string) => { const next = announcements.filter((a) => a.id !== id); setAnnouncements(next); await persistHomepage(banners, testimonials, next); };
 
   const handleAddTestimonial = async () => {
-    if (!newTestimonial.authorName.trim() || !newTestimonial.content.trim()) { alert("Name and testimonial content are required"); return; }
+    if (!newTestimonial.authorName.trim() || !newTestimonial.content.trim()) { toast.error("Name and testimonial content are required"); return; }
     const next = [...testimonials, { id: `test_${Date.now()}`, authorName: newTestimonial.authorName, authorRole: newTestimonial.authorRole, content: newTestimonial.content, rating: newTestimonial.rating, isVisible: true, avatarUrl: newTestimonial.avatarUrl }];
     setTestimonials(next as any); await persistHomepage(banners, next as any, announcements); setNewTestimonial({ authorName: "", authorRole: "", content: "", rating: 5, avatarUrl: "" });
   };
 
   const handleUpdateTestimonial = async (id: string, updates: Record<string, unknown>) => { const next = testimonials.map((t) => (t.id === id ? { ...t, ...updates } : t)); setTestimonials(next as any); await persistHomepage(banners, next as any, announcements); };
-  const handleDeleteTestimonial = async (id: string) => { if (!confirm("Delete testimonial?")) return; const next = testimonials.filter((t) => t.id !== id); setTestimonials(next as any); await persistHomepage(banners, next as any, announcements); };
+  const handleDeleteTestimonial = async (id: string) => { const next = testimonials.filter((t) => t.id !== id); setTestimonials(next as any); await persistHomepage(banners, next as any, announcements); };
 
   const editingAnn = editingAnnId ? announcements.find((a) => a.id === editingAnnId) : null;
   const editingTest = editingTestId ? testimonials.find((t) => t.id === editingTestId) : null;
+
+  const executeDelete = async () => {
+    if (!deleteConfirmInfo) return;
+    const { id, type } = deleteConfirmInfo;
+    setDeleteConfirmInfo(null);
+    if (type === "banner") await handleDeleteBanner(id);
+    if (type === "announcement") await handleDeleteAnnouncement(id);
+    if (type === "testimonial") await handleDeleteTestimonial(id);
+    if (type === "reset") resetSettings();
+  };
 
   return (
     <div className="space-y-5 font-['Inter']">
@@ -274,8 +289,29 @@ export default function AdminHomepage() {
             <p className="text-xs text-slate-400">Banners, announcements, testimonials &amp; site config</p>
           </div>
         </div>
-        <div className="ml-auto flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-4 py-2 text-xs font-semibold text-slate-500 shadow-sm">
-          {isSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin text-primary" /><span>Saving...</span></> : <><span className="h-2 w-2 rounded-full bg-emerald-500" /><span>Auto-save On</span></>}
+        <div className="ml-auto flex flex-wrap items-center gap-2">
+          <div className="flex items-center gap-2 rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-500 shadow-sm">
+            {isSaving ? (
+              <>
+                <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                <span>Saving...</span>
+              </>
+            ) : (
+              <>
+                <span className={`h-2 w-2 rounded-full ${hasUnsavedSiteChanges ? "bg-amber-500" : "bg-emerald-500"}`} />
+                <span>{hasUnsavedSiteChanges ? "Unsaved Changes" : "Saved"}</span>
+              </>
+            )}
+          </div>
+          <Button
+            size="sm"
+            className="gap-1.5 rounded-xl px-4 text-xs font-semibold"
+            onClick={() => persistSiteSettings(siteDraft)}
+            disabled={isSaving || !hasUnsavedSiteChanges}
+          >
+            {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+            Save Homepage Settings
+          </Button>
         </div>
       </div>
 
@@ -338,7 +374,7 @@ export default function AdminHomepage() {
                       <button type="button" onClick={() => handleToggleBanner(banner.id)} className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${banner.isVisible ? "text-slate-400 hover:bg-amber-50 hover:text-amber-600" : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}`}>
                         {banner.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                       </button>
-                      <button type="button" onClick={() => handleDeleteBanner(banner.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => setDeleteConfirmInfo({ id: banner.id, type: "banner" })} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
                 ))}
@@ -400,7 +436,7 @@ export default function AdminHomepage() {
                     </div>
                     <div className="flex shrink-0 items-center gap-1 mt-0.5">
                       <button type="button" onClick={() => setEditingAnnId(ann.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors"><Edit2 className="h-3.5 w-3.5" /></button>
-                      <button type="button" onClick={() => handleDeleteAnnouncement(ann.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => setDeleteConfirmInfo({ id: ann.id, type: "announcement" })} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
                 ))}
@@ -466,7 +502,7 @@ export default function AdminHomepage() {
                       <button type="button" onClick={() => handleUpdateTestimonial(test.id, { isVisible: !test.isVisible })} className={`flex h-7 w-7 items-center justify-center rounded-lg transition-colors ${test.isVisible ? "text-slate-400 hover:bg-amber-50 hover:text-amber-600" : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"}`}>
                         {test.isVisible ? <Eye className="h-3.5 w-3.5" /> : <EyeOff className="h-3.5 w-3.5" />}
                       </button>
-                      <button type="button" onClick={() => handleDeleteTestimonial(test.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                      <button type="button" onClick={() => setDeleteConfirmInfo({ id: test.id, type: "testimonial" })} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                     </div>
                   </div>
                 ))}
@@ -778,7 +814,7 @@ export default function AdminHomepage() {
           </div>
 
           <div className="flex justify-end gap-2">
-            <Button type="button" variant="outline" size="sm" className="rounded-xl text-xs" onClick={() => { if (!confirm("Reset all site settings to default values?")) return; resetSettings(); }}>Reset All Settings</Button>
+            <Button type="button" variant="outline" size="sm" className="rounded-xl text-xs" onClick={() => setDeleteConfirmInfo({ id: "reset", type: "reset" })}>Reset All Settings</Button>
             <Button size="sm" className="gap-1.5 rounded-xl px-5 text-xs font-semibold" onClick={() => persistSiteSettings(siteDraft)} disabled={isSaving}>
               {isSaving ? <><Loader2 className="h-3.5 w-3.5 animate-spin" />Saving...</> : "Save Site Config"}
             </Button>
@@ -830,6 +866,30 @@ export default function AdminHomepage() {
           </DialogContent>
         )}
       </Dialog>
+
+      <AlertDialog open={!!deleteConfirmInfo} onOpenChange={(open) => !open && setDeleteConfirmInfo(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {deleteConfirmInfo?.type === "reset" ? "Reset Site Settings?" : "Are you sure?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {deleteConfirmInfo?.type === "reset" 
+                ? "This will reset all site settings to their default values. This action cannot be undone."
+                : `This action cannot be undone. This will permanently delete the ${deleteConfirmInfo?.type}.`}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={executeDelete}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              {deleteConfirmInfo?.type === "reset" ? "Reset" : "Delete"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

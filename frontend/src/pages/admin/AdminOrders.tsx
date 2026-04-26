@@ -11,6 +11,7 @@ import { Search, RefreshCcw, Eye, Trash2, Package, Download, Calendar, ChevronDo
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
+import { useConfirm } from "@/context/ConfirmContext";
 
 const DISPATCH_STATUSES = ["pending", "processing", "dispatched", "delivered", "cancelled", "refunded"] as const;
 
@@ -60,6 +61,7 @@ export default function AdminOrders() {
   const [toDate, setToDate] = useState("");
   const [success, setSuccess] = useState("");
   const [actionLoadingId, setActionLoadingId] = useState<number | null>(null);
+  const { confirm } = useConfirm();
 
   const loadOrders = async () => {
     setIsLoading(true);
@@ -441,9 +443,9 @@ export default function AdminOrders() {
 
   const refundOrder = async (line: AdminOrderLine) => {
     if (line.dispatchStatus === "refunded") return;
-    const confirmed = window.confirm(`Refund order ${line.orderId}? This will remove course access.`);
-    if (!confirmed) return;
-    const refundNote = window.prompt("Refund note (optional):", line.dispatchNote || "") || "";
+    const isConfirmed = await confirm({ title: "Refund Order?", description: `Refund order ${line.orderId}? This will remove course access.` });
+    if (!isConfirmed) return;
+    const refundNote = await prompt({ title: "Refund Note", description: "Optional note for this refund", defaultValue: line.dispatchNote || "", confirmText: "Process Refund" }) || "";
 
     try {
       setError("");
@@ -463,7 +465,8 @@ export default function AdminOrders() {
   };
 
   const deleteOrder = async (line: AdminOrderLine) => {
-    if (!window.confirm(`Delete order ${line.orderId}?`)) return;
+    const isConfirmed = await confirm({ title: "Delete Order?", description: `Delete order ${line.orderId}?` });
+    if (!isConfirmed) return;
     try {
       await adminApi.deleteOrder(line.id);
       setOrders(prev => prev.filter(i => i.id !== line.id));

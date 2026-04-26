@@ -7,6 +7,7 @@ import {
   Loader2, Upload, UserRoundPlus, Pencil, Trash2, Search, GraduationCap,
   BookOpen, CheckCircle2, XCircle,
 } from "lucide-react";
+import { useConfirm } from "@/context/ConfirmContext";
 
 /* ─── Types ───────────────────────────────────────────────── */
 interface CourseOption { id: string; title: string; thumbnail?: string; }
@@ -53,6 +54,7 @@ const GRADIENTS = [
 /* ─── Main ────────────────────────────────────────────────── */
 export default function AdminFaculty() {
   const { hasPermission } = useAdminAuth();
+  const { confirm } = useConfirm();
   const [items, setItems] = useState<FacultyProfile[]>([]);
   const [courses, setCourses] = useState<CourseOption[]>([]);
   const [form, setForm] = useState<FacultyFormState>(createDefaultForm());
@@ -190,7 +192,9 @@ export default function AdminFaculty() {
   };
 
   const handleDelete = async (id: string) => {
-    if (!canDelete || !confirm("Delete this faculty profile?")) return;
+    if (!canDelete) return;
+    const isConfirmed = await confirm({ title: "Delete Faculty?", description: "Delete this faculty profile?" });
+    if (!isConfirmed) return;
     try {
       await adminApi.deleteFaculty(id);
       setSuccess("Faculty deleted");

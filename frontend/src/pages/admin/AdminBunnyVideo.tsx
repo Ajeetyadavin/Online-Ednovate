@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Video, RefreshCw, FolderOpen, Clapperboard, Search, Upload, Plus, Trash2, Copy, Check, GripVertical, Play, Clock, HardDrive, Film, ArrowUpCircle, Image as ImageIcon, FileVideo, CheckCircle, Loader2 } from "lucide-react";
 import { toast } from "sonner";
+import { useConfirm } from "@/context/ConfirmContext";
 
 const formatDuration = (seconds: number) => {
   const total = Math.max(0, Math.floor(Number(seconds) || 0));
@@ -16,6 +17,7 @@ const formatDuration = (seconds: number) => {
 };
 
 const AdminBunnyVideo = () => {
+  const { confirm } = useConfirm();
   const [libraryId, setLibraryId] = useState("");
   const [collections, setCollections] = useState<BunnyLibraryCollection[]>([]);
   const [videos, setVideos] = useState<BunnyLibraryVideo[]>([]);
@@ -117,7 +119,8 @@ const AdminBunnyVideo = () => {
   };
 
   const deleteVideo = async (videoId: string, title: string) => {
-    if (!window.confirm(`Delete video "${title || videoId}" from Bunny library?`)) return;
+    const isConfirmed = await confirm({ title: "Delete Video?", description: `Delete video "${title || videoId}" from Bunny library?` });
+    if (!isConfirmed) return;
     try {
       setDeletingVideoId(videoId);
       await adminApi.deleteBunnyVideo(videoId);
@@ -133,7 +136,8 @@ const AdminBunnyVideo = () => {
   const deleteSelectedVideos = async () => {
     const ids = Array.from(selectedVideoIds);
     if (!ids.length) return;
-    if (!window.confirm(`Delete ${ids.length} selected video(s)?`)) return;
+    const isConfirmed = await confirm({ title: "Delete Selected Videos?", description: `Delete ${ids.length} selected video(s)?` });
+    if (!isConfirmed) return;
     try {
       setBulkDeleting(true);
       await Promise.all(ids.map((id) => adminApi.deleteBunnyVideo(id)));

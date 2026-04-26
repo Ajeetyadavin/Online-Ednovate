@@ -14,6 +14,7 @@ import {
 import { decodeVideoUrl, encodeVideoUrl, extractYouTubeVideoId, type LessonVideoSource } from "@/lib/video-utils";
 import { adminApi, type BunnyLibraryVideo } from "@/services/adminApi";
 import { toast } from "sonner";
+import { useConfirm } from "@/context/ConfirmContext";
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface NewLesson {
@@ -123,6 +124,7 @@ const sCls = "h-9 w-full rounded-xl border border-slate-200 bg-white px-3 text-x
 /* ─── Main ─────────────────────────────────────────────────────── */
 export default function AdminCourseContent() {
   const { courses, categories, getCurriculumForCourse, setCurriculumForCourse } = usePlatformData();
+  const { confirm } = useConfirm();
   const nonPackageCourses = useMemo(() => courses.filter((course) => !course.isCombo), [courses]);
 
   const [selectedCourseId, setSelectedCourseId] = useState("");
@@ -561,7 +563,8 @@ export default function AdminCourseContent() {
   };
 
   const handleDeleteCollectionVideo = async (videoId: string, title: string) => {
-    if (!window.confirm(`Delete video "${title}" from this Bunny collection?`)) return;
+    const isConfirmed = await confirm({ title: "Delete Video?", description: `Delete video "${title}" from this Bunny collection?` });
+    if (!isConfirmed) return;
     try {
       setDeletingCollectionVideoId(videoId);
       await adminApi.deleteBunnyVideo(videoId);
@@ -688,7 +691,9 @@ export default function AdminCourseContent() {
   };
 
   const handleDeleteChapter = async (chapterId: string) => {
-    if (!selectedCourse || !confirm("Delete this chapter and all its lessons?")) return;
+    if (!selectedCourse) return;
+    const isConfirmed = await confirm({ title: "Delete Chapter?", description: "Delete this chapter and all its lessons?" });
+    if (!isConfirmed) return;
     setIsSaving(true); setSaveError(null);
     const updated = curriculum.filter((ch) => ch.id !== chapterId);
     try { setCurriculumForCourse(selectedCourse.id, updated); await adminApi.saveCurriculum(selectedCourse.id, updated); emitCurriculumUpdated(selectedCourse.id); setSelectedChapterId(null); }
@@ -755,7 +760,9 @@ export default function AdminCourseContent() {
   };
 
   const handleDeleteLesson = async (lessonId: string) => {
-    if (!selectedCourse || !selectedChapter || !confirm("Delete this lesson?")) return;
+    if (!selectedCourse || !selectedChapter) return;
+    const isConfirmed = await confirm({ title: "Delete Lesson?", description: "Delete this lesson?" });
+    if (!isConfirmed) return;
     setIsSaving(true); setSaveError(null);
     const updated = curriculum.map((ch) => ch.id === selectedChapter.id ? { ...ch, lessons: ch.lessons.filter((l) => l.id !== lessonId) } : ch);
     try { setCurriculumForCourse(selectedCourse.id, updated); await adminApi.saveCurriculum(selectedCourse.id, updated); emitCurriculumUpdated(selectedCourse.id); }
@@ -792,7 +799,7 @@ export default function AdminCourseContent() {
     } catch (e) {
       const cancelled = e instanceof Error && /cancelled/i.test(e.message);
       setLessonUploadState((prev) => (prev ? { ...prev, status: cancelled ? "cancelled" : "error", message: cancelled ? "Upload cancelled" : "Upload failed" } : prev));
-      alert(e instanceof Error ? e.message : "Video upload failed");
+      toast.error(e instanceof Error ? e.message : "Video upload failed");
     }
     finally {
       lessonUploadAbortRef.current = null;

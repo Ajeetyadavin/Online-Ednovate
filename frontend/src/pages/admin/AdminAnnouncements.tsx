@@ -12,9 +12,20 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Badge } from "@/components/ui/badge";
 import { Plus, Search, Edit2, Trash2, Eye, EyeOff } from "lucide-react";
 import { adminApi } from "@/services/adminApi";
+import { toast } from "sonner";
 
 export default function AdminAnnouncements() {
   const { announcements, setAnnouncements } = usePlatformData();
@@ -29,6 +40,7 @@ export default function AdminAnnouncements() {
     link: "",
   });
   const [dialogOpen, setDialogOpen] = useState(false);
+  const [announcementToDelete, setAnnouncementToDelete] = useState<{ id: string; title: string } | null>(null);
 
   useEffect(() => {
     const loadHomepageContent = async () => {
@@ -76,8 +88,9 @@ export default function AdminAnnouncements() {
         setAnnouncements(nextAnnouncements);
         setNewAnnouncement({ title: "", content: "", link: "" });
         setDialogOpen(false);
+        toast.success("Announcement added");
       } catch (error) {
-        alert(error instanceof Error ? error.message : "Failed to save announcement");
+        toast.error(error instanceof Error ? error.message : "Failed to save announcement");
       }
     }
   };
@@ -90,21 +103,25 @@ export default function AdminAnnouncements() {
       await persistAnnouncements(updated);
       setAnnouncements(updated);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to update visibility");
+      toast.error(error instanceof Error ? error.message : "Failed to update visibility");
     }
   };
 
-  const handleDeleteAnnouncement = async (announcementId: string) => {
-    const target = announcements.find((announcement) => announcement.id === announcementId);
-    if (!target) return;
-    if (!window.confirm(`Delete announcement \"${target.title}\"?`)) return;
+  const confirmDeleteAnnouncement = (announcement: { id: string; title: string }) => {
+    setAnnouncementToDelete(announcement);
+  };
 
-    const updated = announcements.filter((announcement) => announcement.id !== announcementId);
+  const executeDeleteAnnouncement = async () => {
+    if (!announcementToDelete) return;
+    const { id } = announcementToDelete;
+    const next = announcements.filter((announcement) => announcement.id !== id);
     try {
-      await persistAnnouncements(updated);
-      setAnnouncements(updated);
+      await persistAnnouncements(next);
+      setAnnouncements(next);
+      setAnnouncementToDelete(null);
+      toast.success("Announcement deleted");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to delete announcement");
+      toast.error(error instanceof Error ? error.message : "Failed to delete announcement");
     }
   };
 
@@ -234,7 +251,7 @@ export default function AdminAnnouncements() {
                       variant="ghost"
                       size="sm"
                       className="text-red-600 hover:text-red-900"
-                      onClick={() => void handleDeleteAnnouncement(announcement.id)}
+                      onClick={() => confirmDeleteAnnouncement(announcement)}
                     >
                       <Trash2 className="w-4 h-4" />
                     </Button>
@@ -249,6 +266,26 @@ export default function AdminAnnouncements() {
           )}
         </CardContent>
       </Card>
+
+      <AlertDialog open={!!announcementToDelete} onOpenChange={(open) => !open && setAnnouncementToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the announcement "{announcementToDelete?.title}".
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={executeDeleteAnnouncement}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

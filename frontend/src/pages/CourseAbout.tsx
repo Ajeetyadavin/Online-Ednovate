@@ -208,7 +208,15 @@ export default function CourseAbout() {
   };
 
   const toggleChapter = (id: string) =>
-    setOpenChapterIds((prev) => { const n = new Set(prev); n.has(id) ? n.delete(id) : n.add(id); return n; });
+    setOpenChapterIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/40 pb-12 font-['Inter']">

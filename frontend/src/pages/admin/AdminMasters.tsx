@@ -19,6 +19,7 @@ import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { Loader2, Plus, Trash2, Save, LayoutDashboard, Eye, Clock, MonitorPlay, Languages, BookOpen, X, Check, Edit2, ListTree, ChevronRight, Folder, FolderOpen, FileText, Hash, GripVertical } from "lucide-react";
 import * as XLSX from "xlsx";
+import { useConfirm } from "@/context/ConfirmContext";
 
 const uid = (prefix: string) => `${prefix}-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
 
@@ -27,6 +28,7 @@ export default function AdminMasters() {
   const [isSaving, setIsSaving] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
+  const { confirm, prompt } = useConfirm();
 
   const [viewModes, setViewModes] = useState<CourseMasterViewMode[]>([]);
   const [validityOptions, setValidityOptions] = useState<CourseMasterValidityOption[]>([]);
@@ -122,8 +124,10 @@ export default function AdminMasters() {
   const [popupEditingName, setPopupEditingName] = useState('');
   const [chapterPopup, setChapterPopup] = useState<{ open: boolean; subjectId: string; subjectName: string }>({ open: false, subjectId: '', subjectName: '' });
   const [chapterNewName, setChapterNewName] = useState('');
+  const [chapterNewNumber, setChapterNewNumber] = useState<number>(1);
   const [chapterEditingId, setChapterEditingId] = useState<string | null>(null);
   const [chapterEditingName, setChapterEditingName] = useState('');
+  const [chapterEditingNumber, setChapterEditingNumber] = useState<number>(1);
   const [isImportingChapters, setIsImportingChapters] = useState(false);
   const chapterImportInputRef = useRef<HTMLInputElement | null>(null);
   const [courseQuickName, setCourseQuickName] = useState('');
@@ -137,6 +141,10 @@ export default function AdminMasters() {
   const [dragLevelId, setDragLevelId] = useState('');
   const [dragSubjectId, setDragSubjectId] = useState('');
   const [dragChapterId, setDragChapterId] = useState('');
+  const [subjectSerialDrafts, setSubjectSerialDrafts] = useState<Record<string, string>>({});
+  const [chapterSerialDrafts, setChapterSerialDrafts] = useState<Record<string, string>>({});
+  const [chapterSearch, setChapterSearch] = useState('');
+  const [chapterPopupSearch, setChapterPopupSearch] = useState('');
 
   const openSubjectPopup = (id: string, name: string, type: 'course' | 'level') => {
     setSubjectPopup({ open: true, targetId: id, targetName: name, targetType: type });
@@ -146,7 +154,9 @@ export default function AdminMasters() {
 
   const getSubjectChapters = (subjectId: string): CourseMasterSubjectChapter[] => {
     const subject = subjects.find((item) => item.id === subjectId);
-    return Array.isArray(subject?.chapters) ? subject.chapters : [];
+    return Array.isArray(subject?.chapters)
+      ? [...subject.chapters].sort((a, b) => Number(a.sortOrder || 0) - Number(b.sortOrder || 0))
+      : [];
   };
 
   const addSubjectToTarget = () => {
@@ -168,45 +178,96 @@ export default function AdminMasters() {
   const openChapterPopup = (subjectId: string, subjectName: string) => {
     setChapterPopup({ open: true, subjectId, subjectName });
     setChapterNewName('');
+    setChapterNewNumber(1);
     setChapterEditingId(null);
     setChapterEditingName('');
+    setChapterEditingNumber(1);
+    setChapterPopupSearch('');
   };
 
   const addChapterToSubject = () => {
     const name = chapterNewName.trim();
+    const chapterNumber = Math.max(1, chapterNewNumber);
     if (!name || !chapterPopup.subjectId) return;
     setSubjects((prev) => prev.map((item) => {
       if (item.id !== chapterPopup.subjectId) return item;
       const prevChapters = Array.isArray(item.chapters) ? item.chapters : [];
+      
+      // Add new chapter with specified sortOrder
+      const newChapter = {
+        id: uid('chapter'),
+        name,
+        isActive: true,
+        sortOrder: chapterNumber,
+      };
+      
+      // Insert chapter and sort by sortOrder
+      const updatedChapters = [...prevChapters, newChapter];
+      const sortedChapters = [...updatedChapters].sort((a, b) => {
+        if (a.sortOrder === b.sortOrder) {
+          // If same sortOrder, new chapter goes after existing ones
+          const aIndex = updatedChapters.findIndex(ch => ch.id === a.id);
+          const bIndex = updatedChapters.findIndex(ch => ch.id === b.id);
+          return aIndex - bIndex;
+        }
+        return a.sortOrder - b.sortOrder;
+      });
+      
+      // Reassign sortOrder based on position to ensure consistency
+      const finalChapters = sortedChapters.map((chapter, index) => ({
+        ...chapter,
+        sortOrder: index + 1,
+      }));
+      
       return {
         ...item,
-        chapters: [
-          ...prevChapters,
-          {
-            id: uid('chapter'),
-            name,
-            isActive: true,
-            sortOrder: prevChapters.length + 1,
-          },
-        ],
+        chapters: finalChapters,
       };
     }));
     setChapterNewName('');
+    setChapterNewNumber(1);
   };
 
   const saveChapterEdit = (chapterId: string) => {
     const name = chapterEditingName.trim();
+    const chapterNumber = Math.max(1, chapterEditingNumber);
     if (!name || !chapterPopup.subjectId) return;
+    
     setSubjects((prev) => prev.map((item) => {
       if (item.id !== chapterPopup.subjectId) return item;
       const prevChapters = Array.isArray(item.chapters) ? item.chapters : [];
+      
+      // Update the chapter with new name and sortOrder
+      const updatedChapters = prevChapters.map((chapter) =>
+        chapter.id === chapterId ? { ...chapter, name, sortOrder: chapterNumber } : chapter
+      );
+      
+      // Sort chapters by sortOrder, then by original order for ties
+      const sortedChapters = [...updatedChapters].sort((a, b) => {
+        if (a.sortOrder === b.sortOrder) {
+          // If same sortOrder, maintain original order
+          const aIndex = prevChapters.findIndex(ch => ch.id === a.id);
+          const bIndex = prevChapters.findIndex(ch => ch.id === b.id);
+          return aIndex - bIndex;
+        }
+        return a.sortOrder - b.sortOrder;
+      });
+      
+      // Reassign sortOrder based on position to ensure consistency
+      const finalChapters = sortedChapters.map((chapter, index) => ({
+        ...chapter,
+        sortOrder: index + 1
+      }));
+      
       return {
         ...item,
-        chapters: prevChapters.map((chapter) => chapter.id === chapterId ? { ...chapter, name } : chapter),
+        chapters: finalChapters,
       };
     }));
+    
     setChapterEditingId(null);
     setChapterEditingName('');
+    setChapterEditingNumber(1);
   };
 
   const removeChapterFromSubject = (chapterId: string) => {
@@ -381,7 +442,7 @@ export default function AdminMasters() {
   };
 
   const editCategoryFromExplorer = async (item: AdminCategoryItem) => {
-    const nextName = window.prompt('Enter new name', item.name)?.trim();
+    const nextName = await prompt({ title: 'Rename Category', defaultValue: item.name, confirmText: 'Rename' });
     if (!nextName || nextName === item.name) return;
     try {
       const response = await adminApi.upsertCategory({
@@ -401,7 +462,8 @@ export default function AdminMasters() {
   };
 
   const deleteCategoryFromExplorer = async (item: AdminCategoryItem) => {
-    if (!window.confirm(`Delete "${item.name}"?`)) return;
+    const isConfirmed = await confirm({ title: "Are you sure?", description: `Delete "${item.name}"?` });
+    if (!isConfirmed) return;
     try {
       await adminApi.deleteCategory(item.id);
       setCategories((prev) => prev.filter((row) => row.id !== item.id));
@@ -459,17 +521,19 @@ export default function AdminMasters() {
     }
   };
 
-  const editSubjectFromExplorer = (subjectId: string) => {
-    const target = subjects.find((item) => item.id === subjectId);
+  const editSubjectFromExplorer = async (subjectId: string) => {
+    const target = subjects.find((row) => row.id === subjectId);
     if (!target) return;
-    const nextName = window.prompt('Enter new subject name', target.name)?.trim();
+    const nextName = await prompt({ title: 'Rename Subject', defaultValue: target.name, confirmText: 'Rename' });
     if (!nextName || nextName === target.name) return;
     setSubjects((prev) => prev.map((item) => item.id === subjectId ? { ...item, name: nextName } : item));
   };
 
-  const deleteSubjectFromExplorer = (subjectId: string) => {
+  const deleteSubjectFromExplorer = async (subjectId: string) => {
     const target = subjects.find((item) => item.id === subjectId);
-    if (!target || !window.confirm(`Delete subject "${target.name}"?`)) return;
+    if (!target) return;
+    const isConfirmed = await confirm({ title: "Delete Subject?", description: `Delete subject "${target.name}"?` });
+    if (!isConfirmed) return;
     setSubjects((prev) => prev.filter((item) => item.id !== subjectId));
     if (selectedSubjectId === subjectId) setSelectedSubjectId('');
   };
@@ -488,11 +552,46 @@ export default function AdminMasters() {
     setDragSubjectId('');
   };
 
-  const editChapterFromExplorer = (chapterId: string) => {
-    if (!selectedSubjectId) return;
-    const target = masterChapters.find((item) => item.id === chapterId);
+  const moveSubjectToSerial = (subjectId: string, serialRaw: string | number) => {
+    if (!selectedLevelId) return;
+    const numeric = Number(serialRaw);
+    if (!Number.isFinite(numeric)) return;
+
+    const ordered = [...masterSubjects];
+    const currentIndex = ordered.findIndex((item) => item.id === subjectId);
+    if (currentIndex < 0 || ordered.length <= 1) return;
+
+    const targetSerial = Math.max(1, Math.floor(numeric));
+    const boundedTarget = Math.min(ordered.length, targetSerial);
+    if (boundedTarget === currentIndex + 1) return;
+
+    const [moved] = ordered.splice(currentIndex, 1);
+    ordered.splice(boundedTarget - 1, 0, moved);
+    const reordered = ordered.map((item, index) => ({ ...item, sortOrder: index + 1 }));
+    setSubjects((prev) => prev.map((item) => {
+      const found = reordered.find((row) => row.id === item.id);
+      return found ? { ...item, sortOrder: found.sortOrder } : item;
+    }));
+  };
+
+  const applySubjectSerialMove = (subjectId: string, fallbackOrder: number) => {
+    const draft = String(subjectSerialDrafts[subjectId] ?? "").trim();
+    if (!draft) {
+      setSubjectSerialDrafts((prev) => ({ ...prev, [subjectId]: String(fallbackOrder) }));
+      return;
+    }
+    moveSubjectToSerial(subjectId, draft);
+    setSubjectSerialDrafts((prev) => {
+      const next = { ...prev };
+      delete next[subjectId];
+      return next;
+    });
+  };
+
+  const editChapterFromExplorer = async (chapterId: string) => {
+    const target = (subjects.flatMap((s) => s.chapters || []).find((c) => c.id === chapterId)) as CourseMasterSubjectChapter | undefined;
     if (!target) return;
-    const nextName = window.prompt('Enter new chapter name', target.name)?.trim();
+    const nextName = await prompt({ title: 'Rename Chapter', defaultValue: target.name, confirmText: 'Rename' });
     if (!nextName || nextName === target.name) return;
     setSubjects((prev) => prev.map((item) => {
       if (item.id !== selectedSubjectId) return item;
@@ -503,10 +602,12 @@ export default function AdminMasters() {
     }));
   };
 
-  const deleteChapterFromExplorer = (chapterId: string) => {
+  const deleteChapterFromExplorer = async (chapterId: string) => {
     if (!selectedSubjectId) return;
     const target = masterChapters.find((item) => item.id === chapterId);
-    if (!target || !window.confirm(`Delete chapter "${target.name}"?`)) return;
+    if (!target) return;
+    const isConfirmed = await confirm({ title: "Delete Chapter?", description: `Delete chapter "${target.name}"?` });
+    if (!isConfirmed) return;
     setSubjects((prev) => prev.map((item) => {
       if (item.id !== selectedSubjectId) return item;
       return {
@@ -525,6 +626,39 @@ export default function AdminMasters() {
     const reordered = reorderArray(ordered, fromIndex, toIndex).map((item, index) => ({ ...item, sortOrder: index + 1 }));
     setSubjects((prev) => prev.map((item) => item.id === selectedSubjectId ? { ...item, chapters: reordered } : item));
     setDragChapterId('');
+  };
+
+  const moveChapterToSerial = (chapterId: string, serialRaw: string | number) => {
+    if (!selectedSubjectId) return;
+    const numeric = Number(serialRaw);
+    if (!Number.isFinite(numeric)) return;
+
+    const ordered = [...masterChapters];
+    const currentIndex = ordered.findIndex((item) => item.id === chapterId);
+    if (currentIndex < 0 || ordered.length <= 1) return;
+
+    const targetSerial = Math.max(1, Math.floor(numeric));
+    const boundedTarget = Math.min(ordered.length, targetSerial);
+    if (boundedTarget === currentIndex + 1) return;
+
+    const [moved] = ordered.splice(currentIndex, 1);
+    ordered.splice(boundedTarget - 1, 0, moved);
+    const reordered = ordered.map((item, index) => ({ ...item, sortOrder: index + 1 }));
+    setSubjects((prev) => prev.map((item) => item.id === selectedSubjectId ? { ...item, chapters: reordered } : item));
+  };
+
+  const applyChapterSerialMove = (chapterId: string, fallbackOrder: number) => {
+    const draft = String(chapterSerialDrafts[chapterId] ?? "").trim();
+    if (!draft) {
+      setChapterSerialDrafts((prev) => ({ ...prev, [chapterId]: String(fallbackOrder) }));
+      return;
+    }
+    moveChapterToSerial(chapterId, draft);
+    setChapterSerialDrafts((prev) => {
+      const next = { ...prev };
+      delete next[chapterId];
+      return next;
+    });
   };
 
   const removeSubjectFromTarget = (subjectId: string) => {
@@ -662,6 +796,18 @@ export default function AdminMasters() {
     [subjects, selectedSubjectId],
   );
 
+  const filteredMasterChapters = useMemo(() => {
+    const needle = chapterSearch.trim().toLowerCase();
+    if (!needle) return masterChapters;
+    return masterChapters.filter((chapter) => String(chapter.name || '').toLowerCase().includes(needle));
+  }, [chapterSearch, masterChapters]);
+
+  const filteredChapterPopupSubjects = useMemo(() => {
+    const needle = chapterPopupSearch.trim().toLowerCase();
+    if (!needle) return chapterPopupSubjects;
+    return chapterPopupSubjects.filter((chapter) => String(chapter.name || '').toLowerCase().includes(needle));
+  }, [chapterPopupSearch, chapterPopupSubjects]);
+
   const selectedLevel = useMemo(
     () => categories.find((item) => item.id === selectedLevelId) || null,
     [categories, selectedLevelId],
@@ -679,6 +825,7 @@ export default function AdminMasters() {
 
   useEffect(() => {
     setSelectedSubjectId('');
+    setChapterSearch('');
   }, [selectedLevelId]);
 
   if (isLoading) {
@@ -946,7 +1093,7 @@ export default function AdminMasters() {
                           <ChevronRight className="h-8 w-8 text-slate-300 mb-2" />
                           <p className="text-xs text-slate-500 font-medium">Select a level first</p>
                         </div>
-                      ) : masterSubjects.length > 0 ? masterSubjects.map((subject) => (
+                      ) : masterSubjects.length > 0 ? masterSubjects.map((subject, index) => (
                         <button
                           key={subject.id}
                           type="button"
@@ -963,6 +1110,29 @@ export default function AdminMasters() {
                               {subject.name}
                             </span>
                             <span className="flex items-center gap-0.5">
+                              <input
+                                type="number"
+                                min={1}
+                                className="h-6 w-12 rounded-md border border-slate-200 bg-white px-1 text-[10px] font-semibold text-slate-600 focus:border-teal-400 focus:outline-none"
+                                title="Move subject to serial number"
+                                value={subjectSerialDrafts[subject.id] ?? String(subject.sortOrder || index + 1)}
+                                onClick={(event) => event.stopPropagation()}
+                                onChange={(event) => {
+                                  event.stopPropagation();
+                                  setSubjectSerialDrafts((prev) => ({ ...prev, [subject.id]: event.target.value }));
+                                }}
+                                onBlur={(event) => {
+                                  event.stopPropagation();
+                                  applySubjectSerialMove(subject.id, subject.sortOrder || index + 1);
+                                }}
+                                onKeyDown={(event) => {
+                                  event.stopPropagation();
+                                  if (event.key === 'Enter') {
+                                    event.preventDefault();
+                                    applySubjectSerialMove(subject.id, subject.sortOrder || index + 1);
+                                  }
+                                }}
+                              />
                               <span
                                 className="flex h-6 w-6 items-center justify-center rounded-md text-slate-400 hover:bg-teal-100 hover:text-teal-600"
                                 onClick={(event) => {
@@ -1025,9 +1195,17 @@ export default function AdminMasters() {
                           <ChevronRight className="h-8 w-8 text-slate-300 mb-2" />
                           <p className="text-xs text-slate-500 font-medium">Select a subject first</p>
                         </div>
-                      ) : masterChapters.length > 0 ? (
+                      ) : (
+                        <>
+                          <Input
+                            className="mb-3 h-8 rounded-lg border-slate-200 text-xs shadow-sm bg-white"
+                            placeholder="Search chapters..."
+                            value={chapterSearch}
+                            onChange={(event) => setChapterSearch(event.target.value)}
+                          />
+                          {filteredMasterChapters.length > 0 ? (
                         <div className="relative before:absolute before:left-3.5 before:top-2 before:bottom-3 before:w-px before:bg-slate-200 pl-1 py-1 space-y-2">
-                          {masterChapters.map((chapter) => (
+                          {filteredMasterChapters.map((chapter, index) => (
                             <div
                               key={chapter.id}
                               className="relative pl-8 pr-3 py-2.5 text-sm text-slate-700 font-medium bg-white border border-slate-100 rounded-xl shadow-[0_1px_3px_rgba(0,0,0,0.02)] hover:border-amber-200 hover:shadow-md transition-all group"
@@ -1040,9 +1218,32 @@ export default function AdminMasters() {
                               <div className="absolute left-[-3px] top-1/2 -translate-y-1/2 w-[5px] h-[5px] rounded-full bg-slate-300 group-hover:bg-amber-500 transition-colors ring-4 ring-white"></div>
                               <span className="flex items-center justify-between gap-2">
                                 <span className="flex items-center gap-2">
-                                <Hash className="h-3.5 w-3.5 text-slate-400 shrink-0 group-hover:text-amber-500 transition-colors" />
-                                {chapter.name}
-                                </span>
+                                  <Hash className="h-3.5 w-3.5 text-slate-400 shrink-0 group-hover:text-amber-500 transition-colors" />
+                                  <input
+                                    type="number"
+                                    min={1}
+                                    className="h-6 w-12 rounded-md border border-slate-200 bg-white px-1 text-[10px] font-semibold text-slate-600 focus:border-amber-400 focus:outline-none"
+                                    title="Move chapter to serial number"
+                                    value={chapterSerialDrafts[chapter.id] ?? String(chapter.sortOrder || index + 1)}
+                                    onClick={(event) => event.stopPropagation()}
+                                    onChange={(event) => {
+                                      event.stopPropagation();
+                                      setChapterSerialDrafts((prev) => ({ ...prev, [chapter.id]: event.target.value }));
+                                    }}
+                                    onBlur={(event) => {
+                                      event.stopPropagation();
+                                      applyChapterSerialMove(chapter.id, chapter.sortOrder || index + 1);
+                                    }}
+                                    onKeyDown={(event) => {
+                                      event.stopPropagation();
+                                      if (event.key === 'Enter') {
+                                        event.preventDefault();
+                                        applyChapterSerialMove(chapter.id, chapter.sortOrder || index + 1);
+                                      }
+                                    }}
+                                  />
+                                  {chapter.name}
+                                  </span>
                                 <span className="flex items-center gap-0.5">
                                   <button
                                     type="button"
@@ -1064,11 +1265,13 @@ export default function AdminMasters() {
                             </div>
                           ))}
                         </div>
-                      ) : (
+                          ) : (
                         <div className="flex flex-col items-center justify-center h-full text-center px-4 opacity-70 -mt-11">
                           <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center mb-2"><FileText className="h-5 w-5 text-slate-400" /></div>
-                          <p className="text-xs text-slate-500 font-medium">No chapters found</p>
+                          <p className="text-xs text-slate-500 font-medium">No chapters match your search</p>
                         </div>
+                          )}
+                        </>
                       )}
                     </div>
                   </div>
@@ -1542,15 +1745,28 @@ export default function AdminMasters() {
 
           <div className="space-y-4 px-6 py-5">
             <div className="flex gap-2">
-              <Input
-                className="h-9 flex-1 rounded-xl border-slate-200 text-sm placeholder:text-slate-400 focus-visible:ring-primary/40"
-                placeholder="Enter chapter name..."
-                value={chapterNewName}
-                onChange={(event) => setChapterNewName(event.target.value)}
-                onKeyDown={(event) => {
-                  if (event.key === 'Enter') addChapterToSubject();
-                }}
-              />
+              <div className="flex items-center gap-2 flex-1">
+                <input
+                  type="number"
+                  min="1"
+                  className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                  value={chapterNewNumber}
+                  onChange={(event) => setChapterNewNumber(Number(event.target.value) || 1)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') addChapterToSubject();
+                  }}
+                />
+                <span className="text-slate-400">.</span>
+                <Input
+                  className="flex-1 rounded-xl border-slate-200 text-sm placeholder:text-slate-400 focus-visible:ring-primary/40"
+                  placeholder="Enter chapter name..."
+                  value={chapterNewName}
+                  onChange={(event) => setChapterNewName(event.target.value)}
+                  onKeyDown={(event) => {
+                    if (event.key === 'Enter') addChapterToSubject();
+                  }}
+                />
+              </div>
               <Button
                 size="sm"
                 className="h-9 w-9 shrink-0 rounded-xl p-0"
@@ -1561,6 +1777,13 @@ export default function AdminMasters() {
                 <Plus className="h-4 w-4" />
               </Button>
             </div>
+
+            <Input
+              className="h-9 rounded-xl border-slate-200 text-sm placeholder:text-slate-400 focus-visible:ring-primary/40"
+              placeholder="Search chapters..."
+              value={chapterPopupSearch}
+              onChange={(event) => setChapterPopupSearch(event.target.value)}
+            />
 
             <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
               <p className="text-[11px] font-semibold text-slate-700">Bulk Import Chapters</p>
@@ -1592,25 +1815,39 @@ export default function AdminMasters() {
               </div>
             </div>
 
-            {chapterPopupSubjects.length > 0 ? (
+            {filteredChapterPopupSubjects.length > 0 ? (
               <div className="max-h-72 space-y-2 overflow-auto">
-                {chapterPopupSubjects.map((chapter) => (
+                {filteredChapterPopupSubjects.map((chapter) => (
                   <div key={chapter.id} className="flex items-center gap-2 rounded-xl border border-slate-100 bg-slate-50 px-3 py-2.5">
                     {chapterEditingId === chapter.id ? (
                       <>
-                        <input
-                          className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/30"
-                          value={chapterEditingName}
-                          autoFocus
-                          onChange={(event) => setChapterEditingName(event.target.value)}
-                          onKeyDown={(event) => {
-                            if (event.key === 'Enter') saveChapterEdit(chapter.id);
-                            if (event.key === 'Escape') {
-                              setChapterEditingId(null);
-                              setChapterEditingName('');
-                            }
-                          }}
-                        />
+                        <div className="flex items-center gap-2 flex-1">
+                          <input
+                            type="number"
+                            min="1"
+                            className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            value={chapterEditingNumber}
+                            onChange={(event) => setChapterEditingNumber(Number(event.target.value) || 1)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') saveChapterEdit(chapter.id);
+                            }}
+                          />
+                          <span className="text-slate-400">.</span>
+                          <input
+                            className="flex-1 rounded-lg border border-slate-200 bg-white px-2 py-1 text-sm font-medium text-slate-900 focus:outline-none focus:ring-2 focus:ring-primary/30"
+                            value={chapterEditingName}
+                            autoFocus
+                            onChange={(event) => setChapterEditingName(event.target.value)}
+                            onKeyDown={(event) => {
+                              if (event.key === 'Enter') saveChapterEdit(chapter.id);
+                              if (event.key === 'Escape') {
+                                setChapterEditingId(null);
+                                setChapterEditingName('');
+                                setChapterEditingNumber(1);
+                              }
+                            }}
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => saveChapterEdit(chapter.id)}
@@ -1623,6 +1860,7 @@ export default function AdminMasters() {
                           onClick={() => {
                             setChapterEditingId(null);
                             setChapterEditingName('');
+                            setChapterEditingNumber(1);
                           }}
                           className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-slate-100"
                         >
@@ -1631,12 +1869,16 @@ export default function AdminMasters() {
                       </>
                     ) : (
                       <>
-                        <span className="flex-1 text-sm font-medium text-slate-900">{chapter.name}</span>
+                        <span className="flex-1 text-sm font-medium text-slate-900 flex items-center gap-2">
+                          <span className="font-mono text-xs text-slate-500 w-5 text-right">{chapter.sortOrder}.</span>
+                          {chapter.name}
+                        </span>
                         <button
                           type="button"
                           onClick={() => {
                             setChapterEditingId(chapter.id);
                             setChapterEditingName(chapter.name);
+                            setChapterEditingNumber(chapter.sortOrder);
                           }}
                           className="flex h-6 w-6 items-center justify-center rounded-lg text-slate-400 transition-colors hover:bg-primary/10 hover:text-primary"
                           title="Edit chapter"

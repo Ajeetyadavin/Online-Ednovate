@@ -108,6 +108,7 @@ const formatDateTime = (value?: string) => {
 export default function AdminLeads() {
   const { hasPermission } = useAdminAuth();
   const canEdit = hasPermission("leads", "edit");
+  const canDelete = hasPermission("leads", "delete");
 
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<LeadStatus>("all");
@@ -256,6 +257,27 @@ export default function AdminLeads() {
       await loadLeads();
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Failed to update lead status");
+    }
+  };
+
+  const deleteLead = async (lead: LeadRecord) => {
+    if (!canDelete) return;
+    const confirmed = window.confirm(`Delete lead "${lead.name}" permanently?`);
+    if (!confirmed) return;
+
+    try {
+      await adminApi.deleteLead(lead.id);
+      setLeads((previous) => previous.filter((item) => item.id !== lead.id));
+      if (selectedLead?.id === lead.id) {
+        setSelectedLead(null);
+        setFollowUps([]);
+        setFollowUpComment("");
+        setFollowUpDate("");
+      }
+      toast.success("Lead deleted");
+      await loadLeads();
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Failed to delete lead");
     }
   };
 
@@ -532,6 +554,7 @@ export default function AdminLeads() {
                       <th className="px-3 py-2 text-left font-medium text-slate-600 text-xs">Stream</th>
                       <th className="px-3 py-2 text-left font-medium text-slate-600 text-xs">Date</th>
                       <th className="px-3 py-2 text-left font-medium text-slate-600 text-xs">FU</th>
+                      {canDelete && <th className="px-3 py-2 text-right font-medium text-slate-600 text-xs">Action</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -549,11 +572,28 @@ export default function AdminLeads() {
                         <td className="px-3 py-2 text-xs text-slate-600">{(lead.streams || []).join(", ") || "-"}</td>
                         <td className="px-3 py-2 text-xs text-slate-500">{formatDateTime(lead.createdAt)}</td>
                         <td className="px-3 py-2 text-xs font-medium text-slate-700">{lead.followUpCount || 0}</td>
+                        {canDelete && (
+                          <td className="px-3 py-2 text-right">
+                            <Button
+                              type="button"
+                              size="sm"
+                              variant="ghost"
+                              className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                              onClick={(event) => {
+                                event.stopPropagation();
+                                void deleteLead(lead);
+                              }}
+                              title="Delete lead"
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                            </Button>
+                          </td>
+                        )}
                       </tr>
                     ))}
                     {!isLoading && leads.length === 0 && (
                       <tr>
-                        <td colSpan={5} className="px-3 py-6 text-center text-slate-500 text-xs">No leads found</td>
+                        <td colSpan={canDelete ? 6 : 5} className="px-3 py-6 text-center text-slate-500 text-xs">No leads found</td>
                       </tr>
                     )}
                   </tbody>

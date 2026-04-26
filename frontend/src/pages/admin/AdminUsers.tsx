@@ -26,10 +26,14 @@ import {
   Clock, Eye, BookOpen, KeyRound, Send, Users, Activity,
   MessageSquare, RefreshCcw, GraduationCap, ToggleLeft, ToggleRight,
   ChevronRight, Phone, Calendar, Download, ChevronDown, ChevronUp,
-  CheckCircle2, XCircle, Infinity, CreditCard, Settings2, Save,
+  CheckCircle2, XCircle, Infinity as InfinityIcon, CreditCard, Settings2, Save,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
+import { toast } from "sonner";
+import { handleApiError, showErrorToast, showSuccessToast } from "@/utils/errorHandler";
+import { validateField, VALIDATION_SCHEMAS, validationHelpers } from "@/utils/formValidation";
+import { useConfirm } from "@/context/ConfirmContext";
 
 /* ─── Helpers ──────────────────────────────────────────────────── */
 const formatDateTime = (value?: string | null) => {
@@ -141,6 +145,7 @@ const getCourseAccessHealth = (access: StudentCourseAccess): AccessHealth => {
 export default function AdminUsers() {
   const navigate = useNavigate();
   const { loginAsUser } = useAuth();
+  const { confirm } = useConfirm();
   const { courses } = usePlatformData();
   const [assignCourseOptions, setAssignCourseOptions] = useState<AssignableCourseOption[]>([]);
   const [masterViewModes, setMasterViewModes] = useState<CourseMasterViewMode[]>([]);
@@ -226,13 +231,13 @@ export default function AdminUsers() {
     setIsLoading(true);
     try {
       const data = await adminApi.listStudents(
-        search, 
-        fromDate ? fromDate + 'T00:00' : undefined, 
+        search,
+        fromDate ? fromDate + 'T00:00' : undefined,
         toDate ? toDate + 'T23:59' : undefined
       );
       setStudents(data.students);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to load students");
+      handleApiError(error, { fallbackMessage: "Failed to load students" });
     } finally {
       setIsLoading(false);
     }
@@ -522,21 +527,22 @@ export default function AdminUsers() {
       setEditDialogOpen(false);
       setEditingStudent(null);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to update student");
+      handleApiError(error, { fallbackMessage: "Failed to update student" });
     } finally {
       setIsSaving(false);
     }
   };
 
   const handleDeleteStudent = async (id: string) => {
-    if (!confirm("Delete this student permanently?")) return;
+    const isConfirmed = await confirm({ title: "Delete Student?", description: "Delete this student permanently?" });
+    if (!isConfirmed) return;
     try {
       await adminApi.deleteStudent(id);
       setStudents((prev) => prev.filter((s) => s.id !== id));
       setSelectedIds((prev) => prev.filter((x) => x !== id));
       if (selectedStudentId === id) { setSelectedStudentId(""); setSelectedStudent(null); setCourseAccess([]); setLoginLogs([]); setVideoActivity([]); setNotifications([]); setStudentOrders([]); setSelectedAccessCourseId(""); }
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to delete student");
+      handleApiError(error, { fallbackMessage: "Failed to delete student" });
     }
   };
 
@@ -548,7 +554,7 @@ export default function AdminUsers() {
       loginAsUser(result.student);
       navigate(result.redirectPath || "/dashboard");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Quick login failed");
+      handleApiError(error, { fallbackMessage: "Quick login failed" });
     } finally {
       setLoginTarget(null);
     }
@@ -558,40 +564,86 @@ export default function AdminUsers() {
   const toggleAll = (checked: boolean) => setSelectedIds(checked ? filteredStudents.map((s) => s.id) : []);
 
   const bulkDelete = async () => {
-    if (selectedIds.length === 0) return;
-    if (!confirm(`Delete ${selectedIds.length} students?`)) return;
+    if (selectedIds.length === 0) {
+      showErrorToast("Please select at least one student to delete");
+      return;
+    }
+    
+    // Validate selection count
+    if (selectedIds.length > 100) {
+      showErrorToast("Cannot delete more than 100 students at once");
+      return;
+    }
+    
+    const isConfirmed = await confirm({ title: "Delete Students?", description: `Delete ${selectedIds.length} students? This action cannot be undone.` });
+    if (!isConfirmed) return;
+    
     try {
       await adminApi.bulkDeleteStudents(selectedIds);
       setStudents((prev) => prev.filter((s) => !selectedIds.includes(s.id)));
       setSelectedIds([]);
+      showSuccessToast(`Successfully deleted ${selectedIds.length} students`);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Bulk delete failed");
+      handleApiError(error, { fallbackMessage: "Bulk delete failed" });
     }
   };
 
   const bulkUpdateStatus = async () => {
-    if (selectedIds.length === 0 || !bulkStatus) return;
+    if (selectedIds.length === 0) {
+      showErrorToast("Please select at least one student to update");
+      return;
+    }
+    
+    if (!bulkStatus) {
+      showErrorToast("Please select a status to apply");
+      return;
+    }
+    
+    // Validate status value
+    const validStatuses = ["Active", "Inactive"];
+    if (!validStatuses.includes(bulkStatus)) {
+      showErrorToast("Invalid status value");
+      return;
+    }
+    
+    if (selectedIds.length > 100) {
+      showErrorToast("Cannot update more than 100 students at once");
+      return;
+    }
+    
     try {
       await adminApi.bulkUpdateStudents(selectedIds, { status: bulkStatus });
       setStudents((prev) => prev.map((s) => (selectedIds.includes(s.id) ? { ...s, status: bulkStatus } : s)));
       setSelectedIds([]);
+      showSuccessToast(`Updated ${selectedIds.length} students to "${bulkStatus}" status`);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Bulk update failed");
+      handleApiError(error, { fallbackMessage: "Bulk update failed" });
     }
   };
 
   const exportUsersToExcel = async () => {
     setIsExporting(true);
     try {
+      // Validate date range if provided
+      if (fromDate && toDate) {
+        const from = new Date(fromDate);
+        const to = new Date(toDate);
+        if (from > to) {
+          showErrorToast("From date cannot be after To date");
+          setIsExporting(false);
+          return;
+        }
+      }
+      
       const data = await adminApi.listStudents(
-        searchTerm, 
-        fromDate ? fromDate + 'T00:00' : undefined, 
+        searchTerm,
+        fromDate ? fromDate + 'T00:00' : undefined,
         toDate ? toDate + 'T23:59' : undefined
       );
       const users = data.students || [];
       
       if (users.length === 0) {
-        alert("No users to export");
+        showErrorToast("No users to export");
         return;
       }
       
@@ -600,7 +652,7 @@ export default function AdminUsers() {
         "Email": u.email || "",
         "Phone": u.mobile || "",
         "Status": u.status || "",
-        "Created": u.createdAt || "",
+        "Created": u.joinDate || "",
       }));
       
       const { utils, writeFile } = await import("xlsx");
@@ -608,17 +660,21 @@ export default function AdminUsers() {
       const wb = utils.book_new();
       utils.book_append_sheet(wb, ws, "Users");
       writeFile(wb, "users-export.xlsx");
+      showSuccessToast(`Exported ${users.length} users to Excel`);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Export failed");
+      handleApiError(error, { fallbackMessage: "Export failed" });
     } finally {
       setIsExporting(false);
     }
   };
 
   const exportVideoActivityCsv = () => {
-    if (!selectedStudent) return;
+    if (!selectedStudent) {
+      showErrorToast("Please select a student first");
+      return;
+    }
     if (filteredVideoActivity.length === 0) {
-      alert("No filtered video activity to export");
+      showErrorToast("No filtered video activity to export");
       return;
     }
 
@@ -664,9 +720,12 @@ export default function AdminUsers() {
   };
 
   const exportVideoActivityPdf = () => {
-    if (!selectedStudent) return;
+    if (!selectedStudent) {
+      showErrorToast("Please select a student first");
+      return;
+    }
     if (filteredVideoActivity.length === 0) {
-      alert("No filtered video activity to export");
+      showErrorToast("No filtered video activity to export");
       return;
     }
 
@@ -707,69 +766,134 @@ export default function AdminUsers() {
   };
 
   const handleSaveCourseAccess = async () => {
-    if (!selectedStudentId || !courseForm.courseId) return;
+    if (!selectedStudentId || !courseForm.courseId) {
+      showErrorToast("Please select a student and course");
+      return;
+    }
     const selectedCourse = courses.find((c) => c.id === courseForm.courseId);
-    if (!selectedCourse) { alert("Select a valid course"); return; }
+    if (!selectedCourse) {
+      showErrorToast("Select a valid course");
+      return;
+    }
     try {
       await adminApi.saveStudentCourseAccess(selectedStudentId, { courseId: selectedCourse.id, courseTitle: selectedCourse.title, purchaseDate: courseForm.purchaseDate, durationDays: courseForm.durationDays, totalViews: courseForm.totalViews, usedViews: courseForm.usedViews, notes: courseForm.notes, isEnabled: courseForm.isEnabled });
       await loadStudentDetails(selectedStudentId);
+      showSuccessToast("Course access saved successfully");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to save course access");
+      handleApiError(error, { fallbackMessage: "Failed to save course access" });
     }
   };
 
   const handleExtendAccess = async () => {
-    if (!selectedStudentId || !extendForm.courseId) return;
+    if (!selectedStudentId || !extendForm.courseId) {
+      showErrorToast("Please select a student and course");
+      return;
+    }
+    
+    // Validate inputs
+    if (extendForm.extraDays < 0) {
+      showErrorToast("Extra days cannot be negative");
+      return;
+    }
+    
+    if (extendForm.extraViews < 0) {
+      showErrorToast("Extra views cannot be negative");
+      return;
+    }
+    
     try {
       await adminApi.extendStudentCourseAccess(selectedStudentId, extendForm.courseId, extendForm.extraDays, extendForm.extraViews);
       await loadStudentDetails(selectedStudentId);
+      showSuccessToast("Course access extended successfully");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to extend access");
+      handleApiError(error, { fallbackMessage: "Failed to extend access" });
     }
   };
 
   const handleToggleCourse = async (courseId: string, isEnabled: boolean) => {
-    if (!selectedStudentId) return;
+    if (!selectedStudentId) {
+      showErrorToast("Please select a student first");
+      return;
+    }
     try {
       await adminApi.toggleStudentCourse(selectedStudentId, courseId, isEnabled);
       await loadStudentDetails(selectedStudentId);
+      showSuccessToast(`Course ${isEnabled ? "enabled" : "disabled"} successfully`);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to update course state");
+      handleApiError(error, { fallbackMessage: "Failed to update course state" });
     }
   };
 
   const handleChangePassword = async () => {
-    if (!selectedStudentId || !passwordForm.password.trim()) return;
+    if (!selectedStudentId) {
+      showErrorToast("Please select a student first");
+      return;
+    }
+    
+    // Validate password
+    const passwordError = validateField({
+      value: passwordForm.password,
+      rules: [{ required: true, type: 'password', minLength: 6 }],
+      fieldName: 'Password',
+    });
+    
+    if (passwordError) {
+      showErrorToast(passwordError);
+      return;
+    }
+    
     try {
       await adminApi.changeStudentPassword(selectedStudentId, passwordForm.password.trim());
       setPasswordForm({ password: "" });
-      alert("Password updated successfully");
+      showSuccessToast("Password updated successfully");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to change password");
+      handleApiError(error, { fallbackMessage: "Failed to change password" });
     }
   };
 
   const handleSendMessage = async () => {
-    if (!selectedStudentId || !messageForm.message.trim()) return;
+    if (!selectedStudentId) {
+      showErrorToast("Please select a student first");
+      return;
+    }
+    
+    // Validate message
+    const messageError = validateField({
+      value: messageForm.message,
+      rules: [{ required: true, minLength: 1 }],
+      fieldName: 'Message',
+    });
+    
+    if (messageError) {
+      showErrorToast(messageError);
+      return;
+    }
+    
     try {
-      await adminApi.sendStudentMessage(selectedStudentId, { channel: messageForm.channel, subject: messageForm.subject.trim(), message: messageForm.message.trim() });
+      await adminApi.sendStudentMessage(selectedStudentId, {
+        channel: messageForm.channel,
+        subject: messageForm.subject.trim(),
+        message: messageForm.message.trim()
+      });
       setMessageForm((prev) => ({ ...prev, subject: "", message: "" }));
       await loadStudentDetails(selectedStudentId);
-      alert("Message queued successfully");
+      showSuccessToast("Message queued successfully");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to send message");
+      handleApiError(error, { fallbackMessage: "Failed to send message" });
     }
   };
 
   const handleDeleteNotification = async (notificationId: number) => {
     if (!selectedStudentId || !notificationId) return;
-    if (!confirm("Delete this notification? It will be removed from user side too.")) return;
+    const isConfirmed = await confirm({ title: "Delete Notification?", description: "Delete this notification? It will be removed from user side too." });
+    if (!isConfirmed) return;
 
     try {
       await adminApi.deleteStudentNotification(selectedStudentId, notificationId);
       await loadStudentDetails(selectedStudentId);
+      showSuccessToast("Notification deleted successfully");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to delete notification");
+      handleApiError(error, { fallbackMessage: "Failed to delete notification" });
     }
   };
 
@@ -800,8 +924,9 @@ export default function AdminUsers() {
       if (selectedStudentId) {
         await loadStudentDetails(selectedStudentId);
       }
+      showSuccessToast(`Access ${actionKey} operation completed successfully`);
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to update access");
+      handleApiError(error, { fallbackMessage: `Failed to ${actionKey} access` });
     } finally {
       setAccessActionKey("");
     }
@@ -827,13 +952,13 @@ export default function AdminUsers() {
 
   const handleQuickAssignCourse = async () => {
     if (!assigningStudent?.id || !quickAssignForm.courseId) {
-      alert("Please select a course");
+      showErrorToast("Please select a course");
       return;
     }
 
     const course = assignableCourses.find((item) => item.id === quickAssignForm.courseId);
     if (!course) {
-      alert("Selected course not found");
+      showErrorToast("Selected course not found");
       return;
     }
 
@@ -878,9 +1003,9 @@ export default function AdminUsers() {
 
       setAssignDialogOpen(false);
       setAssigningStudent(null);
-      alert("Course assigned successfully");
+      showSuccessToast("Course assigned successfully");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to assign course");
+      handleApiError(error, { fallbackMessage: "Failed to assign course" });
     } finally {
       setIsAssigningCourse(false);
     }
@@ -1370,7 +1495,7 @@ export default function AdminUsers() {
                                 </span>
                                 {access.isUnlimitedViews ? (
                                   <span className="inline-flex items-center gap-1 rounded-full border border-indigo-200 bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">
-                                    <Infinity className="h-3 w-3" /> Unlimited
+                                    <InfinityIcon className="h-3 w-3" /> Unlimited
                                   </span>
                                 ) : null}
                               </div>
@@ -1770,7 +1895,7 @@ export default function AdminUsers() {
                       const watchMinutes = Math.max(0, Math.min(59, Number(accessExtendWatchMinutes || 0)));
                       const totalWatchHours = watchHours + watchMinutes / 60;
                       if (extraDays <= 0 && totalWatchHours <= 0) {
-                        alert("Please add at least one credit: days or watch time.");
+                        showErrorToast("Please add at least one credit: days or watch time.");
                         return;
                       }
                       const signedDays = accessExtendDirection === "subtract" ? -extraDays : extraDays;
@@ -1812,7 +1937,7 @@ export default function AdminUsers() {
                         const minutesPart = Math.max(0, Math.min(59, Number(accessAdjustWatchMinutes || 0)));
                         const totalHours = hoursPart + minutesPart / 60;
                         if (totalHours <= 0) {
-                          alert("Enter watch time greater than 0.");
+                          showErrorToast("Enter watch time greater than 0.");
                           return;
                         }
                         const signedHours = accessAdjustDirection === "subtract" ? -totalHours : totalHours;
@@ -1832,8 +1957,9 @@ export default function AdminUsers() {
                     size="sm"
                     className="gap-1.5 rounded-xl border-slate-200 text-xs text-slate-600"
                     disabled={accessActionKey === "reset"}
-                    onClick={() => {
-                      if (!window.confirm("Reset used views/watch-time for this course access to zero?")) return;
+                    onClick={async () => {
+                      const isConfirmed = await confirm({ title: "Reset Views?", description: "Reset used views/watch-time for this course access to zero?" });
+                      if (!isConfirmed) return;
                       void runAccessAction("reset", () => adminApi.resetStudentCourseViews(selectedManagedAccess.studentId, selectedManagedAccess.courseId, 0));
                     }}
                   >
@@ -1844,8 +1970,9 @@ export default function AdminUsers() {
                     size="sm"
                     className="gap-1.5 rounded-xl border-red-200 text-xs text-red-600 hover:bg-red-50"
                     disabled={accessActionKey === "remove"}
-                    onClick={() => {
-                      if (!window.confirm("Remove this course access for the student? This cannot be undone.")) return;
+                    onClick={async () => {
+                      const isConfirmed = await confirm({ title: "Remove Access?", description: "Remove this course access for the student? This cannot be undone." });
+                      if (!isConfirmed) return;
                       void runAccessAction("remove", async () => {
                         await adminApi.removeStudentCourseAccess(selectedManagedAccess.studentId, selectedManagedAccess.courseId);
                         setSelectedAccessCourseId("");

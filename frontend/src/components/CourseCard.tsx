@@ -34,11 +34,11 @@ const CourseCard = ({ course }: CourseCardProps) => {
       className={`group cursor-pointer bg-background rounded-xl border border-border overflow-hidden transition-all duration-300 hover:shadow-card-hover hover:-translate-y-1 flex flex-col shine-sweep ${justAdded ? "ring-2 ring-accent/40 scale-[1.02]" : ""}`}
     >
       {/* Thumbnail */}
-      <div className="relative h-24 sm:h-40 overflow-hidden">
+      <div className="relative aspect-video overflow-hidden">
         <img
           src={thumbnailUrl}
           alt={course.title}
-          className="absolute inset-0 w-full h-full object-cover group-hover:scale-105 transition-transform duration-500"
+          className="absolute inset-0 w-full h-full object-cover"
           loading="lazy"
           onError={(e) => {
             const target = e.currentTarget;
@@ -46,18 +46,6 @@ const CourseCard = ({ course }: CourseCardProps) => {
             target.src = "/placeholder.svg";
           }}
         />
-
-        <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/30 to-transparent" />
-        <div className="absolute inset-x-0 bottom-0 p-2 sm:p-3">
-          <div className="flex items-center gap-1.5 sm:gap-2">
-            <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-lg bg-primary-foreground/20 backdrop-blur-sm flex items-center justify-center shrink-0">
-              <PlayCircle className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-primary-foreground" />
-            </div>
-            <span className="text-primary-foreground/95 font-semibold text-[10px] sm:text-xs line-clamp-2 leading-tight">
-              {course.title}
-            </span>
-          </div>
-        </div>
         
         {/* Badges */}
         <div className="absolute top-1.5 left-1.5 sm:top-2.5 sm:left-2.5 flex gap-1">

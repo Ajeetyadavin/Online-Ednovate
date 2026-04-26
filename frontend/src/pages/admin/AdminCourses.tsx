@@ -12,88 +12,27 @@ import {
 } from "@/services/adminApi";
 import { decodeVideoUrl } from "@/lib/video-utils";
 import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
+import { toast } from "sonner";
+import { useConfirm } from "@/context/ConfirmContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Plus, Search, Edit2, Trash2, Eye, EyeOff, ArrowUpDown, Copy, BookOpen, Clock, DollarSign, Tag, Video, Package, FileText, Star, Settings, Loader2, LayoutGrid, List, Layers, CheckCircle2, X, ChevronDown, ChevronUp } from "lucide-react";
-
-/* ─── helpers (unchanged) ─────────────────────────────────────── */
-const parseLessonDurationToSeconds = (value: unknown) => {
-  const raw = String(value || "").trim().toLowerCase();
-  if (!raw) return 0;
-  if (raw.includes(":")) {
-    const parts = raw.split(":").map(Number);
-    if (parts.some((n) => !Number.isFinite(n) || n < 0)) return 0;
-    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
-    if (parts.length === 2) return parts[0] * 60 + parts[1];
-    return 0;
-  }
-  if (/^\d+(\.\d+)?$/.test(raw)) return Math.floor(Number(raw) * 60);
-  const h = Number((raw.match(/(\d+(?:\.\d+)?)\s*h/) || [])[1] || 0);
-  const m = Number((raw.match(/(\d+(?:\.\d+)?)\s*m/) || [])[1] || 0);
-  const s = Number((raw.match(/(\d+(?:\.\d+)?)\s*s/) || [])[1] || 0);
-  return Math.max(0, Math.floor(h * 3600 + m * 60 + s));
-};
-
-const computeCurriculumMeta = (chapters: any[]) => {
-  const lessons = Array.isArray(chapters) ? chapters.flatMap((ch) => Array.isArray(ch?.lessons) ? ch.lessons : []) : [];
-  const videoLessons = lessons.filter((l) => l?.type === "video");
-  const totalSeconds = videoLessons.reduce((sum, l) => sum + parseLessonDurationToSeconds(l?.duration), 0);
-  return { lectures: videoLessons.length, totalSeconds, hours: Number((totalSeconds / 3600).toFixed(1)) };
-};
-
-const formatSecondsToClock = (s: number) => {
-  const t = Math.max(0, Math.floor(Number(s) || 0));
-  return [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60].map((n) => String(n).padStart(2, "0")).join(":");
-};
-
-const parsePositiveNumberList = (value: string, fallback: number[]): number[] => {
-  const parsed = value.split(",").map((x) => Number(x.trim())).filter((x) => Number.isFinite(x) && x >= 1);
-  return parsed.length > 0 ? Array.from(new Set(parsed)) : fallback;
-};
-
-const parseFirstPositiveInt = (value: unknown): number => {
-  const text = String(value || "");
-  const match = text.match(/(\d+)/);
-  if (!match) return 0;
-  const numeric = Number(match[1]);
-  return Number.isFinite(numeric) && numeric >= 1 ? numeric : 0;
-};
-
-const parseCustomModes = (value: string) =>
-  value.split("\n").map((l) => l.trim()).filter(Boolean).map((line, i) => {
-    const [lp, pp] = line.split(":");
-    const label = String(lp || "").trim();
-    const price = Number(String(pp || "").trim());
-    if (!label || !Number.isFinite(price) || price <= 0) return null;
-    return { id: `custom-${i + 1}-${label.toLowerCase().replace(/[^a-z0-9]+/g, "-")}`, label, price };
-  }).filter((x): x is { id: string; label: string; price: number } => Boolean(x));
-
-const parseReviewsText = (value: string) =>
-  value.split("\n").map((l) => l.trim()).filter(Boolean).map((line) => {
-    const [np, rp, cp, dp] = line.split("|");
-    const name = String(np || "").trim();
-    const rating = Math.max(1, Math.min(5, Number(String(rp || "").trim() || 5)));
-    const comment = String(cp || "").trim();
-    const date = String(dp || "").trim();
-    if (!name || !comment) return null;
-    return { name, rating, comment, date };
-  }).filter((x): x is { name: string; rating: number; comment: string; date: string } => Boolean(x));
+import {
+  parseLessonDurationToSeconds,
+  computeCurriculumMeta,
+  formatSecondsToClock,
+  parsePositiveNumberList,
+  parseFirstPositiveInt,
+  parseCustomModes,
+  parseReviewsText,
+  combinationTupleKey,
+  hasDuplicateCombinationTuple,
+} from "@/utils/courseUtils";
 
 const decodeDemoVideoValue = (value: unknown) => decodeVideoUrl(String(value || "")).trim();
-const combinationTupleKey = (item: {
-  viewModeId?: string | null;
-  validityOptionId?: string | null;
-  attemptOptionId?: string | null;
-  deliveryModeId?: string | null;
-}) => [
-  String(item.viewModeId || "").trim() || "any",
-  String(item.validityOptionId || "").trim() || "any",
-  String(item.attemptOptionId || "").trim() || "any",
-  String(item.deliveryModeId || "").trim() || "any",
-].join("|");
 
 type CourseForm = {
   id: string; title: string; category: string; subcategory: string; price: number; originalPrice: number; taxPercentage: number;
@@ -196,9 +135,9 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
 });
 
 const BLANK_FORM: CourseForm = {
-  id: "", title: "", category: "", subcategory: "general", price: 0, originalPrice: 0, taxPercentage: 0,
+  id: "", title: "", category: "", subcategory: "", price: 0, originalPrice: 0, taxPercentage: 0,
   subject: "", chapter: "", selectedChapters: [],
-  language: "English", professor: "Ednovate Faculty", facultyIds: [], lectures: 0, hours: 0, thumbnail: "",
+  language: "", professor: "", facultyIds: [], lectures: 0, hours: 0, thumbnail: "",
   demoVideoTitle: "", demoVideoDescription: "", demoVideoSource: "youtube", demoVideoUrl: "",
   demoVideoThumbnailUrl: "", demoVideoVisible: false, webPlayEnabled: false, isSubcategoryCustom: false,
   viewPricingEnabled: false, unlimitedViewsEnabled: false, validityPricingEnabled: false,
@@ -244,6 +183,7 @@ const checkboxRow = (label: string, checked: boolean, onChange: (v: boolean) => 
 
 /* ─── Main Component ─────────────────────────────────────────── */
 export default function AdminCourses({ mode = "courses" }: { mode?: AdminCoursesMode }) {
+  const { confirm } = useConfirm();
   const { courses, categories, setCurriculumForCourse, toggleCourseVisibility, upsertCourse, deleteCourse } = usePlatformData();
   const isCoursesMode = mode === "courses";
   const pageTitle = isCoursesMode ? "Courses" : "Packages";
@@ -308,8 +248,8 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
   const [pkgSelectedValidityIds, setPkgSelectedValidityIds] = useState<string[]>([]);
   const [pkgSelectedAttemptIds, setPkgSelectedAttemptIds] = useState<string[]>([]);
   const [pkgSelectedDeliveryModeIds, setPkgSelectedDeliveryModeIds] = useState<string[]>([]);
-  const [pkgLanguage, setPkgLanguage] = useState("Hindi + English");
-  const [pkgProfessor, setPkgProfessor] = useState("Multiple Faculty");
+  const [pkgLanguage, setPkgLanguage] = useState("");
+  const [pkgProfessor, setPkgProfessor] = useState("");
   const [pkgCourseIds, setPkgCourseIds] = useState<string[]>([]);
   const [pkgSearch, setPkgSearch] = useState("");
   const [pkgSaving, setPkgSaving] = useState(false);
@@ -449,17 +389,12 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
     setPkgDefaultSelectedCombinationId(String(activeRows[0].id || "").trim());
   }, [pkgMasterCombinationsEnabled, pkgMasterCombinationRows, pkgDefaultSelectedCombinationId]);
 
-  const hasDuplicateCombinationTuple = (
-    rows: CourseMasterPricingCombination[],
-    candidate: CourseMasterPricingCombination,
-    ignoreIndex: number,
-  ) => rows.some((row, rowIndex) => rowIndex !== ignoreIndex && combinationTupleKey(row) === combinationTupleKey(candidate));
-
   const updateCourseCombinationRow = (index: number, patch: Partial<CourseMasterPricingCombination>) => {
     const rows = [...(form.masterCombinationRows || [])];
     const nextRow = { ...rows[index], ...patch };
-    if (hasDuplicateCombinationTuple(rows, nextRow, index)) {
-      alert("Duplicate combination is not allowed.");
+    const nextRows = rows.map((row, rowIndex) => (rowIndex === index ? nextRow : row));
+    if (hasDuplicateCombinationTuple(nextRows)) {
+      toast.error("Duplicate combination is not allowed.");
       return;
     }
     rows[index] = nextRow;
@@ -469,8 +404,9 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
   const updatePackageCombinationRow = (index: number, patch: Partial<CourseMasterPricingCombination>) => {
     const rows = [...pkgMasterCombinationRows];
     const nextRow = { ...rows[index], ...patch };
-    if (hasDuplicateCombinationTuple(rows, nextRow, index)) {
-      alert("Duplicate combination is not allowed.");
+    const nextRows = rows.map((row, rowIndex) => (rowIndex === index ? nextRow : row));
+    if (hasDuplicateCombinationTuple(nextRows)) {
+      toast.error("Duplicate combination is not allowed.");
       return;
     }
     rows[index] = nextRow;
@@ -667,7 +603,11 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
               }))
               .filter((item) => Boolean(item.id && item.name && item.isActive))
           : [];
-        const deduped = Array.from(new Map(items.map((item) => [item.id, { id: item.id, name: item.name }])).values());
+        const deduped: Array<{ id: string; name: string }> = Array.from(
+          new Map<string, { id: string; name: string }>(
+            items.map((item) => [item.id, { id: item.id, name: item.name }]),
+          ).values(),
+        );
         setFacultyOptions(deduped);
       } catch {
         setFacultyOptions([]);
@@ -960,23 +900,23 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
 
   const openCourseCombinationSelector = () => {
     if (!form.combinationUseView && !form.combinationUseValidity && !form.combinationUseAttempt && !form.combinationUseMode) {
-      alert("Select at least one basis (View, Validity, Attempt, or Mode)");
+      toast.error("Select at least one basis (View, Validity, Attempt, or Mode)");
       return;
     }
     if (form.combinationUseView && activeMasterViewModes.length === 0) {
-      alert("No View options found in Masters. Configure them first.");
+      toast.error("No View options found in Masters. Configure them first.");
       return;
     }
     if (form.combinationUseValidity && activeMasterValidityOptions.length === 0) {
-      alert("No Validity options found in Masters. Configure them first.");
+      toast.error("No Validity options found in Masters. Configure them first.");
       return;
     }
     if (form.combinationUseAttempt && activeMasterAttemptOptions.length === 0) {
-      alert("No Attempt options found in Masters. Configure them first.");
+      toast.error("No Attempt options found in Masters. Configure them first.");
       return;
     }
     if (form.combinationUseMode && activeMasterDeliveryModes.length === 0) {
-      alert("No Lecture Mode options found in Masters. Configure them first.");
+      toast.error("No Lecture Mode options found in Masters. Configure them first.");
       return;
     }
 
@@ -997,19 +937,19 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
 
   const generateCourseCombinationsFromSelected = () => {
     if (form.combinationUseView && courseSelectedViewModeIds.length === 0) {
-      alert("Select at least one View option.");
+      toast.error("Select at least one View option.");
       return;
     }
     if (form.combinationUseValidity && courseSelectedValidityIds.length === 0) {
-      alert("Select at least one Validity option.");
+      toast.error("Select at least one Validity option.");
       return;
     }
     if (form.combinationUseAttempt && courseSelectedAttemptIds.length === 0) {
-      alert("Select at least one Attempt option.");
+      toast.error("Select at least one Attempt option.");
       return;
     }
     if (form.combinationUseMode && courseSelectedDeliveryModeIds.length === 0) {
-      alert("Select at least one Lecture Mode option.");
+      toast.error("Select at least one Lecture Mode option.");
       return;
     }
 
@@ -1036,23 +976,23 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
 
   const openPackageCombinationSelector = () => {
     if (!pkgCombinationUseView && !pkgCombinationUseValidity && !pkgCombinationUseAttempt && !pkgCombinationUseMode) {
-      alert("Select at least one basis (View, Validity, Attempt, or Mode)");
+      toast.error("Select at least one basis (View, Validity, Attempt, or Mode)");
       return;
     }
     if (pkgCombinationUseView && activeMasterViewModes.length === 0) {
-      alert("No View options found in Masters. Configure them first.");
+      toast.error("No View options found in Masters. Configure them first.");
       return;
     }
     if (pkgCombinationUseValidity && activeMasterValidityOptions.length === 0) {
-      alert("No Validity options found in Masters. Configure them first.");
+      toast.error("No Validity options found in Masters. Configure them first.");
       return;
     }
     if (pkgCombinationUseAttempt && activeMasterAttemptOptions.length === 0) {
-      alert("No Attempt options found in Masters. Configure them first.");
+      toast.error("No Attempt options found in Masters. Configure them first.");
       return;
     }
     if (pkgCombinationUseMode && activeMasterDeliveryModes.length === 0) {
-      alert("No Lecture Mode options found in Masters. Configure them first.");
+      toast.error("No Lecture Mode options found in Masters. Configure them first.");
       return;
     }
 
@@ -1073,19 +1013,19 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
 
   const generatePackageCombinationsFromSelected = () => {
     if (pkgCombinationUseView && pkgSelectedViewModeIds.length === 0) {
-      alert("Select at least one View option.");
+      toast.error("Select at least one View option.");
       return;
     }
     if (pkgCombinationUseValidity && pkgSelectedValidityIds.length === 0) {
-      alert("Select at least one Validity option.");
+      toast.error("Select at least one Validity option.");
       return;
     }
     if (pkgCombinationUseAttempt && pkgSelectedAttemptIds.length === 0) {
-      alert("Select at least one Attempt option.");
+      toast.error("Select at least one Attempt option.");
       return;
     }
     if (pkgCombinationUseMode && pkgSelectedDeliveryModeIds.length === 0) {
-      alert("Select at least one Lecture Mode option.");
+      toast.error("Select at least one Lecture Mode option.");
       return;
     }
 
@@ -1111,18 +1051,18 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
   };
 
   const openCreateDialog = () => {
-    const initialCategory = parentCategories[0]?.id || "general";
-    const initialSubcategory = categories.find((c) => c.parentId === initialCategory)?.id || "general";
     setEditingId(null);
     setForm({
       ...BLANK_FORM,
-      id: getNextCategoryCourseCode(initialCategory),
-      category: initialCategory,
-      subcategory: initialSubcategory,
+      id: "",
+      category: "",
+      subcategory: "",
       subject: "",
       selectedChapters: [],
       chapter: "",
-      language: masterLanguages[0]?.name || "",
+      language: "",
+      professor: "",
+      facultyIds: [],
     });
     setCourseThumbnailUploading(false);
     setCourseDemoVideoUploading(false);
@@ -1145,11 +1085,10 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
     if (!file) return;
     setCourseThumbnailUploading(true);
     try {
-      const base64Data = await fileToBase64(file);
-      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "courses");
+      const uploaded = await adminApi.uploadImageWithProgress(file, "courses");
       sf({ thumbnail: uploaded.url });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Thumbnail upload failed");
+      toast.error(e instanceof Error ? e.message : "Thumbnail upload failed");
     } finally {
       setCourseThumbnailUploading(false);
     }
@@ -1188,7 +1127,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       setVideoUploadState((prev) => (prev && prev.scope === "course"
         ? { ...prev, status: cancelled ? "cancelled" : "error", message: cancelled ? "Upload cancelled" : "Upload failed" }
         : prev));
-      alert(e instanceof Error ? e.message : "Demo video upload failed");
+      toast.error(e instanceof Error ? e.message : "Demo video upload failed");
     } finally {
       courseUploadAbortRef.current = null;
       setCourseDemoVideoUploading(false);
@@ -1199,18 +1138,19 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
     if (!file) return;
     setCourseDemoThumbUploading(true);
     try {
-      const base64Data = await fileToBase64(file);
-      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "demo-thumbnails");
+      const uploaded = await adminApi.uploadImageWithProgress(file, "demo-thumbnails");
       sf({ demoVideoThumbnailUrl: uploaded.url });
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Demo thumbnail upload failed");
+      toast.error(e instanceof Error ? e.message : "Demo thumbnail upload failed");
     } finally {
       setCourseDemoThumbUploading(false);
     }
   };
 
   const handleSaveCourse = async () => {
-    if (!form.title.trim()) { alert("Please add a valid course title"); return; }
+    if (!form.title.trim()) { toast.error("Please add a valid course title"); return; }
+    if (!form.category) { toast.error("Please select category"); return; }
+    if (subcategoryOptions.length > 0 && !form.subcategory) { toast.error("Please select level / subcategory"); return; }
     const UNLIMITED_VALIDITY_DAYS = 36500;
     const hasValidCourseComboPrice = form.masterCombinationsEnabled !== false && (form.masterCombinationRows || []).some(
       (row) => row.isActive !== false
@@ -1226,10 +1166,10 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       parseCustomModes(form.customModesText || "").forEach((m) => deliveryModes.push({ id: m.id, label: m.label, price: m.price, originalPrice: Number(form.originalPrice || m.price) }));
     }
     if (!form.deliveryModePricingEnabled && Number(form.price || 0) <= 0 && !hasValidCourseComboPrice) {
-      alert("Please add a valid base price or active combination price");
+      toast.error("Please add a valid base price or active combination price");
       return;
     }
-    if (form.deliveryModePricingEnabled && deliveryModes.length === 0) { alert("Please enable at least one delivery mode with a valid price"); return; }
+    if (form.deliveryModePricingEnabled && deliveryModes.length === 0) { toast.error("Please enable at least one delivery mode with a valid price"); return; }
     const bookAddons: Array<{ id: string; label: string; price: number; enabled?: boolean }> = [];
     if (form.bookAddonEnabled) {
       if (form.enableEnotesAddon) bookAddons.push({ id: "enotes", label: "eNotes", price: Math.max(0, Number(form.enotesAddonPrice || 0)), enabled: true });
@@ -1269,7 +1209,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
 
       if (duplicateRowNumbers.length > 0) {
         const uniqueRows = Array.from(new Set(duplicateRowNumbers)).sort((a, b) => a - b);
-        alert(`Combination already exists. Duplicate rows: ${uniqueRows.join(", ")}. Please keep each View/Validity/Attempt/Lecture Mode combination unique.`);
+        toast.error(`Combination already exists. Duplicate rows: ${uniqueRows.join(", ")}. Please keep each View/Validity/Attempt/Lecture Mode combination unique.`);
         return;
       }
     }
@@ -1280,7 +1220,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       : "";
 
     if (selectedMasterCombinationsWithPricing.some((item) => Number(item.price || 0) <= 0)) {
-      alert("Selected master combinations must have valid price greater than 0");
+      toast.error("Selected master combinations must have valid price greater than 0");
       return;
     }
 
@@ -1476,18 +1416,19 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       await adminApi.upsertCourse(nextCourse);
       await syncSelectedChaptersToCurriculum(nextCourse.id, form.selectedChapters);
       setDialogOpen(false);
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed to save"); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save"); }
     finally { setIsSaving(false); }
   };
 
   const handleDeleteCourse = async (courseId: string) => {
-    if (!confirm("Delete this course?")) return;
+    const isConfirmed = await confirm({ title: "Delete Course?", description: "Delete this course?" });
+    if (!isConfirmed) return;
     deleteCourse(courseId);
     await adminApi.deleteCourse(courseId);
   };
 
   const handleDuplicateCourse = async (course: ManagedCourse) => {
-    const nextTitle = prompt("Duplicate course title", `${course.title} (Copy)`);
+    const nextTitle = await prompt({ title: "Duplicate Course", defaultValue: `${course.title} (Copy)`, confirmText: "Duplicate", placeholder: "Enter new course title" });
     if (!nextTitle?.trim()) return;
     const duplicateId = `course-${Date.now()}-${Math.floor(Math.random() * 10000)}`;
     try {
@@ -1503,23 +1444,21 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       }
       upsertCourse({ ...JSON.parse(JSON.stringify(course)), id: duplicateId, title: nextTitle.trim(), isVisible: false, enrollmentCount: 0 });
       await loadCurriculumMeta();
-      alert("Course duplicated successfully");
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed to duplicate course"); }
+      toast.success("Course duplicated successfully");
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to duplicate course"); }
   };
 
   // ── Package Builder helpers ──────────────────────────────────
   const openCreatePackage = () => {
-    const firstCat = parentCategories[0]?.id || "general";
-    const firstSub = categories.find((c) => c.parentId === firstCat)?.id || "general";
     setPkgEditingId(null); setPkgTab("courses");
-    setPkgTitle(""); setPkgThumbnail(""); setPkgCategory(firstCat); setPkgSubcategory(firstSub);
+    setPkgTitle(""); setPkgThumbnail(""); setPkgCategory(""); setPkgSubcategory("");
     setPkgPrice(0); setPkgOriginalPrice(0); setPkgTaxPct(0);
     setPkgMasterCombinationsEnabled(false);
     setPkgDefaultSelectedCombinationId("");
     setPkgMasterCombinationRows([]);
       setPkgCombinationUseView(true); setPkgCombinationUseValidity(true); setPkgCombinationUseMode(false); setPkgCombinationUseAttempt(false);
     setPkgSelectedViewModeIds([]); setPkgSelectedValidityIds([]); setPkgSelectedAttemptIds([]); setPkgSelectedDeliveryModeIds([]);
-    setPkgLanguage("Hindi + English"); setPkgProfessor("Multiple Faculty");
+    setPkgLanguage(""); setPkgProfessor("");
     setPkgCourseIds([]); setPkgSearch("");
     setPkgViewPricingEnabled(false); setPkgUnlimitedViews(false); setPkgViewOptionsText("1,2");
     setPkgValidityEnabled(false); setPkgValidityDaysText("30,90,180");
@@ -1648,8 +1587,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
     if (!file) return;
     setPkgThumbnailUploading(true);
     try {
-      const base64Data = await fileToBase64(file);
-      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "packages");
+      const uploaded = await adminApi.uploadImageWithProgress(file, "packages");
       setPkgThumbnail(uploaded.url);
     } catch { /* ignore */ } finally { setPkgThumbnailUploading(false); }
   };
@@ -1687,7 +1625,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       setVideoUploadState((prev) => (prev && prev.scope === "package"
         ? { ...prev, status: cancelled ? "cancelled" : "error", message: cancelled ? "Upload cancelled" : "Upload failed" }
         : prev));
-      alert(e instanceof Error ? e.message : "Demo video upload failed");
+      toast.error(e instanceof Error ? e.message : "Demo video upload failed");
     } finally {
       pkgUploadAbortRef.current = null;
       setPkgDemoVideoUploading(false);
@@ -1707,25 +1645,26 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
     if (!file) return;
     setPkgDemoThumbUploading(true);
     try {
-      const base64Data = await fileToBase64(file);
-      const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "demo-thumbnails");
+      const uploaded = await adminApi.uploadImageWithProgress(file, "demo-thumbnails");
       setPkgDemoVideoThumbnailUrl(uploaded.url);
     } catch (e) {
-      alert(e instanceof Error ? e.message : "Demo thumbnail upload failed");
+      toast.error(e instanceof Error ? e.message : "Demo thumbnail upload failed");
     } finally {
       setPkgDemoThumbUploading(false);
     }
   };
 
   const handleSavePackage = async () => {
-    if (!pkgTitle.trim()) { alert("Package name is required"); return; }
-    if (pkgCourseIds.length < 2) { alert("Select at least 2 courses for a package"); return; }
+    if (!pkgTitle.trim()) { toast.error("Package name is required"); return; }
+    if (!pkgCategory) { toast.error("Please select category"); return; }
+    if (!pkgSubcategory) { toast.error("Please select level / subcategory"); return; }
+    if (pkgCourseIds.length < 2) { toast.error("Select at least 2 courses for a package"); return; }
     const hasValidPkgComboPrice = pkgMasterCombinationsEnabled && (pkgMasterCombinationRows || []).some(
       (row) => row.isActive !== false
         && Number(row.price || 0) > 0
         && Boolean(row.viewModeId || row.validityOptionId || row.attemptOptionId || row.deliveryModeId || row.languageId),
     );
-    if (!pkgDeliveryEnabled && pkgPrice <= 0 && !hasValidPkgComboPrice) { alert("Set a valid package price"); return; }
+    if (!pkgDeliveryEnabled && pkgPrice <= 0 && !hasValidPkgComboPrice) { toast.error("Set a valid package price"); return; }
     setPkgSaving(true);
     try {
       const id = pkgEditingId || `pkg-${Date.now()}`;
@@ -1766,7 +1705,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
           return false;
         });
         if (hasDuplicate) {
-          alert("Duplicate master combinations are not allowed. Please keep each combination unique.");
+          toast.error("Duplicate master combinations are not allowed. Please keep each combination unique.");
           return;
         }
       }
@@ -1794,9 +1733,12 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
         .map((item) => (item.validityOptionId ? masterValidityMap[item.validityOptionId] : null))
         .filter((item): item is CourseMasterValidityOption => Boolean(item));
 
+      const hasMasterCombinationPricing = normalizedPkgCombos.length > 0;
+      const UNLIMITED_VALIDITY_DAYS = 36500;
+
       const pkg: ManagedCourse = {
         id, title: pkgTitle.trim(), category: pkgCategory || "general",
-        subcategory: pkgSubcategory || "general", language: pkgLanguage || "Hindi + English",
+        subcategory: pkgSubcategory || "general", language: pkgLanguage || "",
         professor: pkgProfessor.trim() || "Multiple Faculty",
         price: derivedPrice, originalPrice, taxPercentage: Math.max(0, pkgTaxPct),
         discount, image: "/placeholder.svg", thumbnail: pkgThumbnail.trim(),
@@ -1805,18 +1747,19 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
           ? (courses.find((item) => item.id === pkgEditingId)?.isVisible ?? true)
           : true,
         packageCourseIds: pkgCourseIds,
-        viewPricingEnabled: normalizedPkgCombos.length > 0 ? true : pkgViewPricingEnabled,
-        unlimitedViewsEnabled: normalizedPkgCombos.length > 0
+        viewPricingEnabled: hasMasterCombinationPricing,
+        unlimitedViewsEnabled: hasMasterCombinationPricing
           ? comboViewModes.some((item) => item.isLifetime === true)
-          : pkgUnlimitedViews,
-        validityPricingEnabled: normalizedPkgCombos.length > 0 ? true : pkgValidityEnabled,
-        viewOptions: normalizedPkgCombos.length > 0
+          : true,
+        validityPricingEnabled: hasMasterCombinationPricing,
+        viewOptions: hasMasterCombinationPricing
           ? Array.from(new Set(comboViewModes.map((item) => Number(item.maxViews || 0)).filter((value) => Number.isFinite(value) && value >= 1)))
-          : parsePositiveNumberList(pkgViewOptionsText, [1,2]),
-        validityOptionsDays: normalizedPkgCombos.length > 0
+          : [1],
+        validityOptionsDays: hasMasterCombinationPricing
           ? Array.from(new Set(comboValidityModes.map((item) => Number(item.days || 0)).filter((value) => Number.isFinite(value) && value >= 1)))
-          : parsePositiveNumberList(pkgValidityDaysText, [30,90,180]),
-        selectedViews: 1, selectedValidityDays: 30,
+          : [UNLIMITED_VALIDITY_DAYS],
+        selectedViews: 1,
+        selectedValidityDays: hasMasterCombinationPricing ? 30 : UNLIMITED_VALIDITY_DAYS,
         deliveryModePricingEnabled: pkgDeliveryEnabled, deliveryModes,
         selectedDeliveryModeId: deliveryModes[0]?.id || "online",
         selectedDeliveryModeIds: deliveryModes.length > 0 ? [deliveryModes[0].id] : ["online"],
@@ -1895,7 +1838,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       upsertCourse(pkg);
       await adminApi.upsertCourse(pkg);
       setPkgOpen(false);
-    } catch (e) { alert(e instanceof Error ? e.message : "Failed to save package"); }
+    } catch (e) { toast.error(e instanceof Error ? e.message : "Failed to save package"); }
     finally { setPkgSaving(false); }
   };
 
@@ -2141,13 +2084,15 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                           <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-1.5">
                               <Label>Category</Label>
-                              <select className={selectCls} value={pkgCategory} onChange={(e) => { setPkgCategory(e.target.value); setPkgSubcategory(categories.find((c) => c.parentId === e.target.value)?.id || "general"); }}>
+                              <select className={selectCls} value={pkgCategory} onChange={(e) => { setPkgCategory(e.target.value); setPkgSubcategory(""); }}>
+                                <option value="">Select Category</option>
                                 {parentCategories.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                               </select>
                             </div>
                             <div className="space-y-1.5">
                               <Label>Subcategory / Level</Label>
-                              <select className={selectCls} value={pkgSubcategory} onChange={(e) => setPkgSubcategory(e.target.value)}>
+                              <select className={selectCls} value={pkgSubcategory} disabled={!pkgCategory} onChange={(e) => setPkgSubcategory(e.target.value)}>
+                                <option value="">{pkgCategory ? "Select Level" : "Select Category First"}</option>
                                 {pkgSubcategoryOptions.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
                               </select>
                             </div>

@@ -9,6 +9,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
 import { Eye, EyeOff, Trash2, Edit2, Plus, ArrowUp, ArrowDown, Save, Upload } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { Loader2 } from "lucide-react";
 
 const HOMEPAGE_SECTION_ANCHOR_LABELS: Record<HomepageSectionAnchor, string> = {
@@ -32,6 +42,7 @@ export default function AdminHomepageSectionBuilder() {
   const [isUploadingImage, setIsUploadingImage] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showDialog, setShowDialog] = useState(false);
+  const [sectionToDelete, setSectionToDelete] = useState<string | null>(null);
   const [formData, setFormData] = useState<HomepageSection>({
     id: "",
     type: "text",
@@ -73,8 +84,9 @@ export default function AdminHomepageSectionBuilder() {
         siteSettings: nextDraft as unknown as Record<string, unknown>,
         homepage: { exploreCategoryIds: nextDraft.exploreCategoryIds || [] },
       });
+      toast.success("Homepage sections saved successfully");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to save custom sections");
+      toast.error(error instanceof Error ? error.message : "Failed to save custom sections");
     } finally {
       setIsSaving(false);
     }
@@ -115,10 +127,15 @@ export default function AdminHomepageSectionBuilder() {
     setShowDialog(false);
   };
 
-  const deleteSection = (id: string) => {
-    if (!confirm("Delete this section?")) return;
-    const sections = (settings.customHomepageSections || []).filter((s) => s.id !== id);
+  const confirmDeleteSection = (id: string) => {
+    setSectionToDelete(id);
+  };
+
+  const executeDeleteSection = () => {
+    if (!sectionToDelete) return;
+    const sections = (settings.customHomepageSections || []).filter((s) => s.id !== sectionToDelete);
     void persistSections(sections);
+    setSectionToDelete(null);
   };
 
   const handleBannerImageUpload = async (file?: File | null) => {
@@ -129,7 +146,7 @@ export default function AdminHomepageSectionBuilder() {
       const uploaded = await adminApi.uploadImage(file.name, file.type, base64Data, "homepage-banners");
       setFormData((prev) => ({ ...prev, imageUrl: uploaded.url }));
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Image upload failed");
+      toast.error(error instanceof Error ? error.message : "Image upload failed");
     } finally {
       setIsUploadingImage(false);
     }
@@ -248,7 +265,7 @@ export default function AdminHomepageSectionBuilder() {
                         size="icon"
                         variant="ghost"
                         className="text-red-600 hover:text-red-700"
-                        onClick={() => deleteSection(section.id)}
+                        onClick={() => confirmDeleteSection(section.id)}
                         title="Delete"
                       >
                         <Trash2 className="w-4 h-4" />
@@ -475,6 +492,26 @@ export default function AdminHomepageSectionBuilder() {
           </div>
         </DialogContent>
       </Dialog>
+
+      <AlertDialog open={!!sectionToDelete} onOpenChange={(open) => !open && setSectionToDelete(null)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you absolutely sure?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the section from the homepage.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={executeDeleteSection}
+              className="bg-red-600 hover:bg-red-700 text-white"
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

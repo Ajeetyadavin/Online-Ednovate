@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState } from "react";
 import { adminApi } from "@/services/adminApi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Alert, AlertDescription } from "@/components/ui/alert";
+import { Button } from "@/components/ui/button";
 import {
   LineChart,
   Line,
@@ -18,7 +20,7 @@ import {
   Pie,
   Cell,
 } from "recharts";
-import { BookOpen, Users, ShoppingCart, IndianRupee, TrendingUp, Eye, Zap, LayoutDashboard, AlertTriangle, BarChart3, PieChart as PieChartIcon, Activity, DollarSign } from "lucide-react";
+import { BookOpen, Users, ShoppingCart, IndianRupee, TrendingUp, Eye, Zap, LayoutDashboard, AlertTriangle, BarChart3, PieChart as PieChartIcon, Activity, DollarSign, RefreshCw, Loader2 } from "lucide-react";
 
 const StatCard = ({ icon: Icon, label, value, change, changeColor, color }: any) => (
   <Card className="hover:shadow-md transition-all duration-200 border-l-4" style={{ borderLeftColor: color }}>
@@ -43,19 +45,65 @@ export default function AdminDashboard() {
   const [topContent, setTopContent] = useState<Array<{ course_id: string; views: number }>>([]);
   const [analyticsSummary, setAnalyticsSummary] = useState({ totalEvents: 0, totalStudents: 0 });
   const [accessSummary, setAccessSummary] = useState({ total: 0, active: 0, disabled: 0, expired: 0, outOfViews: 0 });
+  
+  // Error states
+  const [topContentError, setTopContentError] = useState<string | null>(null);
+  const [analyticsError, setAnalyticsError] = useState<string | null>(null);
+  const [accessSummaryError, setAccessSummaryError] = useState<string | null>(null);
+  
+  // Loading states
+  const [topContentLoading, setTopContentLoading] = useState(true);
+  const [analyticsLoading, setAnalyticsLoading] = useState(true);
+  const [accessSummaryLoading, setAccessSummaryLoading] = useState(true);
+
+  const loadDashboardData = async () => {
+    // Reset errors
+    setTopContentError(null);
+    setAnalyticsError(null);
+    setAccessSummaryError(null);
+    
+    // Load top content
+    setTopContentLoading(true);
+    try {
+      const topContentRes = await adminApi.topContent(5);
+      setTopContent(topContentRes.items || []);
+    } catch (error) {
+      console.error('Failed to load top content:', error);
+      setTopContentError('Failed to load most viewed content. Please try again.');
+      setTopContent([]);
+    } finally {
+      setTopContentLoading(false);
+    }
+    
+    // Load analytics summary
+    setAnalyticsLoading(true);
+    try {
+      const analyticsRes = await adminApi.analyticsSummary();
+      setAnalyticsSummary(analyticsRes);
+    } catch (error) {
+      console.error('Failed to load analytics summary:', error);
+      setAnalyticsError('Failed to load analytics data. Some metrics may be unavailable.');
+      setAnalyticsSummary({ totalEvents: 0, totalStudents: 0 });
+    } finally {
+      setAnalyticsLoading(false);
+    }
+    
+    // Load access summary
+    setAccessSummaryLoading(true);
+    try {
+      const accessRes = await adminApi.getStudentAccessSummary({ limit: 20 });
+      setAccessSummary(accessRes.summary || { total: 0, active: 0, disabled: 0, expired: 0, outOfViews: 0 });
+    } catch (error) {
+      console.error('Failed to load student access summary:', error);
+      setAccessSummaryError('Failed to load student access data. Anomaly alerts may be incomplete.');
+      setAccessSummary({ total: 0, active: 0, disabled: 0, expired: 0, outOfViews: 0 });
+    } finally {
+      setAccessSummaryLoading(false);
+    }
+  };
 
   useEffect(() => {
-    adminApi.topContent(5).then((res) => setTopContent(res.items || [])).catch(() => {
-      // Ignore analytics load failure on dashboard.
-    });
-    adminApi.analyticsSummary().then((res) => setAnalyticsSummary(res)).catch(() => {
-      // Ignore analytics load failure on dashboard.
-    });
-    adminApi.getStudentAccessSummary({ limit: 20 }).then((res) => {
-      setAccessSummary(res.summary || { total: 0, active: 0, disabled: 0, expired: 0, outOfViews: 0 });
-    }).catch(() => {
-      // Ignore student access summary failure on dashboard.
-    });
+    loadDashboardData();
   }, []);
 
   const stats = useMemo(() => {
@@ -118,14 +166,58 @@ export default function AdminDashboard() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center gap-3">
-        <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
-          <LayoutDashboard className="w-6 h-6 text-white" />
+      {/* Error alerts */}
+      {(topContentError || analyticsError || accessSummaryError) && (
+        <div className="space-y-2">
+          {topContentError && (
+            <Alert variant="destructive" className="border-red-200 bg-red-50">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-sm">{topContentError}</AlertDescription>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="ml-auto h-7 text-xs"
+                onClick={() => adminApi.topContent(5).then((res) => setTopContent(res.items || [])).catch(() => {})}
+              >
+                Retry
+              </Button>
+            </Alert>
+          )}
+          {analyticsError && (
+            <Alert variant="destructive" className="border-amber-200 bg-amber-50">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-sm">{analyticsError}</AlertDescription>
+            </Alert>
+          )}
+          {accessSummaryError && (
+            <Alert variant="destructive" className="border-orange-200 bg-orange-50">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertDescription className="text-sm">{accessSummaryError}</AlertDescription>
+            </Alert>
+          )}
         </div>
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-          <p className="text-slate-500 text-sm">Welcome back! Here's your platform overview.</p>
+      )}
+
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <div className="p-2.5 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 shadow-lg">
+            <LayoutDashboard className="w-6 h-6 text-white" />
+          </div>
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
+            <p className="text-slate-500 text-sm">Welcome back! Here's your platform overview.</p>
+          </div>
         </div>
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-9 gap-1.5 rounded-xl border-slate-200"
+          onClick={loadDashboardData}
+          disabled={topContentLoading || analyticsLoading || accessSummaryLoading}
+        >
+          <RefreshCw className={`w-3.5 h-3.5 ${(topContentLoading || analyticsLoading || accessSummaryLoading) ? 'animate-spin' : ''}`} />
+          Refresh Data
+        </Button>
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -134,7 +226,52 @@ export default function AdminDashboard() {
         ))}
       </div>
 
-      {(accessSummary.expired > 0 || accessSummary.outOfViews > 0 || accessSummary.disabled > 0) && (
+      {/* Access Anomaly Alerts Section */}
+      {accessSummaryLoading ? (
+        <Card className="border-amber-200/50 bg-gradient-to-r from-amber-50/80 to-orange-50/80">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-amber-600" />
+              <CardTitle className="text-amber-900 text-base">Access Anomaly Alerts</CardTitle>
+            </div>
+            <CardDescription className="text-amber-700">Loading access data...</CardDescription>
+          </CardHeader>
+          <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-center">
+                <p className="text-xs text-slate-500 mb-1">Loading...</p>
+                <div className="h-8 flex items-center justify-center">
+                  <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      ) : accessSummaryError ? (
+        <Card className="border-red-200/50 bg-gradient-to-r from-red-50/80 to-orange-50/80">
+          <CardHeader className="pb-3">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="w-5 h-5 text-red-600" />
+              <CardTitle className="text-red-900 text-base">Access Data Unavailable</CardTitle>
+            </div>
+            <CardDescription className="text-red-700">Failed to load student access data. {accessSummaryError}</CardDescription>
+          </CardHeader>
+          <CardContent className="p-4">
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-8 gap-1.5 rounded-lg border-red-200 text-red-700"
+              onClick={() => {
+                setAccessSummaryError(null);
+                loadDashboardData();
+              }}
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              Retry Loading
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (accessSummary.expired > 0 || accessSummary.outOfViews > 0 || accessSummary.disabled > 0) ? (
         <Card className="border-amber-200/50 bg-gradient-to-r from-amber-50/80 to-orange-50/80">
           <CardHeader className="pb-3">
             <div className="flex items-center gap-2">
@@ -158,7 +295,7 @@ export default function AdminDashboard() {
             </div>
           </CardContent>
         </Card>
-      )}
+      ) : null}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         <Card className="lg:col-span-2 border-slate-200 shadow-sm">
@@ -335,18 +472,58 @@ export default function AdminDashboard() {
 
       <Card className="border-slate-200 shadow-sm">
         <CardHeader className="pb-3 border-b border-slate-100">
-          <div className="flex items-center gap-2">
-            <div className="p-1.5 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600">
-              <Eye className="w-4 h-4 text-white" />
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-gradient-to-br from-orange-500 to-amber-600">
+                <Eye className="w-4 h-4 text-white" />
+              </div>
+              <div>
+                <CardTitle className="text-base font-semibold text-slate-900">Most Viewed Content</CardTitle>
+                <CardDescription className="text-slate-500 text-xs">Live analytics from learner activity</CardDescription>
+              </div>
             </div>
-            <div>
-              <CardTitle className="text-base font-semibold text-slate-900">Most Viewed Content</CardTitle>
-              <CardDescription className="text-slate-500 text-xs">Live analytics from learner activity</CardDescription>
-            </div>
+            {topContentError && (
+              <Button
+                variant="ghost"
+                size="sm"
+                className="h-7 text-xs gap-1"
+                onClick={() => {
+                  setTopContentError(null);
+                  adminApi.topContent(5)
+                    .then((res) => setTopContent(res.items || []))
+                    .catch(() => setTopContentError('Retry failed. Please check your connection.'));
+                }}
+              >
+                <RefreshCw className="w-3 h-3" />
+                Retry
+              </Button>
+            )}
           </div>
         </CardHeader>
         <CardContent className="pt-4">
-          {topContent.length === 0 ? (
+          {topContentLoading ? (
+            <div className="text-center py-8">
+              <Loader2 className="w-10 h-10 text-slate-300 mx-auto mb-3 animate-spin" />
+              <p className="text-sm text-slate-500">Loading view analytics...</p>
+            </div>
+          ) : topContentError ? (
+            <div className="text-center py-6">
+              <AlertTriangle className="w-10 h-10 text-amber-300 mx-auto mb-2" />
+              <p className="text-sm text-slate-500 mb-3">{topContentError}</p>
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-8 gap-1.5"
+                onClick={() => {
+                  setTopContentError(null);
+                  loadDashboardData();
+                }}
+              >
+                <RefreshCw className="w-3.5 h-3.5" />
+                Reload Data
+              </Button>
+            </div>
+          ) : topContent.length === 0 ? (
             <div className="text-center py-6">
               <Eye className="w-10 h-10 text-slate-300 mx-auto mb-2" />
               <p className="text-sm text-slate-500">No view data yet. Open course pages to start tracking.</p>

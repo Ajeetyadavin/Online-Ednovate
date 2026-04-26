@@ -26,6 +26,7 @@ import {
   Award,
   Headphones,
   HelpCircle,
+  SlidersHorizontal,
   GraduationCap,
   Phone,
   MessageCircle,
@@ -172,44 +173,12 @@ const CourseDetails = () => {
   const [selectedAttemptOptionId, setSelectedAttemptOptionId] = useState<string>("");
   const [selectedDeliveryModeIds, setSelectedDeliveryModeIds] = useState<string[]>([]);
   const [selectedBookAddonIds, setSelectedBookAddonIds] = useState<string[]>([]);
-  const [openMobileOptionSections, setOpenMobileOptionSections] = useState({
-    modes: false,
-    books: false,
-    views: false,
-    validity: false,
-    attempts: false,
-  });
-  const [showMobileConfigurator, setShowMobileConfigurator] = useState(true);
+  const [mobileCustomizationOpen, setMobileCustomizationOpen] = useState(false);
   const [showCombinationsDialog, setShowCombinationsDialog] = useState(false);
   const [installPromptOpen, setInstallPromptOpen] = useState(false);
 
   const PLAY_STORE_URL = "https://play.google.com/store";
   const APP_STORE_URL = "https://www.apple.com/app-store/";
-
-  const toggleMobileOptionSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
-    setOpenMobileOptionSections((prev) => {
-      const nextOpen = !prev[section];
-      return {
-        modes: false,
-        books: false,
-        views: false,
-        validity: false,
-        attempts: false,
-        [section]: nextOpen,
-      };
-    });
-  };
-
-  const openMobileConfiguratorSection = (section: "modes" | "books" | "views" | "validity" | "attempts") => {
-    setShowMobileConfigurator(true);
-    setOpenMobileOptionSections({
-      modes: section === "modes",
-      books: section === "books",
-      views: section === "views",
-      validity: section === "validity",
-      attempts: section === "attempts",
-    });
-  };
 
   const matchedCourse = courses.find((c) => c.id === id);
   const course = matchedCourse ?? FALLBACK_COURSE;
@@ -350,7 +319,7 @@ const CourseDetails = () => {
 
     // Determine the actual playback URL based on source type
     let playbackUrl = dedicatedDemoUrl;
-    let sourceType: "youtube" | "direct" | "upload" = course.demoVideoSource || "direct";
+    const sourceType: "youtube" | "direct" | "upload" = course.demoVideoSource || "direct";
 
     if (sourceType === "upload" && bunnyStreamConfig.enabled && bunnyStreamConfig.cdnHostname) {
       // For Bunny Stream uploads, construct the CDN URL from the GUID
@@ -450,6 +419,8 @@ const CourseDetails = () => {
       .filter((row) => Number(row.price) > 0 && (row.viewCount > 0 || row.validityDays > 0 || row.modeId || row.attemptOptionId));
   }, [resolvedMasterConfig]);
   const hasCombinationPricing = combinationRows.length > 0;
+  const UNLIMITED_VALIDITY_DAYS = 36500;
+  const isUnlimitedByFlatPricing = !hasCombinationPricing;
   const defaultCombinationRow = useMemo(() => {
     if (combinationRows.length === 0) return null;
     const defaultId = String(resolvedMasterConfig?.defaultSelectedCombinationId || "").trim();
@@ -569,10 +540,17 @@ const CourseDetails = () => {
   );
   const combinationBasis = resolvedMasterConfig?.combinationBasis;
   const hasMasterBasis = Boolean(combinationBasis);
-  const useViewPricing = hasMasterBasis ? Boolean(combinationBasis?.useView) : Boolean(course.viewPricingEnabled);
-  const useValidityPricing = hasMasterBasis ? Boolean(combinationBasis?.useValidity) : Boolean(course.validityPricingEnabled);
-  const useAttemptPricing = Boolean(combinationBasis?.useAttempt);
+  const useViewPricing = hasCombinationPricing && (hasMasterBasis ? Boolean(combinationBasis?.useView) : Boolean(course.viewPricingEnabled));
+  const useValidityPricing = hasCombinationPricing && (hasMasterBasis ? Boolean(combinationBasis?.useValidity) : Boolean(course.validityPricingEnabled));
+  const useAttemptPricing = hasCombinationPricing && Boolean(combinationBasis?.useAttempt);
   const useDeliveryModePricing = hasMasterBasis ? Boolean(combinationBasis?.useMode) : Boolean(course.deliveryModePricingEnabled);
+  const hasPurchaseCustomization = Boolean(
+    useDeliveryModePricing ||
+    course.bookAddonEnabled ||
+    useViewPricing ||
+    useValidityPricing ||
+    useAttemptPricing,
+  );
 
   useEffect(() => {
     const defaultViews = Math.max(1, Number(course.selectedViews || viewOptions[0] || 1));
@@ -754,7 +732,9 @@ const CourseDetails = () => {
   const baseOnDemandSeconds = course.isCombo ? totalPackageSeconds : totalVideoSeconds;
   const effectiveOnDemandSeconds = Math.max(0, Math.round(baseOnDemandSeconds));
   const effectiveOnDemandLabel = formatSecondsToHms(effectiveOnDemandSeconds);
-  const effectiveValidityDays = useValidityPricing ? selectedValidityDays : backendDefaultValidityDays;
+  const effectiveValidityDays = useValidityPricing
+    ? selectedValidityDays
+    : (isUnlimitedByFlatPricing ? UNLIMITED_VALIDITY_DAYS : backendDefaultValidityDays);
   const validityMultiplier = useValidityPricing ? effectiveValidityDays / 30 : 1;
   const fallbackPrice = Math.round((modeBasePrice * viewMultiplier * validityMultiplier) + bookAddOnPrice);
   const fallbackOriginalPrice = Math.round((modeBaseOriginalPrice * viewMultiplier * validityMultiplier) + bookAddOnPrice);
@@ -776,8 +756,8 @@ const CourseDetails = () => {
   );
   const validityLabel = useAttemptPricing && selectedAttempt?.endDate
     ? formatAttemptEndDateLabel(selectedAttempt.endDate)
-    : (course.unlimitedViewsEnabled === true
-      ? "Unlimited days"
+    : (isUnlimitedByFlatPricing || course.unlimitedViewsEnabled === true
+      ? "Unlimited validity"
       : formatDaysToValidityLabel(effectiveValidityDays));
   const sidebarMetaItems = [
     course.showMetaLectures !== false
@@ -807,6 +787,8 @@ const CourseDetails = () => {
     ...course,
     selectedViews: useViewPricing ? selectedViews : 1,
     selectedValidityDays: effectiveValidityDays,
+    unlimitedViewsEnabled: isUnlimitedByFlatPricing ? true : course.unlimitedViewsEnabled,
+    validityPricingEnabled: useValidityPricing,
     selectedAttemptOptionId: selectedAttempt?.id || "",
     selectedAttemptEndDate: selectedAttempt?.endDate || "",
     selectedDeliveryModeId: selectedDeliveryModeIds[0] || "online",
@@ -952,7 +934,7 @@ const CourseDetails = () => {
                 </div>
               </div>
             ) : (
-              <div className="relative rounded-xl overflow-hidden bg-gradient-to-br from-[rgb(38,72,151)] via-[rgba(38,72,151,0.9)] to-accent/60 aspect-video mb-6 group flex items-center justify-center">
+              <div className="relative rounded-xl overflow-hidden aspect-video mb-6 group flex items-center justify-center">
                 {(course.thumbnail || course.image) && (
                   <img
                     src={resolveUploadAssetUrl(course.thumbnail || course.image || "", "/placeholder.svg")}
@@ -1412,219 +1394,18 @@ const CourseDetails = () => {
         {/* Add to Cart & Buy Now */}
         <div className="bg-card border-t border-border shadow-[0_-4px_20px_rgba(0,0,0,0.1)]">
           <div className="px-4 py-2.5 space-y-2">
-              {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && (
+              {hasPurchaseCustomization && (
                 <button
                   type="button"
-                  onClick={() => setShowMobileConfigurator((prev) => !prev)}
-                  className="mx-auto flex h-6 w-12 items-center justify-center rounded-full border border-border bg-background text-muted-foreground"
-                  aria-label={showMobileConfigurator ? "Hide purchase options" : "Show purchase options"}
+                  onClick={() => setMobileCustomizationOpen(true)}
+                  className="flex h-10 w-full items-center justify-between rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.10] via-primary/[0.06] to-background px-3 text-sm font-semibold text-primary shadow-sm transition-colors hover:border-primary/35 hover:bg-primary/[0.12]"
                 >
-                  <ChevronUp className={`h-4 w-4 transition-transform ${showMobileConfigurator ? "rotate-180" : "rotate-0"}`} />
+                  <span className="inline-flex items-center gap-2">
+                    <SlidersHorizontal className="h-4 w-4" />
+                    Select Customization
+                  </span>
+                  <ChevronRight className="h-4 w-4" />
                 </button>
-              )}
-              {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && showMobileConfigurator && (
-                <div className="relative rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5">
-                  {combinationMatrixRows.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setShowCombinationsDialog(true)}
-                      className="absolute top-2 right-2 z-10 flex h-6 w-6 items-center justify-center rounded-full border border-primary/30 bg-background text-primary shadow-sm transition-colors hover:bg-primary/10"
-                      aria-label="View combinations"
-                      title="View combinations"
-                    >
-                      <HelpCircle className="h-3.5 w-3.5" />
-                    </button>
-                  )}
-                  <div className="grid grid-cols-1 gap-2">
-                  {useDeliveryModePricing && deliveryModes.length > 0 && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("modes")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Select Mode</span>
-                      </button>
-                      {openMobileOptionSections.modes && (
-                        <select
-                          value={selectedDeliveryModeIds[0] || deliveryModes[0]?.id || ""}
-                          onChange={(e) => setSelectedDeliveryModeIds(e.target.value ? [e.target.value] : [])}
-                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                        >
-                          {deliveryModes.map((mode) => (
-                            <option key={mode.id} value={mode.id}>
-                              {mode.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  )}
-                  {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("books")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Books / Notes</span>
-                      </button>
-                      {openMobileOptionSections.books && (
-                        <div className="space-y-1.5 pt-1">
-                          {enabledBookAddons.map((addon) => {
-                            const checked = selectedBookAddonIds.includes(addon.id);
-                            return (
-                            <label
-                              key={addon.id}
-                              className={`flex items-center justify-between gap-1.5 rounded border px-2 py-1.5 text-xs ${
-                                checked ? "border-primary/40 bg-primary/10" : "border-input bg-background"
-                              }`}
-                            >
-                              <span className="flex items-center gap-1.5 truncate font-medium">
-                                <input
-                                  type="checkbox"
-                                  checked={checked}
-                                  onChange={(e) => {
-                                    setSelectedBookAddonIds((prev) => {
-                                      if (e.target.checked) return Array.from(new Set([...prev, addon.id]));
-                                      return prev.filter((id) => id !== addon.id);
-                                    });
-                                  }}
-                                  className="w-3.5 h-3.5 accent-primary"
-                                />
-                                <span className="truncate">{addon.label}</span>
-                              </span>
-                              <span className="font-semibold text-primary">+₹{Number(addon.price || 0).toLocaleString()}</span>
-                            </label>
-                            );
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                  {useViewPricing && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("views")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Select Views</span>
-                      </button>
-                      {openMobileOptionSections.views && (
-                        <select
-                          value={selectedViews}
-                          onChange={(e) => setSelectedViews(Number(e.target.value) || 1)}
-                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                        >
-                          {viewOptions.map((option) => (
-                            <option key={option} value={option}>
-                              {option} view{option > 1 ? "s" : ""}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  )}
-                  {useValidityPricing && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("validity")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Select Validity</span>
-                      </button>
-                      {openMobileOptionSections.validity && (
-                        <select
-                          value={selectedValidityDays}
-                          onChange={(e) => setSelectedValidityDays(Number(e.target.value) || backendDefaultValidityDays)}
-                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                        >
-                          {validityOptionsDays.map((days) => (
-                            <option key={days} value={days}>
-                              {days} days
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  )}
-                  {useAttemptPricing && attemptOptions.length > 0 && (
-                    <div className="rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.08] via-accent/[0.06] to-background p-2.5 shadow-sm">
-                      <button
-                        type="button"
-                        onClick={() => toggleMobileOptionSection("attempts")}
-                        className="block w-full rounded-md px-1 py-0.5 text-left"
-                      >
-                        <span className="text-xs font-semibold text-foreground">Select Attempt</span>
-                      </button>
-                      {openMobileOptionSections.attempts && (
-                        <select
-                          value={selectedAttemptOptionId}
-                          onChange={(e) => setSelectedAttemptOptionId(e.target.value)}
-                          className="mt-1 h-8 w-full rounded-md border border-input bg-background px-2 text-xs font-medium"
-                        >
-                          {attemptOptions.map((option) => (
-                            <option key={option.id} value={option.id}>
-                              {option.label}
-                            </option>
-                          ))}
-                        </select>
-                      )}
-                    </div>
-                  )}
-                  </div>
-                </div>
-              )}
-              {(useDeliveryModePricing || course.bookAddonEnabled || useViewPricing || useValidityPricing || useAttemptPricing) && (
-                <div className="flex flex-wrap gap-1.5 pb-0.5">
-                  {useDeliveryModePricing && deliveryModes.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("modes")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Select Mode
-                    </button>
-                  )}
-                  {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("books")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Books / Notes
-                    </button>
-                  )}
-                  {useViewPricing && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("views")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Select Views
-                    </button>
-                  )}
-                  {useValidityPricing && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("validity")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Select Validity
-                    </button>
-                  )}
-                  {useAttemptPricing && attemptOptions.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => openMobileConfiguratorSection("attempts")}
-                      className="rounded-full border border-border bg-background px-2.5 py-1 text-[10px] font-semibold text-foreground/80"
-                    >
-                      Select Attempt
-                    </button>
-                  )}
-                </div>
               )}
               <div className="flex items-center gap-3">
                 <div className="flex flex-col mr-auto">
@@ -1681,6 +1462,169 @@ const CourseDetails = () => {
         onToggleMode={() => setSignupMode((prev) => !prev)}
       />
 
+
+      <Dialog open={mobileCustomizationOpen} onOpenChange={setMobileCustomizationOpen}>
+        <DialogContent className="max-w-[calc(100vw-24px)] rounded-2xl border border-border p-0 sm:max-w-md">
+          <DialogHeader className="border-b border-border px-4 py-3">
+            <div className="flex items-start justify-between gap-3 pr-7">
+              <div>
+                <DialogTitle className="text-base font-bold text-foreground">Select Customization</DialogTitle>
+                <p className="mt-0.5 text-xs text-muted-foreground">Choose available options for this course.</p>
+              </div>
+              {combinationMatrixRows.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setShowCombinationsDialog(true)}
+                  className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-full border border-primary/30 bg-primary/10 text-primary"
+                  aria-label="View combinations"
+                  title="View combinations"
+                >
+                  <HelpCircle className="h-3.5 w-3.5" />
+                </button>
+              )}
+            </div>
+          </DialogHeader>
+
+          <div className="max-h-[70vh] space-y-4 overflow-y-auto p-4">
+            {useDeliveryModePricing && deliveryModes.length > 0 && (
+              <section className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Mode</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {deliveryModes.map((mode) => {
+                    const checked = selectedDeliveryModeIds[0] === mode.id;
+                    return (
+                      <button
+                        key={mode.id}
+                        type="button"
+                        onClick={() => setSelectedDeliveryModeIds([mode.id])}
+                        className={`rounded-xl border px-3 py-2 text-left text-xs font-semibold transition-colors ${
+                          checked ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground"
+                        }`}
+                      >
+                        {mode.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {course.bookAddonEnabled && enabledBookAddons.length > 0 && (
+              <section className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Books / Notes</h3>
+                <div className="space-y-2">
+                  {enabledBookAddons.map((addon) => {
+                    const checked = selectedBookAddonIds.includes(addon.id);
+                    return (
+                      <button
+                        key={addon.id}
+                        type="button"
+                        onClick={() => {
+                          setSelectedBookAddonIds((prev) => {
+                            if (checked) return prev.filter((id) => id !== addon.id);
+                            return Array.from(new Set([...prev, addon.id]));
+                          });
+                        }}
+                        className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
+                          checked ? "border-primary bg-primary/10" : "border-border bg-background"
+                        }`}
+                      >
+                        <span className="flex items-center gap-2 font-semibold text-foreground">
+                          <span className={`flex h-4 w-4 items-center justify-center rounded border ${checked ? "border-primary bg-primary text-primary-foreground" : "border-border"}`}>
+                            {checked && <Check className="h-3 w-3" />}
+                          </span>
+                          {addon.label}
+                        </span>
+                        <span className="font-bold text-primary">+₹{Number(addon.price || 0).toLocaleString()}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {useViewPricing && (
+              <section className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Views</h3>
+                <div className="grid grid-cols-3 gap-2">
+                  {viewOptions.map((option) => {
+                    const checked = Number(selectedViews) === Number(option);
+                    return (
+                      <button
+                        key={option}
+                        type="button"
+                        onClick={() => setSelectedViews(Number(option) || 1)}
+                        className={`rounded-xl border px-3 py-2 text-center text-xs font-bold transition-colors ${
+                          checked ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground"
+                        }`}
+                      >
+                        {option} View{option > 1 ? "s" : ""}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {useValidityPricing && (
+              <section className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Validity</h3>
+                <div className="grid grid-cols-2 gap-2">
+                  {validityOptionsDays.map((days) => {
+                    const checked = Number(selectedValidityDays) === Number(days);
+                    return (
+                      <button
+                        key={days}
+                        type="button"
+                        onClick={() => setSelectedValidityDays(Number(days) || backendDefaultValidityDays)}
+                        className={`rounded-xl border px-3 py-2 text-center text-xs font-bold transition-colors ${
+                          checked ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground"
+                        }`}
+                      >
+                        {formatDaysToValidityLabel(days)}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {useAttemptPricing && attemptOptions.length > 0 && (
+              <section className="space-y-2">
+                <h3 className="text-xs font-bold uppercase tracking-wide text-muted-foreground">Attempt</h3>
+                <div className="space-y-2">
+                  {attemptOptions.map((option) => {
+                    const checked = selectedAttemptOptionId === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setSelectedAttemptOptionId(option.id)}
+                        className={`flex w-full items-center justify-between gap-2 rounded-xl border px-3 py-2 text-left text-xs transition-colors ${
+                          checked ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground"
+                        }`}
+                      >
+                        <span className="font-bold">{option.label}</span>
+                        {option.endDate && <span className="text-[10px] text-muted-foreground">{formatAttemptEndDateLabel(option.endDate)}</span>}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+          </div>
+
+          <div className="border-t border-border p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground">Total</span>
+              <span className="text-lg font-extrabold text-foreground">₹{dynamicPrice.toLocaleString()}</span>
+            </div>
+            <Button type="button" className="h-10 w-full rounded-xl font-bold" onClick={() => setMobileCustomizationOpen(false)}>
+              Apply Selection
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={showCombinationsDialog} onOpenChange={setShowCombinationsDialog}>
         <DialogContent className="max-w-xl rounded-2xl border border-border p-0 overflow-hidden">

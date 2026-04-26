@@ -14,6 +14,8 @@ import {
   Clock, Users, BookOpen, CheckCircle2, AlertCircle, Loader2, X, Calendar,
   Zap, Download, ChevronDown, ChevronUp, LayoutGrid, List, Eye, EyeOff
 } from "lucide-react";
+import { useConfirm } from "@/context/ConfirmContext";
+import { toast } from "sonner";
 
 const emptyForm: MarketingCampaignPayload = {
   title: "", message: "", contentType: "banner", mediaUrl: "", ctaText: "", ctaUrl: "",
@@ -66,6 +68,7 @@ export default function AdminMarketing() {
   const canCreate = hasPermission("marketing", "create");
   const canEdit = hasPermission("marketing", "edit");
   const canDelete = hasPermission("marketing", "delete");
+  const { confirm } = useConfirm();
 
   const [items, setItems] = useState<MarketingCampaign[]>([]);
   const [isLoading, setIsLoading] = useState(false);
@@ -96,7 +99,9 @@ export default function AdminMarketing() {
       const students = (sr.students || []).map((s: any) => ({ id: String(s.id || ""), name: String(s.name || "") })).filter((s: any) => s.id);
       const subjects = Array.from(new Set(courses.map((c: any) => c.subject).filter(Boolean))).sort();
       setTargetLookup({ students, courses, subjects });
-    } catch { }
+    } catch {
+      // Lookup data is optional for campaign targeting.
+    }
   };
 
   const loadCampaigns = async () => {
@@ -173,7 +178,9 @@ export default function AdminMarketing() {
   };
 
   const removeCampaign = async (item: MarketingCampaign) => {
-    if (!canDelete || !window.confirm(`Delete "${item.title}"?`)) return;
+    if (!canDelete) return;
+    const isConfirmed = await confirm({ title: "Delete Campaign?", description: `Delete "${item.title}"?` });
+    if (!isConfirmed) return;
     try { await adminApi.deleteMarketingCampaign(item.id); setSuccess("Deleted!"); await loadCampaigns(); }
     catch (e) { setError(e instanceof Error ? e.message : "Failed to delete"); }
   };
@@ -193,7 +200,7 @@ export default function AdminMarketing() {
       const workbook = utils.book_new();
       utils.book_append_sheet(workbook, worksheet, "Campaigns");
       writeFile(workbook, "campaigns.xlsx");
-    } catch { alert("Export failed"); }
+    } catch { toast.error("Export failed"); }
     finally { setIsExporting(false); }
   };
 

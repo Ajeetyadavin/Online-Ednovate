@@ -18,6 +18,8 @@ import {
 } from "@/context/SiteSettingsContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
 import { adminApi } from "@/services/adminApi";
+import { useConfirm } from "@/context/ConfirmContext";
+import { toast } from "sonner";
 
 /* ─── Helpers ─────────────────────────────────────────────── */
 const buttonStyles: HeaderButtonStyle[] = ["solid", "outline", "ghost"];
@@ -63,6 +65,7 @@ const TABS: { id: Tab; label: string; icon: React.ElementType }[] = [
 export default function AdminHeader() {
   const { settings, updateSettings } = useSiteSettings();
   const { courses, categories } = usePlatformData();
+  const { confirm } = useConfirm();
 
   const [isSaving, setIsSaving] = useState(false);
   const [activeTab, setActiveTab] = useState<Tab>("branding");
@@ -128,8 +131,9 @@ export default function AdminHeader() {
     setEditingCollectionId(created.id);
   };
 
-  const deleteCollection = (collectionId: string) => {
-    if (!confirm("Delete this collection page?")) return;
+  const deleteCollection = async (collectionId: string) => {
+    const isConfirmed = await confirm({ title: "Delete Collection?", description: "Delete this collection page?" });
+    if (!isConfirmed) return;
     const target = draft.header.courseCollections.find((item) => item.id === collectionId);
     if (!target) return;
     const clearLinkedHref = (href: string) => { const linkedSlug = extractCollectionSlug(href); return linkedSlug === target.slug ? "/packages" : href; };
@@ -168,11 +172,16 @@ export default function AdminHeader() {
       const preparedHeader = ensureAutoCollectionVisibility(syncCollectionsFromNavigation(draft.header));
       const nextSiteSettings = { ...settings, logo: draft.logo, header: preparedHeader };
       updateSettings(nextSiteSettings);
-      await adminApi.saveHomepagePlatformSettings({ bunnyStreamApi: { enabled: Boolean(settings.bunnyStreamApi?.enabled), libraryId: String(settings.bunnyStreamApi?.libraryId || ""), apiKey: String(settings.bunnyStreamApi?.apiKey || ""), cdnHostname: String(settings.bunnyStreamApi?.cdnHostname || ""), pullZone: String(settings.bunnyStreamApi?.pullZone || "") }, siteSettings: nextSiteSettings as unknown as Record<string, unknown>, homepage: { exploreCategoryIds: settings.exploreCategoryIds || [] } });
-      setDraft({ logo: nextSiteSettings.logo, header: nextSiteSettings.header });
-      alert("Header module saved successfully.");
+      const payload = { 
+        bunnyStreamApi: { enabled: Boolean(settings.bunnyStreamApi?.enabled), libraryId: String(settings.bunnyStreamApi?.libraryId || ""), apiKey: String(settings.bunnyStreamApi?.apiKey || ""), cdnHostname: String(settings.bunnyStreamApi?.cdnHostname || ""), pullZone: String(settings.bunnyStreamApi?.pullZone || "") }, 
+        siteSettings: nextSiteSettings as unknown as Record<string, unknown>, 
+        homepage: { exploreCategoryIds: settings.exploreCategoryIds || [] } 
+      };
+      updateSettings({ header: draft.header });
+      await adminApi.saveHomepagePlatformSettings(payload);
+      toast.success("Header module saved successfully.");
     } catch (error) {
-      alert(error instanceof Error ? error.message : "Failed to save header module");
+      toast.error(error instanceof Error ? error.message : "Failed to save header module");
     } finally { setIsSaving(false); }
   };
 
@@ -413,7 +422,7 @@ export default function AdminHeader() {
                       </div>
                       <div className="flex shrink-0 items-center gap-1">
                         <button type="button" onClick={() => setEditingCollectionId(collection.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-primary/10 hover:text-primary transition-colors"><Edit2 className="h-3.5 w-3.5" /></button>
-                        <button type="button" onClick={() => deleteCollection(collection.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
+                        <button type="button" onClick={() => void deleteCollection(collection.id)} className="flex h-7 w-7 items-center justify-center rounded-lg text-slate-400 hover:bg-rose-50 hover:text-rose-600 transition-colors"><Trash2 className="h-3.5 w-3.5" /></button>
                       </div>
                     </div>
                   );
