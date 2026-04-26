@@ -28,7 +28,7 @@ const LEGACY_PORTAL_API_FALLBACK_URLS = String(getRuntimeConfig("VITE_LEGACY_POR
   .split(",")
   .map((item) => trimTrailingSlash(item.trim()))
   .filter(Boolean);
-const PROD_DEFAULT_API_BASE_URL = "https://online-ednovate-api.onrender.com";
+const PROD_DEFAULT_API_BASE_URL = "https://online-ednovate.onrender.com";
 
 const isLocalHost = (hostname: string) => {
   const normalized = String(hostname || "").toLowerCase();
