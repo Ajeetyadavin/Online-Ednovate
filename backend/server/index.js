@@ -8308,6 +8308,7 @@ app.get("/api/uploads/storage/:assetId/:fileName", async (request, response) => 
     const binaryData = row.binary_data;
     const sizeBytes = Number(row.size_bytes || 0);
 
+    response.setHeader("Access-Control-Allow-Origin", "*");
     response.setHeader("Content-Type", mimeType);
     response.setHeader("Content-Disposition", `inline; filename=\"${fileName.replace(/\"/g, "")}\"`);
     response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
@@ -9201,8 +9202,16 @@ const start = async () => {
   syncSmsEnvFromSettings(await getPlatformSettings());
 
   // Static routes must come AFTER all API routes to avoid intercepting POST /api/uploads/image
-  app.use("/uploads", express.static(uploadsDir));
-  app.use("/api/uploads", express.static(uploadsDir));
+  app.use("/uploads", express.static(uploadsDir, {
+    setHeaders: (res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+  }));
+  app.use("/api/uploads", express.static(uploadsDir, {
+    setHeaders: (res) => {
+      res.setHeader("Access-Control-Allow-Origin", "*");
+    }
+  }));
 
   app.listen(port, () => {
     console.log(`Node API running on http://localhost:${port}`);
