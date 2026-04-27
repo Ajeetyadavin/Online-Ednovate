@@ -53,7 +53,8 @@ const isProductionFrontendHost = () => {
 const getResolvedApiBaseUrl = () => {
   if (API_BASE_URL) return API_BASE_URL;
   
-  // Return empty string to use relative paths and rely on host-level proxying (e.g. Vercel rewrites)
+  // Use relative paths in both dev and production to rely on proxies (Vite/Vercel)
+  // This is better for CORS and consistent with vercel.json rewrites.
   return "";
 };
 
