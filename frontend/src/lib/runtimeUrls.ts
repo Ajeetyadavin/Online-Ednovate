@@ -53,10 +53,8 @@ const isProductionFrontendHost = () => {
 const getResolvedApiBaseUrl = () => {
   if (API_BASE_URL) return API_BASE_URL;
   
-  // In dev mode, always use relative paths to rely on Vite proxy.
-  if (import.meta.env.DEV) return "";
-  
-  return isProductionFrontendHost() ? PROD_DEFAULT_API_BASE_URL : "";
+  // Return empty string to use relative paths and rely on host-level proxying (e.g. Vercel rewrites)
+  return "";
 };
 
 const getResolvedUploadsBaseUrl = () => {
