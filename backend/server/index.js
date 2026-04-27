@@ -8308,7 +8308,6 @@ app.get("/api/uploads/storage/:assetId/:fileName", async (request, response) => 
     const binaryData = row.binary_data;
     const sizeBytes = Number(row.size_bytes || 0);
 
-    response.setHeader("Access-Control-Allow-Origin", "*");
     response.setHeader("Content-Type", mimeType);
     response.setHeader("Content-Disposition", `inline; filename=\"${fileName.replace(/\"/g, "")}\"`);
     response.setHeader("Cache-Control", "public, max-age=31536000, immutable");
@@ -9202,16 +9201,16 @@ const start = async () => {
   syncSmsEnvFromSettings(await getPlatformSettings());
 
   // Static routes must come AFTER all API routes to avoid intercepting POST /api/uploads/image
-  app.use("/uploads", express.static(uploadsDir, {
-    setHeaders: (res) => {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-    }
-  }));
-  app.use("/api/uploads", express.static(uploadsDir, {
-    setHeaders: (res) => {
-      res.setHeader("Access-Control-Allow-Origin", "*");
-    }
-  }));
+  // Uploads are public assets (thumbnails, images) — allow any origin so Flutter app + browsers can load them.
+  const uploadsCors = (req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+    if (req.method === "OPTIONS") return res.sendStatus(204);
+    next();
+  };
+  app.use("/uploads", uploadsCors, express.static(uploadsDir));
+  app.use("/api/uploads", uploadsCors, express.static(uploadsDir));
 
   app.listen(port, () => {
     console.log(`Node API running on http://localhost:${port}`);
