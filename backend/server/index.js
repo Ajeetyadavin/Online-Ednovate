@@ -45,6 +45,15 @@ app.use((req, res, next) => {
   next();
 });
 
+// Static uploads are public assets (thumbnails, images) — allow any origin so Flutter app + browsers can load them.
+const uploadsCors = (req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+};
+
 const uploadsDir = path.join(__dirname, "uploads");
 
 const mapStudentRow = (row) => ({
@@ -8279,7 +8288,7 @@ app.post("/api/uploads/image", upload.single("file"), requireAdminPermission("co
   }
 });
 
-app.get("/api/uploads/storage/:assetId/:fileName", async (request, response) => {
+app.get("/api/uploads/storage/:assetId/:fileName", uploadsCors, async (request, response) => {
   try {
     const assetId = String(request.params?.assetId || "").trim();
     if (!assetId) {
@@ -8318,7 +8327,7 @@ app.get("/api/uploads/storage/:assetId/:fileName", async (request, response) => 
   }
 });
 
-app.get("/api/uploads/storage/:assetId", async (request, response) => {
+app.get("/api/uploads/storage/:assetId", uploadsCors, async (request, response) => {
   try {
     const assetId = String(request.params?.assetId || "").trim();
     if (!assetId) {
@@ -9202,13 +9211,27 @@ const start = async () => {
 
   // Static routes must come AFTER all API routes to avoid intercepting POST /api/uploads/image
   // Uploads are public assets (thumbnails, images) — allow any origin so Flutter app + browsers can load them.
-  const uploadsCors = (req, res, next) => {
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    res.setHeader("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS");
-    res.setHeader("Access-Control-Allow-Headers", "Origin, X-Requested-With, Content-Type, Accept");
-    if (req.method === "OPTIONS") return res.sendStatus(204);
-    next();
-  };
+
+  // Image proxy – fetches external images (e.g. from letsednovate.com) and serves with CORS headers.
+  app.get("/api/image-proxy", uploadsCors, async (req, res) => {
+    const imageUrl = req.query.url;
+    if (!imageUrl || typeof imageUrl !== "string" || !imageUrl.startsWith("http")) {
+      return res.status(400).json({ error: "Missing or invalid ?url= parameter" });
+    }
+    try {
+      const upstream = await fetch(imageUrl, { redirect: "follow" });
+      if (!upstream.ok) return res.status(upstream.status).send("Upstream error");
+      const contentType = upstream.headers.get("content-type") || "image/jpeg";
+      res.setHeader("Content-Type", contentType);
+      res.setHeader("Cache-Control", "public, max-age=86400");
+      const buffer = Buffer.from(await upstream.arrayBuffer());
+      res.send(buffer);
+    } catch (err) {
+      console.error("[image-proxy] Failed:", imageUrl, err.message);
+      res.status(502).json({ error: "Failed to fetch image" });
+    }
+  });
+
   app.use("/uploads", uploadsCors, express.static(uploadsDir));
   app.use("/api/uploads", uploadsCors, express.static(uploadsDir));
 
