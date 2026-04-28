@@ -2895,3 +2895,12 @@ Node API running on http://localhost:4000
 Try /api/health and /api/db-check
 [2026-04-28T06:41:27.249Z] GET /api/marketing/active?path=%2F&sessionId=mkt-1777215384249-88505&pageSeconds=75
 Completed running 'server/index.js'. Waiting for file changes before restarting...
+Restarting 'server/index.js'
+[dotenv@17.3.1] injecting env (0) from .env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+[dotenv@17.3.1] injecting env (31) from ../.env -- tip: ⚙️  specify custom .env file path with { path: '/custom/path/.env' }
+[DEBUG] Backend CWD: /Users/ajeet/online app 2/Online-Ednovate/backend
+[DEBUG] ADMIN_EMAIL: admin@ednovate.com
+[DEBUG] CORS_ORIGIN: http://localhost:8080,http://localhost:8081,http://localhost:8082,http://localhost:8083,http://localhost:8084,http://localhost:8085,http://127.0.0.1:8080,http://127.0.0.1:8081,http://127.0.0.1:8082,http://127.0.0.1:8083,http://127.0.0.1:8084,http://127.0.0.1:8085,http://192.168.0.104:8080,http://localhost:9090,http://127.0.0.1:9090
+Node API running on http://localhost:4000
+Try /api/health and /api/db-check
+Completed running 'server/index.js'. Waiting for file changes before restarting...

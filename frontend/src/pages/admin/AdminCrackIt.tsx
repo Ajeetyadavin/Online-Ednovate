@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Plus, Search, FileText, Sparkles, Upload, Loader2, Check, X, Filter, Trash2, Edit2, Layout } from "lucide-react";
+import { Plus, Search, FileText, Sparkles, Upload, Loader2, Check, X, Filter, Trash2, Edit2, Layout, Clock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -287,6 +287,13 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
     subject_id: "all",
     chapter_id: "all",
   });
+  const [paperListFilters, setPaperListFilters] = useState({
+    search: "",
+    course_id: "all",
+    level_id: "all",
+    subject_id: "all",
+    chapter_id: "all",
+  });
   const [extractModalOpen, setExtractModalOpen] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedPreview, setExtractedPreview] = useState<any[]>([]);
@@ -312,6 +319,18 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
     questionFilters.level_id === "all" ? "" : questionFilters.level_id,
   );
   const questionFilterChapters = getChaptersForSubject(questionFilters.subject_id === "all" ? "" : questionFilters.subject_id);
+  const paperListFilterSubjects = getSubjectsForAcademic(
+    paperListFilters.course_id === "all" ? "" : paperListFilters.course_id,
+    paperListFilters.level_id === "all" ? "" : paperListFilters.level_id,
+  );
+  const paperListFilterChapters = getChaptersForSubject(paperListFilters.subject_id === "all" ? "" : paperListFilters.subject_id);
+  const getCategoryName = (id?: string) => categories.find((item) => item.id === id)?.name || "";
+  const getSubjectName = (id?: string) => subjects.find((item: any) => item.id === id)?.name || "";
+  const getChapterName = (subjectId?: string, chapterId?: string) => {
+    if (!subjectId || !chapterId) return "";
+    const chapter = getChaptersForSubject(subjectId).find((item: any) => String(item.id || item.name) === String(chapterId));
+    return chapter?.name || "";
+  };
   const filteredQuestions = questions.filter((q) => {
     const search = searchQuery.trim().toLowerCase();
     if (search && !String(q.question_text || "").toLowerCase().includes(search)) return false;
@@ -319,6 +338,18 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
     if (questionFilters.level_id !== "all" && String(q.level_id || "") !== questionFilters.level_id) return false;
     if (questionFilters.subject_id !== "all" && String(q.subject_id || "") !== questionFilters.subject_id) return false;
     if (questionFilters.chapter_id !== "all" && String(q.chapter_id || "") !== questionFilters.chapter_id) return false;
+    return true;
+  });
+  const filteredTestPapers = testPapers.filter((paper) => {
+    const search = paperListFilters.search.trim().toLowerCase();
+    if (search) {
+      const haystack = `${paper.title || ""} ${paper.paperCode || ""} ${paper.description || ""}`.toLowerCase();
+      if (!haystack.includes(search)) return false;
+    }
+    if (paperListFilters.course_id !== "all" && String(paper.courseId || "") !== paperListFilters.course_id) return false;
+    if (paperListFilters.level_id !== "all" && String(paper.levelId || "") !== paperListFilters.level_id) return false;
+    if (paperListFilters.subject_id !== "all" && String(paper.subjectId || "") !== paperListFilters.subject_id) return false;
+    if (paperListFilters.chapter_id !== "all" && String(paper.chapterId || "") !== paperListFilters.chapter_id) return false;
     return true;
   });
 
@@ -580,19 +611,27 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
   const [selectedPaper, setSelectedPaper] = useState<any>(null);
   const [selectedQuestionIds, setSelectedQuestionIds] = useState<string[]>([]);
   const [selectedPaperChapterIds, setSelectedPaperChapterIds] = useState<string[]>([]);
+  const [paperQuestionFilters, setPaperQuestionFilters] = useState({ search: "", difficulty: "all", type: "all" });
   const [autoAssignOpen, setAutoAssignOpen] = useState(false);
   const [autoAssignForm, setAutoAssignForm] = useState(createBlankAutoAssignForm());
   const [paperForm, setPaperForm] = useState(createBlankPaperForm());
   const [isPaperThumbnailUploading, setIsPaperThumbnailUploading] = useState(false);
   const paperSubjects = getSubjectsForAcademic(paperForm.course_id, paperForm.level_id);
   const paperChapters = getChaptersForSubject(paperForm.subject_id);
-  const paperQuestionPool = questions.filter((q) => {
+  const paperQuestionPoolBase = questions.filter((q) => {
     if (!paperForm.course_id || !paperForm.level_id || !paperForm.subject_id) return false;
     if (String(q.course_id || "") !== paperForm.course_id) return false;
     if (String(q.level_id || "") !== paperForm.level_id) return false;
     if (String(q.subject_id || "") !== paperForm.subject_id) return false;
     if (selectedPaperChapterIds.length === 0) return false;
     return selectedPaperChapterIds.includes(String(q.chapter_id || ""));
+  });
+  const paperQuestionPool = paperQuestionPoolBase.filter((q) => {
+    const search = paperQuestionFilters.search.trim().toLowerCase();
+    if (search && !String(q.question_text || "").toLowerCase().includes(search)) return false;
+    if (paperQuestionFilters.difficulty !== "all" && String(q.difficulty || "medium") !== paperQuestionFilters.difficulty) return false;
+    if (paperQuestionFilters.type !== "all" && String(q.type || "mcq") !== paperQuestionFilters.type) return false;
+    return true;
   });
   const paperQuestionPoolCounts = {
     easy: paperQuestionPool.filter((q) => String(q.difficulty || "medium") === "easy").length,
@@ -604,6 +643,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
     setSelectedPaper(null);
     setSelectedQuestionIds([]);
     setSelectedPaperChapterIds([]);
+    setPaperQuestionFilters({ search: "", difficulty: "all", type: "all" });
     setAutoAssignForm(createBlankAutoAssignForm());
     setPaperForm(createBlankPaperForm());
     setPaperModalOpen(true);
@@ -620,6 +660,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
         .filter(Boolean),
     ));
     setSelectedPaperChapterIds(inferredChapterIds.length > 0 ? inferredChapterIds : (paper.chapterId ? [paper.chapterId] : []));
+    setPaperQuestionFilters({ search: "", difficulty: "all", type: "all" });
     setAutoAssignForm(createBlankAutoAssignForm());
     setPaperForm({
       ...createBlankPaperForm(),
@@ -647,6 +688,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
       setSelectedPaper(null);
       setSelectedQuestionIds([]);
       setSelectedPaperChapterIds([]);
+      setPaperQuestionFilters({ search: "", difficulty: "all", type: "all" });
       setAutoAssignOpen(false);
       setAutoAssignForm(createBlankAutoAssignForm());
       setPaperForm(createBlankPaperForm());
@@ -753,6 +795,34 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
       }
     } catch (e) {
       toast({ title: "Error", description: "Failed to create paper", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeletePaper = async (paper: any) => {
+    if (!paper?.id) return;
+    const confirmed = window.confirm(`Delete test paper "${paper.title || paper.paperCode || "Untitled"}"?`);
+    if (!confirmed) return;
+
+    setIsLoading(true);
+    try {
+      const stored = localStorage.getItem("admin_session_v2");
+      const adminToken = stored ? JSON.parse(stored)?.token : null;
+      const res = await fetch(`/api/admin/crackit/papers/${encodeURIComponent(paper.id)}`, {
+        method: "DELETE",
+        headers: adminToken ? { "Authorization": `Bearer ${adminToken}` } : {},
+      });
+
+      if (res.ok) {
+        toast({ title: "Deleted", description: "Test paper removed successfully." });
+        await refreshData();
+      } else {
+        const err = await res.json();
+        toast({ title: "Delete Failed", description: err.message || "Failed to delete test paper", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Delete Failed", description: "Failed to delete test paper", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -945,10 +1015,95 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-          {testPapers.map((paper) => (
-            <div key={paper.id} className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm space-y-4">
-              <div className="aspect-video overflow-hidden rounded-lg bg-slate-100">
+        <div className="space-y-4">
+          <div className="rounded-xl border border-slate-200 bg-white p-4 space-y-4">
+            <div className="flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Filter className="w-4 h-4 text-indigo-600" />
+                <p className="text-sm font-black text-slate-900">Dynamic Paper Filter</p>
+              </div>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => setPaperListFilters({ search: "", course_id: "all", level_id: "all", subject_id: "all", chapter_id: "all" })}
+              >
+                Clear
+              </Button>
+            </div>
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-5">
+              <div className="relative">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                <Input
+                  placeholder="Search papers..."
+                  className="pl-10 h-10 bg-white border-slate-200"
+                  value={paperListFilters.search}
+                  onChange={(e) => setPaperListFilters({ ...paperListFilters, search: e.target.value })}
+                />
+              </div>
+              <Select
+                value={paperListFilters.course_id}
+                onValueChange={(v) => setPaperListFilters({ search: paperListFilters.search, course_id: v, level_id: "all", subject_id: "all", chapter_id: "all" })}
+              >
+                <SelectTrigger><SelectValue placeholder="Course" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Courses</SelectItem>
+                  {categories.filter(c => !c.parentId || c.parentId === "").map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={paperListFilters.level_id}
+                onValueChange={(v) => setPaperListFilters({ ...paperListFilters, level_id: v, subject_id: "all", chapter_id: "all" })}
+              >
+                <SelectTrigger><SelectValue placeholder="Level" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Levels</SelectItem>
+                  {categories.filter(c => {
+                    if (paperListFilters.course_id !== "all") return c.parentId === paperListFilters.course_id;
+                    return c.parentId && c.parentId !== "";
+                  }).map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={paperListFilters.subject_id}
+                onValueChange={(v) => setPaperListFilters({ ...paperListFilters, subject_id: v, chapter_id: "all" })}
+                disabled={paperListFilters.level_id === "all"}
+              >
+                <SelectTrigger><SelectValue placeholder={paperListFilters.level_id === "all" ? "Select level first" : "Subject"} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Subjects</SelectItem>
+                  {paperListFilterSubjects.map((s: any) => (
+                    <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Select
+                value={paperListFilters.chapter_id}
+                onValueChange={(v) => setPaperListFilters({ ...paperListFilters, chapter_id: v })}
+                disabled={paperListFilters.subject_id === "all"}
+              >
+                <SelectTrigger><SelectValue placeholder={paperListFilters.subject_id === "all" ? "Select subject first" : "Chapter"} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All Chapters</SelectItem>
+                  {paperListFilterChapters.map((c: any) => (
+                    <SelectItem key={c.id || c.name} value={c.id || c.name}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <p className="text-xs font-semibold text-slate-500">
+              Showing {filteredTestPapers.length} of {testPapers.length} test papers
+            </p>
+          </div>
+
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4 2xl:grid-cols-5">
+          {filteredTestPapers.map((paper) => (
+            <div key={paper.id} className="bg-white p-3 rounded-xl border border-slate-200 shadow-sm space-y-2.5">
+              <div className="aspect-[16/7.5] overflow-hidden rounded-lg bg-slate-100">
                 {paper.thumbnailUrl ? (
                   <img
                     src={resolveUploadAssetUrl(paper.thumbnailUrl, paper.thumbnailUrl)}
@@ -959,7 +1114,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                   <div className="flex h-full w-full items-center justify-center text-xs font-bold text-slate-400">No Thumbnail</div>
                 )}
               </div>
-              <div className="flex justify-between items-start">
+              <div className="flex justify-between items-start gap-2">
                 <span className="text-[10px] font-bold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded uppercase tracking-wider">{paper.paperCode}</span>
                 <div className="flex gap-1">
                   <Button
@@ -971,21 +1126,51 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                   >
                     <Edit2 className="w-3 h-3" />
                   </Button>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 text-rose-600 hover:bg-rose-50 hover:text-rose-700"
+                    title="Delete test paper"
+                    onClick={() => handleDeletePaper(paper)}
+                    disabled={isLoading}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                  </Button>
                 </div>
               </div>
-              <h3 className="font-bold text-slate-900 line-clamp-2 leading-tight">{paper.title}</h3>
-              <div className="flex items-center gap-3 text-[11px] text-slate-500 font-medium">
+              <h3 className="text-sm font-bold text-slate-900 line-clamp-2 leading-tight">{paper.title}</h3>
+              <div className="flex flex-wrap gap-1">
+                {getCategoryName(paper.courseId) && (
+                  <span className="max-w-full truncate rounded-full bg-indigo-50 px-1.5 py-0.5 text-[9px] font-black text-indigo-700">{getCategoryName(paper.courseId)}</span>
+                )}
+                {getCategoryName(paper.levelId) && (
+                  <span className="max-w-full truncate rounded-full bg-sky-50 px-1.5 py-0.5 text-[9px] font-black text-sky-700">{getCategoryName(paper.levelId)}</span>
+                )}
+                {getSubjectName(paper.subjectId) && (
+                  <span className="max-w-full truncate rounded-full bg-emerald-50 px-1.5 py-0.5 text-[9px] font-black text-emerald-700">{getSubjectName(paper.subjectId)}</span>
+                )}
+                {getChapterName(paper.subjectId, paper.chapterId) && (
+                  <span className="max-w-full truncate rounded-full bg-amber-50 px-1.5 py-0.5 text-[9px] font-black text-amber-700">{getChapterName(paper.subjectId, paper.chapterId)}</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
                 <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {paper.totalTime}m</span>
                 <span className="flex items-center gap-1"><Check className="w-3 h-3" /> {paper.passingPercent}% Pass</span>
               </div>
               <div className="pt-2 border-t border-slate-50 flex justify-between items-center">
-                <span className="text-sm font-black text-slate-900">₹{paper.price.toLocaleString()}</span>
+                <span className="text-xs font-black text-slate-900">₹{paper.price.toLocaleString()}</span>
                 <span className={`text-[10px] font-bold px-2 py-0.5 rounded uppercase ${paper.isVisible ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-500'}`}>
                   {paper.isVisible ? 'Visible' : 'Hidden'}
                 </span>
               </div>
             </div>
           ))}
+          {filteredTestPapers.length === 0 && (
+            <div className="col-span-full rounded-xl border border-dashed border-slate-200 bg-white p-10 text-center text-sm font-semibold text-slate-500">
+              No test papers found for selected filters.
+            </div>
+          )}
+        </div>
         </div>
       )}
 
@@ -1005,7 +1190,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                 <p className="text-sm font-black text-slate-900">Academic Target</p>
                 <p className="text-xs text-slate-500">Select where extracted questions should be added before uploading.</p>
               </div>
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Course *</Label>
                   <Select
@@ -1126,7 +1311,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
             )}
           </div>
 
-          <DialogFooter className="p-4 border-t border-slate-100">
+          <DialogFooter className="border-t border-slate-100 bg-white px-6 py-4">
             <Button variant="ghost" onClick={() => closeExtractModal(false)}>Cancel</Button>
             {extractedPreview.length > 0 && (
               <Button onClick={saveExtracted} disabled={isLoading} className="bg-emerald-600 hover:bg-emerald-700 text-white font-bold">
@@ -1140,12 +1325,18 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
 
       {/* Manual Question Modal */}
       <Dialog open={manualModalOpen} onOpenChange={closeManualQuestionModal}>
-        <DialogContent className="max-w-2xl">
-          <DialogHeader>
-            <DialogTitle>{isEditingQuestion ? "Edit Question" : "Add Question Manually"}</DialogTitle>
+        <DialogContent className="max-w-5xl overflow-hidden p-0">
+          <DialogHeader className="border-b border-indigo-100 bg-gradient-to-r from-indigo-50 via-white to-amber-50 px-6 py-5">
+            <DialogTitle className="flex items-center gap-3 text-xl font-black text-slate-950">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-600 text-white shadow-sm">
+                {isEditingQuestion ? <Edit2 className="h-5 w-5" /> : <Plus className="h-5 w-5" />}
+              </span>
+              {isEditingQuestion ? "Edit Question" : "Add Question Manually"}
+            </DialogTitle>
+            <p className="text-sm font-semibold text-slate-500">Course, level, subject, chapter, math text and answer in one clean form.</p>
           </DialogHeader>
-          <div className="space-y-4 py-4 max-h-[70vh] overflow-y-auto pr-2">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="max-h-[72vh] space-y-5 overflow-y-auto bg-slate-50/70 px-6 py-5">
+            <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Course</Label>
                 <Select value={manualQuestion.course_id} onValueChange={(v) => setManualQuestion({ ...manualQuestion, course_id: v, level_id: "", subject_id: "", chapter_id: "" })}>
@@ -1175,7 +1366,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Subject</Label>
                 <Select 
@@ -1206,7 +1397,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between gap-3">
                 <Label>Question Text *</Label>
                 <div className="inline-flex rounded-lg border border-slate-200 bg-slate-50 p-1">
@@ -1239,7 +1430,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                 </div>
               )}
             </div>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Question Type</Label>
                 <Select value={manualQuestion.type} onValueChange={(v) => setManualQuestion({ ...manualQuestion, type: v })}>
@@ -1267,10 +1458,13 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
             </div>
 
             {["mcq", "msq"].includes(manualQuestion.type) && (
-              <div className="space-y-3 pt-2">
-                <Label>Options & Correct Answer</Label>
+              <div className="space-y-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+                <div className="flex items-center justify-between">
+                  <Label>Options & Correct Answer</Label>
+                  <span className="rounded-full bg-emerald-50 px-2.5 py-1 text-[10px] font-black uppercase tracking-wide text-emerald-700">Select correct</span>
+                </div>
                 {manualQuestion.options.map((opt: string, i: number) => (
-                  <div key={i} className="grid grid-cols-[1fr_auto] gap-3">
+                  <div key={i} className="grid grid-cols-[1fr_auto] items-center gap-3 rounded-xl border border-slate-100 bg-slate-50/60 p-2">
                     <div className="space-y-1">
                       {manualMathView === "latex" ? (
                         <Input
@@ -1301,7 +1495,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               </div>
             )}
 
-            <div className="space-y-2 pt-2">
+            <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <Label>Explanation (Optional)</Label>
               {manualMathView === "latex" ? (
                 <Input
@@ -1317,7 +1511,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               )}
             </div>
           </div>
-          <DialogFooter>
+          <DialogFooter className="border-t border-slate-100 bg-white px-6 py-4">
             <Button variant="ghost" onClick={() => closeManualQuestionModal(false)}>Cancel</Button>
             <Button onClick={handleSaveManual} disabled={isLoading} className="bg-indigo-600 hover:bg-indigo-700 text-white font-bold">
               {isLoading ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Check className="w-4 h-4 mr-2" />}
@@ -1328,13 +1522,19 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
       </Dialog>
       {/* Paper Create/Edit Modal */}
       <Dialog open={paperModalOpen} onOpenChange={closePaperModal}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-hidden flex flex-col">
-          <DialogHeader>
-            <DialogTitle>{selectedPaper ? "Edit Test Paper" : "Create New Test Paper"}</DialogTitle>
+        <DialogContent className="max-w-6xl max-h-[92vh] overflow-hidden flex flex-col p-0">
+          <DialogHeader className="border-b border-slate-200 bg-white px-6 py-5">
+            <DialogTitle className="flex items-center gap-3 text-xl font-black text-slate-950">
+              <span className="flex h-10 w-10 items-center justify-center rounded-2xl bg-indigo-50 text-indigo-700 ring-1 ring-indigo-100">
+                <FileText className="h-5 w-5" />
+              </span>
+              {selectedPaper ? "Edit Test Paper" : "Create New Test Paper"}
+            </DialogTitle>
+            <p className="text-sm font-semibold text-slate-500">Build paper details, dynamic academic filters and question assignment.</p>
           </DialogHeader>
 
-          <div className="flex-1 overflow-y-auto py-4 space-y-6">
-            <div className="grid grid-cols-2 gap-4">
+          <div className="flex-1 overflow-y-auto bg-slate-50/70 px-6 py-5 space-y-5">
+            <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Paper Code *</Label>
                 <Input 
@@ -1353,7 +1553,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               </div>
             </div>
 
-            <div className="space-y-2">
+            <div className="space-y-2 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
               <Label>Description</Label>
               <textarea 
                 className="w-full min-h-[80px] p-3 rounded-lg border border-slate-200 focus:ring-2 focus:ring-indigo-500 outline-none text-sm"
@@ -1363,7 +1563,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               />
             </div>
 
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
               <div className="space-y-2">
                 <Label>Nature</Label>
                 <Select 
@@ -1397,7 +1597,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-[220px_1fr]">
+            <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-[220px_1fr]">
               <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-50">
                 <div className="aspect-video w-full bg-slate-100">
                   {paperForm.thumbnail_url ? (
@@ -1436,7 +1636,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 pt-4 border-t border-slate-100">
+            <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-2">
               <div className="space-y-2">
                 <Label>Sale Price (₹) *</Label>
                 <Input 
@@ -1455,9 +1655,12 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-slate-100">
-              <Label className="text-indigo-600 font-black">Academic Structure</Label>
-              <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-4 rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm">
+              <div className="flex items-center gap-2">
+                <Filter className="h-4 w-4 text-indigo-600" />
+                <Label className="text-indigo-600 font-black">Dynamic Academic Filter</Label>
+              </div>
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
                 <div className="space-y-2">
                   <Label>Course</Label>
                   <Select 
@@ -1466,6 +1669,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                       setPaperForm({ ...paperForm, course_id: v, level_id: "", subject_id: "", chapter_id: "" });
                       setSelectedPaperChapterIds([]);
                       setSelectedQuestionIds([]);
+                      setPaperQuestionFilters({ search: "", difficulty: "all", type: "all" });
                     }}
                   >
                     <SelectTrigger>
@@ -1486,6 +1690,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                       setPaperForm({ ...paperForm, level_id: v, subject_id: "", chapter_id: "" });
                       setSelectedPaperChapterIds([]);
                       setSelectedQuestionIds([]);
+                      setPaperQuestionFilters({ search: "", difficulty: "all", type: "all" });
                     }}
                   >
                     <SelectTrigger>
@@ -1512,6 +1717,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                       setPaperForm({ ...paperForm, subject_id: v, chapter_id: "" });
                       setSelectedPaperChapterIds([]);
                       setSelectedQuestionIds([]);
+                      setPaperQuestionFilters({ search: "", difficulty: "all", type: "all" });
                     }}
                     disabled={!paperForm.level_id}
                   >
@@ -1551,7 +1757,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               </div>
             </div>
 
-            <div className="space-y-4 pt-4 border-t border-slate-100">
+            <div className="space-y-4 rounded-2xl border border-emerald-100 bg-white p-4 shadow-sm">
               <div className="flex items-center justify-between">
                 <div>
                   <Label className="text-emerald-600 font-black">Question Selection</Label>
@@ -1579,6 +1785,55 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                     Auto Assign Questions
                   </Button>
                 </div>
+              </div>
+              <div className="grid grid-cols-1 gap-3 rounded-xl border border-slate-200 bg-slate-50/80 p-3 md:grid-cols-[1fr_160px_160px_auto]">
+                <div className="relative">
+                  <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  <Input
+                    placeholder="Filter questions by text..."
+                    className="h-10 bg-white pl-10"
+                    value={paperQuestionFilters.search}
+                    onChange={(e) => setPaperQuestionFilters({ ...paperQuestionFilters, search: e.target.value })}
+                  />
+                </div>
+                <Select
+                  value={paperQuestionFilters.difficulty}
+                  onValueChange={(v) => setPaperQuestionFilters({ ...paperQuestionFilters, difficulty: v })}
+                >
+                  <SelectTrigger className="h-10 bg-white">
+                    <SelectValue placeholder="Difficulty" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Difficulty</SelectItem>
+                    <SelectItem value="easy">Easy</SelectItem>
+                    <SelectItem value="medium">Medium</SelectItem>
+                    <SelectItem value="hard">Hard</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Select
+                  value={paperQuestionFilters.type}
+                  onValueChange={(v) => setPaperQuestionFilters({ ...paperQuestionFilters, type: v })}
+                >
+                  <SelectTrigger className="h-10 bg-white">
+                    <SelectValue placeholder="Type" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">All Types</SelectItem>
+                    <SelectItem value="mcq">MCQ</SelectItem>
+                    <SelectItem value="msq">MSQ</SelectItem>
+                    <SelectItem value="tf">True/False</SelectItem>
+                    <SelectItem value="short">Short</SelectItem>
+                    <SelectItem value="fill">Fill</SelectItem>
+                  </SelectContent>
+                </Select>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  className="h-10"
+                  onClick={() => setPaperQuestionFilters({ search: "", difficulty: "all", type: "all" })}
+                >
+                  Clear
+                </Button>
               </div>
               <div className="max-h-60 overflow-y-auto border border-slate-200 rounded-xl divide-y divide-slate-100">
                 {paperQuestionPool.map((q) => (
@@ -1616,7 +1871,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
             </div>
           </div>
 
-          <DialogFooter className="p-4 border-t border-slate-100">
+          <DialogFooter className="border-t border-slate-100 bg-white px-6 py-4">
             <Button variant="ghost" onClick={() => closePaperModal(false)}>Cancel</Button>
             <Button 
               onClick={handleCreatePaper} 

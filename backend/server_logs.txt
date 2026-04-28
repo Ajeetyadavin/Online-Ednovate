@@ -13547,3 +13547,12 @@ Restarting 'server/index.js'
 Node API running on http://localhost:4000
 Try /api/health and /api/db-check
 Completed running 'server/index.js'. Waiting for file changes before restarting...
+Restarting 'server/index.js'
+[dotenv@17.3.1] injecting env (0) from .env -- tip: 🔐 encrypt with Dotenvx: https://dotenvx.com
+[dotenv@17.3.1] injecting env (31) from ../.env -- tip: ⚡️ secrets for agents: https://dotenvx.com/as2
+[DEBUG] Backend CWD: /Users/ajeet/online app 2/Online-Ednovate/backend
+[DEBUG] ADMIN_EMAIL: admin@ednovate.com
+[DEBUG] CORS_ORIGIN: http://localhost:8080,http://localhost:8081,http://localhost:8082,http://localhost:8083,http://localhost:8084,http://localhost:8085,http://127.0.0.1:8080,http://127.0.0.1:8081,http://127.0.0.1:8082,http://127.0.0.1:8083,http://127.0.0.1:8084,http://127.0.0.1:8085,http://192.168.0.104:8080,http://localhost:9090,http://127.0.0.1:9090
+Node API running on http://localhost:4000
+Try /api/health and /api/db-check
+Completed running 'server/index.js'. Waiting for file changes before restarting...

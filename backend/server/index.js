@@ -7541,6 +7541,34 @@ app.post("/api/admin/crackit/papers", requireAdminPermission("crackit", "edit"),
   }
 });
 
+app.delete("/api/admin/crackit/papers/:id", requireAdminPermission("crackit", "edit"), async (request, response) => {
+  const paperId = String(request.params.id || "").trim();
+  if (!paperId) {
+    response.status(400).json({ message: "Paper id is required" });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+    await client.query("DELETE FROM student_test_access WHERE paper_id = $1", [paperId]);
+    await client.query("DELETE FROM crackit_paper_questions WHERE paper_id = $1", [paperId]);
+    const deleted = await client.query("DELETE FROM crackit_papers WHERE id = $1 RETURNING id", [paperId]);
+    if (deleted.rowCount === 0) {
+      await client.query("ROLLBACK");
+      response.status(404).json({ message: "Test paper not found" });
+      return;
+    }
+    await client.query("COMMIT");
+    response.json({ ok: true, id: paperId });
+  } catch (error) {
+    await client.query("ROLLBACK");
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete paper" });
+  } finally {
+    client.release();
+  }
+});
+
 app.get("/api/courses/:id/curriculum", async (request, response) => {
   try {
     const result = await pool.query(
