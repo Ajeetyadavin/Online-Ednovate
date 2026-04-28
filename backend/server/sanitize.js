@@ -569,6 +569,15 @@ export const maskSensitiveSettings = (settings) => {
       }
     }
   }
+
+  // Mask AI provider API keys
+  if (masked.aiExtraction && typeof masked.aiExtraction === 'object') {
+    ['geminiApiKey', 'grokApiKey', 'openRouterApiKey'].forEach((key) => {
+      if (masked.aiExtraction[key] && String(masked.aiExtraction[key]).trim()) {
+        masked.aiExtraction[key] = '••••••';
+      }
+    });
+  }
   
   return masked;
 };
@@ -638,6 +647,19 @@ export const processIncomingSettings = (incoming, existing) => {
       keepExistingSecret('hdfc', 'accessCode');
       keepExistingSecret('hdfc', 'workingKey');
     }
+  }
+
+  if (processed.aiExtraction && typeof processed.aiExtraction === 'object') {
+    ['geminiApiKey', 'grokApiKey', 'openRouterApiKey'].forEach((key) => {
+      const incomingValue = processed.aiExtraction[key];
+      const existingValue = existing?.aiExtraction?.[key];
+
+      if (!incomingValue || incomingValue === '••••••' || incomingValue === '******') {
+        processed.aiExtraction[key] = existingValue || '';
+      } else {
+        processed.aiExtraction[key] = encryptPassword(incomingValue);
+      }
+    });
   }
   
   return processed;

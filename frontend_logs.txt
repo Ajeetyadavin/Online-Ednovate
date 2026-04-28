@@ -1,0 +1,768 @@
+
+> online-ednovate-frontend@0.0.0 dev
+> vite
+
+
+  VITE v5.4.19  ready in 345 ms
+
+  ➜  Local:   http://localhost:8080/
+  ➜  Network: http://192.168.1.102:8080/
+Browserslist: browsers data (caniuse-lite) is 10 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+6:51:19 PM [vite] hmr update /src/index.css
+6:51:26 PM [vite] hmr update /src/pages/admin/AdminLayout.tsx, /src/index.css
+6:53:27 PM [vite] hmr update /src/components/AnnouncementBar.tsx, /src/index.css
+6:53:37 PM [vite] hmr update /src/components/WhyChooseUs.tsx, /src/index.css
+6:53:46 PM [vite] hmr update /src/components/PopularCourses.tsx, /src/index.css
+6:54:04 PM [vite] hmr update /src/components/FacultySection.tsx, /src/index.css
+6:54:27 PM [vite] hmr update /src/components/HowItWorks.tsx, /src/index.css
+6:54:43 PM [vite] hmr update /src/components/FAQ.tsx, /src/index.css
+6:54:52 PM [vite] hmr update /src/components/Testimonials.tsx, /src/index.css
+6:55:04 PM [vite] hmr update /src/components/Header.tsx, /src/index.css
+6:55:12 PM [vite] hmr update /src/components/Header.tsx, /src/index.css
+6:57:19 PM [vite] hmr update /src/pages/TestSeries.tsx, /src/index.css
+6:57:26 PM [vite] hmr update /src/pages/TestSeries.tsx, /src/index.css
+7:12:14 PM [vite] hmr update /src/pages/TestSeries.tsx, /src/index.css
+7:13:22 PM [vite] hmr update /src/pages/TestSeries.tsx, /src/index.css
+7:17:20 PM [vite] hmr update /src/components/TestPaperCard.tsx, /src/index.css
+7:17:26 PM [vite] hmr update /src/components/TestPaperCard.tsx, /src/index.css
+7:25:06 PM [vite] hmr update /src/pages/admin/AdminDashboard.tsx, /src/index.css
+7:25:12 PM [vite] hmr update /src/pages/admin/AdminOrders.tsx, /src/index.css
+7:25:20 PM [vite] hmr update /src/pages/admin/AdminMarketing.tsx, /src/index.css
+7:25:27 PM [vite] hmr update /src/pages/admin/AdminMasters.tsx, /src/index.css
+7:25:42 PM [vite] hmr update /src/components/CourseCard.tsx, /src/index.css
+7:25:53 PM [vite] hmr update /src/components/TestPaperCard.tsx, /src/index.css
+7:28:04 PM [vite] hmr update /src/components/CourseCard.tsx, /src/index.css
+7:28:21 PM [vite] hmr update /src/components/TestPaperCard.tsx, /src/index.css
+7:30:44 PM [vite] hmr update /src/pages/CourseDetails.tsx, /src/index.css
+7:31:44 PM [vite] hmr update /src/pages/CourseDetails.tsx, /src/index.css
+7:35:25 PM [vite] hmr update /src/components/CourseCard.tsx, /src/index.css
+7:36:13 PM [vite] hmr update /src/App.css
+11:49:40 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+11:49:56 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+11:51:55 PM [vite] hmr update /src/context/PlatformDataContext.tsx, /src/index.css
+11:51:55 PM [vite] hmr invalidate /src/context/PlatformDataContext.tsx Could not Fast Refresh ("usePlatformData" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+11:51:55 PM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Packages.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/TestSeries.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminLayout.tsx, /src/pages/admin/AdminDashboard.tsx, /src/pages/admin/AdminCourseContent.tsx, /src/pages/admin/AdminOrders.tsx, /src/pages/admin/AdminAnnouncements.tsx, /src/pages/admin/AdminHeader.tsx, /src/pages/admin/AdminUsers.tsx, /src/pages/admin/AdminHomepage.tsx, /src/pages/admin/AdminCoupons.tsx, /src/pages/admin/AdminCourses.tsx, /src/pages/admin/AdminCrackIt.tsx, /src/pages/CourseCollection.tsx, /src/components/HeroBanner.tsx, /src/components/AnnouncementBar.tsx, /src/components/MarketingPopupEngine.tsx, /src/components/PopularCourses.tsx, /src/components/Testimonials.tsx, /src/components/DynamicHomepageSection.tsx, /src/components/Footer.tsx, /src/pages/admin/AdminHomepageSectionBuilder.tsx
+11:51:59 PM [vite] hmr update /src/context/PlatformDataContext.tsx, /src/index.css
+11:51:59 PM [vite] hmr invalidate /src/context/PlatformDataContext.tsx Could not Fast Refresh ("usePlatformData" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+11:51:59 PM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Packages.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/TestSeries.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminLayout.tsx, /src/pages/admin/AdminDashboard.tsx, /src/pages/admin/AdminCourseContent.tsx, /src/pages/admin/AdminOrders.tsx, /src/pages/admin/AdminAnnouncements.tsx, /src/pages/admin/AdminHeader.tsx, /src/pages/admin/AdminUsers.tsx, /src/pages/admin/AdminHomepage.tsx, /src/pages/admin/AdminCoupons.tsx, /src/pages/admin/AdminCourses.tsx, /src/pages/admin/AdminCrackIt.tsx, /src/pages/CourseCollection.tsx, /src/components/HeroBanner.tsx, /src/components/AnnouncementBar.tsx, /src/components/MarketingPopupEngine.tsx, /src/components/PopularCourses.tsx, /src/components/Testimonials.tsx, /src/components/DynamicHomepageSection.tsx, /src/components/Footer.tsx, /src/pages/admin/AdminHomepageSectionBuilder.tsx
+11:52:17 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+11:52:28 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+11:52:35 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+11:56:04 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+11:56:33 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+11:59:28 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+11:59:45 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+11:59:57 PM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:00:10 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:00:23 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:06:43 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:06:47 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:06:55 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:07:01 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:07:05 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:07:13 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:07:54 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:07:59 AM [vite] hmr update /src/index.css, /src/pages/ContactUs.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminLayout.tsx, /src/pages/admin/AdminDashboard.tsx, /src/pages/admin/AdminBunnyVideo.tsx, /src/pages/admin/AdminCourseContent.tsx, /src/pages/admin/AdminOrders.tsx, /src/pages/admin/AdminAnnouncements.tsx, /src/pages/admin/AdminTechnicalSupport.tsx, /src/pages/admin/AdminHeader.tsx, /src/pages/admin/AdminUsers.tsx, /src/pages/admin/AdminSubAdmins.tsx, /src/pages/admin/AdminHomepage.tsx, /src/pages/admin/AdminMarketing.tsx, /src/pages/admin/AdminLeads.tsx, /src/pages/admin/AdminCoupons.tsx, /src/pages/admin/AdminFaculty.tsx, /src/pages/admin/AdminCourses.tsx, /src/pages/admin/AdminMasters.tsx, /src/pages/admin/AdminLogs.tsx, /src/pages/admin/AdminSettings.tsx, /src/pages/admin/AdminHomepageSectionBuilder.tsx, /src/components/EnquiryModal.tsx
+12:12:48 AM [vite] hmr update /src/index.css, /src/pages/ContactUs.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminLayout.tsx, /src/pages/admin/AdminDashboard.tsx, /src/pages/admin/AdminBunnyVideo.tsx, /src/pages/admin/AdminCourseContent.tsx, /src/pages/admin/AdminOrders.tsx, /src/pages/admin/AdminAnnouncements.tsx, /src/pages/admin/AdminTechnicalSupport.tsx, /src/pages/admin/AdminHeader.tsx, /src/pages/admin/AdminUsers.tsx, /src/pages/admin/AdminSubAdmins.tsx, /src/pages/admin/AdminHomepage.tsx, /src/pages/admin/AdminMarketing.tsx, /src/pages/admin/AdminLeads.tsx, /src/pages/admin/AdminCoupons.tsx, /src/pages/admin/AdminFaculty.tsx, /src/pages/admin/AdminCourses.tsx, /src/pages/admin/AdminMasters.tsx, /src/pages/admin/AdminLogs.tsx, /src/pages/admin/AdminSettings.tsx, /src/pages/admin/AdminHomepageSectionBuilder.tsx, /src/components/EnquiryModal.tsx
+12:12:53 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:13:02 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:13:06 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:13:28 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:13:42 AM [vite] hmr update /src/pages/admin/AdminSettings.tsx, /src/index.css
+12:23:48 AM [vite] http proxy error: /api/auth/student/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:23:48 AM [vite] http proxy error: /api/admin/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:23:48 AM [vite] http proxy error: /api/auth/student/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:23:48 AM [vite] http proxy error: /api/admin/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:25:27 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:27:25 AM [vite] http proxy error: /api/admin/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:27:25 AM [vite] http proxy error: /api/admin/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:32:35 AM [vite] http proxy error: /api/admin/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:32:35 AM [vite] http proxy error: /api/admin/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:32:45 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:32:53 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:33:53 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:33:58 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:34:05 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:35:33 AM [vite] http proxy error: /api/admin/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:35:33 AM [vite] http proxy error: /api/admin/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:07 AM [vite] http proxy error: /api/admin/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:08 AM [vite] http proxy error: /api/admin/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:08 AM [vite] http proxy error: /api/marketing/active?path=%2F&sessionId=mkt-1777215384249-88505&pageSeconds=3005
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:08 AM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:08 AM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:08 AM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:08 AM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:08 AM [vite] http proxy error: /api/marketing/active?path=%2Ftest-series&sessionId=mkt-1777214491891-95706&pageSeconds=3005
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:08 AM [vite] http proxy error: /api/marketing/active?path=%2Fpackages&sessionId=mkt-1777296536089-9767&pageSeconds=3005
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:42:08 AM [vite] http proxy error: /api/marketing/active?path=%2Fpackages&sessionId=mkt-1777295845898-72395&pageSeconds=3005
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:48:33 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:48:41 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:50:19 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:50:42 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:53:45 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+12:53:49 AM [vite] ✨ new dependencies optimized: katex
+12:53:49 AM [vite] ✨ optimized dependencies changed. reloading
+12:54:03 AM [vite] http proxy error: /api/admin/banners
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/admin/announcements
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/admin/testimonials
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/admin/platform-settings
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/admin/categories
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/courses
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/admin/crackit/papers
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/admin/coupons
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/platform-settings
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/admin/crackit/questions
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/admin/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:03 AM [vite] http proxy error: /api/admin/announcements
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:05 AM [vite] http proxy error: /api/admin/banners
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:06 AM [vite] http proxy error: /api/admin/testimonials
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:06 AM [vite] http proxy error: /api/courses
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:06 AM [vite] http proxy error: /api/admin/categories
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:06 AM [vite] http proxy error: /api/admin/crackit/papers
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:06 AM [vite] http proxy error: /api/admin/coupons
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:54:07 AM [vite] http proxy error: /api/admin/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+1:07:51 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:08:11 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:08:15 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:08:34 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:08:48 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:09:03 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:09:14 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:15:00 AM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+1:15:25 AM [vite] hmr update /src/context/PlatformDataContext.tsx, /src/index.css
+1:15:26 AM [vite] hmr invalidate /src/context/PlatformDataContext.tsx Could not Fast Refresh ("usePlatformData" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+1:15:26 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Packages.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/TestSeries.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminLayout.tsx, /src/pages/admin/AdminDashboard.tsx, /src/pages/admin/AdminCourseContent.tsx, /src/pages/admin/AdminOrders.tsx, /src/pages/admin/AdminAnnouncements.tsx, /src/pages/admin/AdminHeader.tsx, /src/pages/admin/AdminUsers.tsx, /src/pages/admin/AdminHomepage.tsx, /src/pages/admin/AdminCoupons.tsx, /src/pages/admin/AdminCourses.tsx, /src/pages/admin/AdminCrackIt.tsx, /src/pages/CourseCollection.tsx, /src/components/HeroBanner.tsx, /src/components/AnnouncementBar.tsx, /src/components/MarketingPopupEngine.tsx, /src/components/PopularCourses.tsx, /src/components/Testimonials.tsx, /src/components/DynamicHomepageSection.tsx, /src/components/Footer.tsx, /src/pages/admin/AdminHomepageSectionBuilder.tsx
+1:15:32 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:15:42 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:15:46 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:16:00 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:16:06 AM [vite] hmr update /src/pages/admin/AdminCrackIt.tsx, /src/index.css
+1:23:36 AM [vite] hmr update /src/components/TestPaperCard.tsx, /src/index.css
+1:26:14 AM [vite] hmr update /src/components/TestPaperCard.tsx, /src/index.css
+1:27:11 AM [vite] hmr update /src/App.tsx, /src/index.css
+1:29:49 AM [vite] hmr update /src/pages/TestPaperDetails.tsx, /src/index.css
+1:31:31 AM [vite] hmr update /src/context/PlatformDataContext.tsx, /src/index.css
+1:31:31 AM [vite] hmr invalidate /src/context/PlatformDataContext.tsx Could not Fast Refresh ("usePlatformData" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+1:31:31 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Packages.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/TestSeries.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminLayout.tsx, /src/pages/admin/AdminDashboard.tsx, /src/pages/admin/AdminCourseContent.tsx, /src/pages/admin/AdminOrders.tsx, /src/pages/admin/AdminAnnouncements.tsx, /src/pages/admin/AdminHeader.tsx, /src/pages/admin/AdminUsers.tsx, /src/pages/admin/AdminHomepage.tsx, /src/pages/admin/AdminCoupons.tsx, /src/pages/admin/AdminCourses.tsx, /src/pages/admin/AdminCrackIt.tsx, /src/pages/CourseCollection.tsx, /src/components/HeroBanner.tsx, /src/components/AnnouncementBar.tsx, /src/components/MarketingPopupEngine.tsx, /src/components/PopularCourses.tsx, /src/components/Testimonials.tsx, /src/components/DynamicHomepageSection.tsx, /src/components/Footer.tsx, /src/pages/admin/AdminHomepageSectionBuilder.tsx, /src/pages/TestPaperDetails.tsx
+1:35:38 AM [vite] hmr update /src/components/TestPaperCard.tsx, /src/index.css
+1:35:40 AM [vite] hmr update /src/pages/TestSeries.tsx, /src/index.css
+1:39:45 AM [vite] hmr update /src/components/TestPaperCard.tsx, /src/index.css
+1:43:07 AM [vite] hmr update /src/pages/TestPaperDetails.tsx, /src/index.css
+1:44:19 AM [vite] hmr update /src/pages/TestPaperDetails.tsx, /src/index.css
+1:46:32 AM [vite] hmr update /src/components/Header.tsx, /src/index.css
+1:49:09 AM [vite] hmr update /src/components/MobileStickyFooter.tsx, /src/index.css
+1:51:54 AM [vite] hmr update /src/pages/CourseDetails.tsx, /src/index.css
+1:52:04 AM [vite] hmr update /src/pages/TestPaperDetails.tsx, /src/index.css
+1:57:00 AM [vite] hmr update /src/context/CartContext.tsx, /src/index.css
+1:57:01 AM [vite] hmr invalidate /src/context/CartContext.tsx Could not Fast Refresh ("useCart" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+1:57:01 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminDashboard.tsx, /src/components/CourseCard.tsx, /src/components/TestPaperCard.tsx, /src/components/CartDrawer.tsx, /src/pages/TestPaperDetails.tsx
+1:57:07 AM [vite] hmr update /src/context/CartContext.tsx, /src/index.css
+1:57:07 AM [vite] hmr invalidate /src/context/CartContext.tsx Could not Fast Refresh ("useCart" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+1:57:07 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminDashboard.tsx, /src/components/CourseCard.tsx, /src/components/TestPaperCard.tsx, /src/components/CartDrawer.tsx, /src/pages/TestPaperDetails.tsx
+1:57:27 AM [vite] hmr update /src/context/CartContext.tsx, /src/index.css
+1:57:27 AM [vite] hmr invalidate /src/context/CartContext.tsx Could not Fast Refresh ("useCart" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+1:57:27 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminDashboard.tsx, /src/components/CourseCard.tsx, /src/components/TestPaperCard.tsx, /src/components/CartDrawer.tsx, /src/pages/TestPaperDetails.tsx
+1:57:37 AM [vite] hmr update /src/context/CartContext.tsx, /src/index.css
+1:57:38 AM [vite] hmr invalidate /src/context/CartContext.tsx Could not Fast Refresh ("useCart" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+1:57:38 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminDashboard.tsx, /src/components/CourseCard.tsx, /src/components/TestPaperCard.tsx, /src/components/CartDrawer.tsx, /src/pages/TestPaperDetails.tsx
+1:57:43 AM [vite] hmr update /src/context/CartContext.tsx, /src/index.css
+1:57:43 AM [vite] hmr invalidate /src/context/CartContext.tsx Could not Fast Refresh ("useCart" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+1:57:43 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminDashboard.tsx, /src/components/CourseCard.tsx, /src/components/TestPaperCard.tsx, /src/components/CartDrawer.tsx, /src/pages/TestPaperDetails.tsx
+1:57:51 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+1:58:23 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+1:59:04 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+1:59:10 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:01:43 AM [vite] hmr update /src/context/CartContext.tsx, /src/index.css
+2:01:43 AM [vite] hmr invalidate /src/context/CartContext.tsx Could not Fast Refresh ("useCart" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+2:01:43 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminDashboard.tsx, /src/components/CourseCard.tsx, /src/components/TestPaperCard.tsx, /src/components/CartDrawer.tsx, /src/pages/TestPaperDetails.tsx
+2:02:09 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:02:15 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:02:52 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:04:48 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:05:38 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:06:09 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:08:50 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:10:49 AM [vite] hmr update /src/pages/CourseAbout.tsx, /src/index.css
+2:11:25 AM [vite] hmr update /src/pages/CourseAbout.tsx, /src/index.css
+2:13:03 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:15:08 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:15:59 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:16:31 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:19:19 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:21:02 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:21:21 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:23:08 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:25:12 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:25:29 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:27:04 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:27:05 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:05 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:05 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:05 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:05 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:05 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:05 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:05 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:16 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:27:16 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:16 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:16 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:16 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:16 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:16 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:16 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:16 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:16 AM [vite] Internal server error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+  Plugin: vite:react-swc
+  File: /Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx
+  
+2:27:23 AM [vite] Pre-transform error:   x Expected ';', got ')'
+     ,-[/Users/ajeet/online app 2/Online-Ednovate/frontend/src/pages/Dashboard.tsx:290:1]
+ 287 |           title: String(chapter.title || "Chapter").trim(),
+ 288 |           videoCount: lessons.filter((lesson) => lesson.type === "video").length,
+ 289 |         };
+ 290 |       }));
+     :         ^
+ 291 |   }, [getCurriculumForCourse, selectedCourseAbout]);
+ 292 | 
+ 293 |   const selectedCourseVideoCount = selectedCourseChapters.reduce((sum, chapter) => sum + chapter.videoCount, 0);
+     `----
+
+
+Caused by:
+    Syntax Error
+2:27:28 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:28:30 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:33:07 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:33:14 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:33:23 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:33:23 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:33:36 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:33:41 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:33:50 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:34:37 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:38:02 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:39:40 AM [vite] hmr update /src/App.tsx, /src/index.css
+2:39:46 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:39:52 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:39:56 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:40:09 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:40:14 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:40:19 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:40:50 AM [vite] hmr update /src/App.tsx, /src/index.css
+2:49:40 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+2:50:24 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+2:52:42 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+2:54:46 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+2:56:00 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+2:58:53 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+2:58:58 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:59:20 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+2:59:29 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+3:03:02 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+3:03:11 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+3:05:21 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+3:06:35 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+3:09:32 AM [vite] http proxy error: /api/auth/student/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+3:09:32 AM [vite] http proxy error: /api/auth/student/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+3:09:34 AM [vite] http proxy error: /api/admin/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+3:09:34 AM [vite] http proxy error: /api/admin/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+3:09:45 AM [vite] hmr update /src/index.css, /src/pages/Login.tsx, /src/pages/ForgotPassword.tsx, /src/pages/TechnicalSupport.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseLMS.tsx, /src/context/CartContext.tsx, /src/context/AuthContext.tsx, /src/components/LoginModal.tsx, /src/components/MarketingPopupEngine.tsx
+3:09:46 AM [vite] hmr invalidate /src/context/CartContext.tsx Could not Fast Refresh ("useCart" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+3:09:46 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminDashboard.tsx, /src/components/CourseCard.tsx, /src/components/TestPaperCard.tsx, /src/components/CartDrawer.tsx, /src/pages/TestPaperDetails.tsx, /src/pages/TestAttempt.tsx
+3:09:46 AM [vite] hmr invalidate /src/context/AuthContext.tsx Could not Fast Refresh ("useAuth" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+3:09:46 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Login.tsx, /src/pages/Checkout.tsx, /src/pages/Signup.tsx, /src/pages/TechnicalSupport.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/context/CartContext.tsx, /src/pages/admin/AdminUsers.tsx, /src/components/MobileStickyFooter.tsx, /src/components/Header.tsx, /src/components/LoginModal.tsx, /src/components/CartDrawer.tsx, /src/pages/TestAttempt.tsx
+3:09:47 AM [vite] hmr invalidate /src/context/CartContext.tsx Could not Fast Refresh ("useCart" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+3:09:47 AM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminDashboard.tsx, /src/components/CourseCard.tsx, /src/components/TestPaperCard.tsx, /src/components/CartDrawer.tsx, /src/pages/TestPaperDetails.tsx, /src/pages/TestAttempt.tsx
+3:09:53 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+3:10:05 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+3:11:55 AM [vite] hmr update /src/pages/Dashboard.tsx, /src/index.css
+3:12:10 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+3:12:15 AM [vite] hmr update /src/pages/TestAttempt.tsx, /src/index.css
+12:11:12 PM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:12 PM [vite] http proxy error: /api/marketing/active?path=%2F&sessionId=mkt-1777215384249-88505&pageSeconds=60
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:13 PM [vite] http proxy error: /api/admin/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:13 PM [vite] http proxy error: /api/admin/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:42 PM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:42 PM [vite] http proxy error: /api/marketing/active?path=%2F&sessionId=mkt-1777215384249-88505&pageSeconds=90
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:47 PM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:47 PM [vite] http proxy error: /api/marketing/active?path=%2Fpackages&sessionId=mkt-1777295845898-72395&pageSeconds=25304
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:47 PM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:47 PM [vite] http proxy error: /api/marketing/active?path=%2Fpackages&sessionId=mkt-1777296536089-9767&pageSeconds=25305
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:47 PM [vite] http proxy error: /api/admin/session-status
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:47 PM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:11:47 PM [vite] http proxy error: /api/admin/logout
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:44:04 PM [vite] http proxy error: /api/marketing/active?path=%2Ftest-series&sessionId=mkt-1777214491891-95706&pageSeconds=75
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:44:19 PM [vite] http proxy error: /api/health
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+12:44:19 PM [vite] http proxy error: /api/marketing/active?path=%2Ftest-series&sessionId=mkt-1777214491891-95706&pageSeconds=90
+AggregateError [ECONNREFUSED]: 
+    at internalConnectMultiple (node:net:1134:18)
+    at afterConnectMultiple (node:net:1715:7)
+1:37:10 PM [vite] hmr update /src/context/PlatformDataContext.tsx, /src/index.css
+1:37:11 PM [vite] hmr invalidate /src/context/PlatformDataContext.tsx Could not Fast Refresh ("usePlatformData" export is incompatible). Learn more at https://github.com/vitejs/vite-plugin-react/tree/main/packages/plugin-react-swc#consistent-components-exports
+1:37:11 PM [vite] hmr update /src/App.tsx, /src/index.css, /src/pages/Checkout.tsx, /src/pages/Packages.tsx, /src/pages/Dashboard.tsx, /src/pages/CourseAbout.tsx, /src/pages/CourseDetails.tsx, /src/pages/TestSeries.tsx, /src/pages/CourseLMS.tsx, /src/pages/admin/AdminLayout.tsx, /src/pages/admin/AdminDashboard.tsx, /src/pages/admin/AdminCourseContent.tsx, /src/pages/admin/AdminOrders.tsx, /src/pages/admin/AdminAnnouncements.tsx, /src/pages/admin/AdminHeader.tsx, /src/pages/admin/AdminUsers.tsx, /src/pages/admin/AdminHomepage.tsx, /src/pages/admin/AdminCoupons.tsx, /src/pages/admin/AdminCourses.tsx, /src/pages/admin/AdminCrackIt.tsx, /src/pages/CourseCollection.tsx, /src/components/HeroBanner.tsx, /src/components/AnnouncementBar.tsx, /src/components/MarketingPopupEngine.tsx, /src/components/PopularCourses.tsx, /src/components/Testimonials.tsx, /src/components/DynamicHomepageSection.tsx, /src/components/Footer.tsx, /src/pages/admin/AdminHomepageSectionBuilder.tsx, /src/pages/TestPaperDetails.tsx, /src/pages/TestAttempt.tsx

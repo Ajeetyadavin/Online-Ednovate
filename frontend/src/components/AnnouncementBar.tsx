@@ -74,7 +74,7 @@ const AnnouncementBar = () => {
         }
       `}</style>
 
-      <section className="bg-background py-2 mt-2 sm:mt-0">
+      <section className="bg-background">
         <div
           className="announcement-bar-wrap"
           style={{

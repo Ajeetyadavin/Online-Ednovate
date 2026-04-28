@@ -19,7 +19,8 @@ export type AdminSidebarIconName =
   | "settings"
   | "subadmins"
   | "logs"
-  | "apis";
+  | "apis"
+  | "crackit";
 
 export interface AdminSidebarDefinition {
   id: string;
@@ -60,6 +61,9 @@ export const ADMIN_SIDEBAR_DEFINITIONS: AdminSidebarDefinition[] = [
   { id: "marketing", to: "/admin/marketing", defaultLabel: "Marketing", moduleKey: "marketing", iconName: "marketing" },
   { id: "logs", to: "/admin/logs", defaultLabel: "Reports", moduleKey: "logs", iconName: "logs" },
   { id: "apis", to: "/admin/apis", defaultLabel: "API Module", moduleKey: "settings", iconName: "apis" },
+  { id: "crackit", to: "/admin/crackit/questions", defaultLabel: "Crack It", moduleKey: "crackit", iconName: "crackit" },
+  { id: "crackit-questions", to: "/admin/crackit/questions", defaultLabel: "Question Bank", moduleKey: "crackit", iconName: "crackit" },
+  { id: "crackit-papers", to: "/admin/crackit/papers", defaultLabel: "Create Paper", moduleKey: "crackit", iconName: "crackit" },
 ];
 
 const withSortedOrder = (items: AdminSidebarItemConfig[]): AdminSidebarItemConfig[] =>

@@ -8,7 +8,9 @@ import {
   ChevronDown,
   ChevronRight,
   Clock,
+  Download,
   Eye,
+  IndianRupee,
   Layers,
   Lock,
   Package,
@@ -207,6 +209,99 @@ export default function CourseAbout() {
     navigate(`/learn/${course.id}`);
   };
 
+  const downloadCourseInvoice = () => {
+    if (!latestOrder) return;
+    const taxableAmount = Math.max(0, Number(latestOrder.amount || 0));
+    const taxAmount = 0;
+    const totalAmount = taxableAmount + taxAmount;
+    const invoiceDate = latestOrder.orderDate ? new Date(latestOrder.orderDate).toLocaleDateString("en-IN") : new Date().toLocaleDateString("en-IN");
+    const invoiceNo = String(latestOrder.orderId || `INV-${latestOrder.id}`);
+    const billingAddress = [
+      latestOrder.shippingAddressLine1,
+      latestOrder.shippingAddressLine2,
+      latestOrder.shippingCity,
+      latestOrder.shippingState,
+      latestOrder.shippingCountry,
+      latestOrder.shippingPincode,
+    ].map((item) => String(item || "").trim()).filter(Boolean).join(", ") || "Address unavailable";
+    const details = [
+      latestOrder.itemType ? `Type: ${latestOrder.itemType}` : "",
+      latestOrder.modeLabel ? `Mode: ${latestOrder.modeLabel}` : "",
+      latestOrder.bookLabel ? `Book: ${latestOrder.bookLabel}` : "",
+    ].filter(Boolean).join(" | ");
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Invoice-${invoiceNo}</title>
+  <style>
+    @page { size: A4; margin: 10mm; }
+    html, body { margin: 0; padding: 0; }
+  </style>
+</head>
+<body style="font-family:Arial,sans-serif;background:#e5e7eb;padding:24px;color:#111827;">
+  <div style="width:210mm;min-height:297mm;box-sizing:border-box;margin:0 auto;background:#ffffff;border:1px solid #9ca3af;box-shadow:0 4px 14px rgba(15,23,42,.08);padding:12mm;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
+      <div>
+        <img src="${window.location.origin}/ednovate-logo.png" alt="Ednovate" style="height:46px;object-fit:contain;display:block;margin-bottom:8px;" />
+        <div style="font-size:18px;font-weight:800;color:#1f3c88;letter-spacing:.06em;">Ednovate</div>
+        <div style="font-size:12px;color:#4b5563;margin-top:4px;max-width:340px;line-height:1.4;">4th floor, Ajanta Square Building, near Borivali court, Sundar Nagar, Borivali West, Mumbai, Maharashtra 400092</div>
+      </div>
+      <div style="text-align:right;min-width:250px;">
+        <div style="font-size:34px;font-weight:800;color:#4f7dbd;letter-spacing:.04em;line-height:1;">TAX INVOICE</div>
+        <table style="margin-top:14px;width:100%;border-collapse:collapse;font-size:12px;">
+          <tr><th style="border:1px solid #9ca3af;background:#d1d5db;padding:6px 8px;text-align:center;">INVOICE #</th><th style="border:1px solid #9ca3af;background:#d1d5db;padding:6px 8px;text-align:center;">DATE</th></tr>
+          <tr><td style="border:1px solid #9ca3af;padding:6px 8px;text-align:center;font-weight:700;">${invoiceNo}</td><td style="border:1px solid #9ca3af;padding:6px 8px;text-align:center;font-weight:700;">${invoiceDate}</td></tr>
+        </table>
+      </div>
+    </div>
+    <div style="margin-top:22px;display:inline-block;min-width:340px;">
+      <div style="border:1px solid #9ca3af;background:#d1d5db;padding:4px 10px;font-size:12px;font-weight:700;">BILL TO</div>
+      <div style="padding:8px 2px 0 2px;font-size:13px;line-height:1.45;">
+        <div style="font-weight:700;">${latestOrder.customerName || "Student"}</div>
+        <div>${latestOrder.customerEmail || "-"}</div>
+        <div>${latestOrder.customerPhone || "-"}</div>
+        <div>${billingAddress}</div>
+        <div style="margin-top:4px;"><strong>Payment:</strong> ${latestOrder.paymentMethod || "Online"}</div>
+      </div>
+    </div>
+    <div style="margin-top:20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #9ca3af;">
+        <thead><tr style="background:#d1d5db;text-align:left;"><th style="padding:9px 10px;border-right:1px solid #9ca3af;">DESCRIPTION</th><th style="padding:9px 10px;text-align:right;">AMOUNT</th></tr></thead>
+        <tbody>
+          <tr>
+            <td style="padding:10px;border-right:1px solid #9ca3af;border-bottom:1px solid #e5e7eb;vertical-align:top;"><div style="font-weight:700;">${latestOrder.courseTitle || course.title}</div><div style="color:#4b5563;font-size:12px;margin-top:4px;">${details || "Course purchase"}</div></td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;vertical-align:top;">₹${totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>
+          </tr>
+          <tr><td style="height:140px;border-right:1px solid #9ca3af;"></td><td></td></tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td style="padding:10px;border-right:1px solid #9ca3af;font-style:italic;font-size:14px;color:#1f3c88;">Thank you for your business!</td>
+            <td style="padding:10px;">
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span style="color:#4b5563;">Base Price</span><strong>₹${taxableAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;"><span style="color:#4b5563;">+ GST</span><strong>₹${taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong></div>
+              <div style="border-top:1px solid #9ca3af;padding-top:8px;display:flex;justify-content:space-between;align-items:center;"><span style="font-weight:800;color:#111827;">Grand Total</span><span style="font-weight:800;font-size:22px;">₹${totalAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span></div>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+    <div style="margin-top:24px;text-align:center;font-size:12px;color:#4b5563;line-height:1.45;">This is a computer-generated invoice. Signature is not required.</div>
+  </div>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${invoiceNo}.html`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
+
   const toggleChapter = (id: string) =>
     setOpenChapterIds((prev) => {
       const next = new Set(prev);
@@ -219,9 +314,9 @@ export default function CourseAbout() {
     });
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-50 via-white to-indigo-50/40 pb-12 font-['Inter']">
+    <div className="min-h-screen bg-[#f7f8fb] pb-24 font-['Inter'] md:pb-12">
       {/* ── sticky top bar ── */}
-      <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/90 backdrop-blur-lg">
+      <div className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur-lg">
         <div className="mx-auto flex max-w-5xl items-center gap-3 px-4 py-3">
           <button
             type="button"
@@ -234,21 +329,21 @@ export default function CourseAbout() {
             <span className={`h-2 w-2 shrink-0 rounded-full ${isActive ? "bg-emerald-500 animate-pulse" : "bg-red-400"}`} />
             <p className="truncate text-sm font-semibold text-slate-800">{course.title}</p>
           </div>
-          <Button size="sm" className="h-8 shrink-0 gap-1.5 rounded-xl px-4 text-xs font-semibold" onClick={handleContinueLearning}>
+          <Button size="sm" className="h-8 shrink-0 gap-1.5 rounded-xl bg-[#E74623] px-4 text-xs font-semibold text-white hover:bg-[#d13a1a]" onClick={handleContinueLearning}>
             <PlayCircle className="h-3.5 w-3.5" /> Continue
           </Button>
         </div>
       </div>
 
-      <div className="mx-auto max-w-5xl px-4 py-6 space-y-5">
+      <div className="mx-auto max-w-5xl px-3 py-4 space-y-4 sm:px-4 sm:py-6 sm:space-y-5">
 
         {/* ── Hero card ── */}
-        <div className="relative overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="relative overflow-hidden rounded-3xl border border-slate-200 bg-white shadow-[0_18px_45px_-32px_rgba(15,23,42,0.45)]">
           {/* gradient strip */}
-          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
-          <div className="flex flex-col gap-5 p-5 sm:flex-row sm:items-start sm:gap-6">
+          <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-[#264897] via-[#E74623] to-[#f59e0b]" />
+          <div className="flex flex-col gap-4 p-4 sm:flex-row sm:items-start sm:gap-6 sm:p-5">
             {/* Thumbnail */}
-            <div className="relative h-40 w-full shrink-0 overflow-hidden rounded-xl sm:h-32 sm:w-48">
+            <div className="relative aspect-video w-full shrink-0 overflow-hidden rounded-2xl bg-slate-100 sm:h-36 sm:w-56">
               <img src={thumbnail} alt={course.title} className="h-full w-full object-cover" />
               <div className="absolute inset-0 bg-gradient-to-t from-black/40 to-transparent" />
               {course.isCombo && (
@@ -259,7 +354,7 @@ export default function CourseAbout() {
             </div>
 
             {/* Info */}
-            <div className="flex-1 min-w-0 space-y-2.5">
+            <div className="flex-1 min-w-0 space-y-2">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[11px] font-bold text-primary uppercase tracking-wide">
                   {course.category}
@@ -269,7 +364,7 @@ export default function CourseAbout() {
                   {accessIssueLabel}
                 </span>
               </div>
-              <h1 className="text-lg font-extrabold leading-snug text-slate-900">{course.title}</h1>
+              <h1 className="text-lg font-black leading-snug text-slate-900 sm:text-xl">{course.title}</h1>
               <p className="flex items-center gap-1.5 text-sm text-slate-500">
                 <User className="h-3.5 w-3.5 shrink-0" />
                 <span>by <span className="font-semibold text-slate-700">{course.professor}</span></span>
@@ -282,7 +377,7 @@ export default function CourseAbout() {
             </div>
 
             {/* Circular progress */}
-            <div className="flex shrink-0 flex-col items-center gap-1">
+            <div className="hidden shrink-0 flex-col items-center gap-1 sm:flex">
               <CircularProgress pct={progressPct} />
               <p className="text-[11px] font-semibold text-slate-500">Progress</p>
               <p className="text-[10px] text-slate-400">{completedCount}/{lessonCount} lessons</p>
@@ -293,15 +388,15 @@ export default function CourseAbout() {
         {/* ── Stat cards row ── */}
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           {/* Bought on */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
-            <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-indigo-50">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
+            <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-blue-50">
               <Calendar className="h-4 w-4 text-indigo-500" />
             </div>
             <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Purchased</p>
             <p className="mt-1 text-sm font-bold text-slate-800">{fmt(purchaseStamp)}</p>
           </div>
           {/* Expires */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
             <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-purple-50">
               <Clock className="h-4 w-4 text-purple-500" />
             </div>
@@ -309,7 +404,7 @@ export default function CourseAbout() {
             <p className="mt-1 text-sm font-bold text-slate-800">{isUnlimitedViews ? "Unlimited" : (expiresAt ? fmt(expiresAt) : "No expiry")}</p>
           </div>
           {/* Views */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
             <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-sky-50">
               <Eye className="h-4 w-4 text-sky-500" />
             </div>
@@ -319,7 +414,7 @@ export default function CourseAbout() {
             </p>
           </div>
           {/* Watch time */}
-          <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="rounded-2xl border border-slate-200 bg-white p-3 shadow-sm sm:p-4">
             <div className="mb-2 flex h-8 w-8 items-center justify-center rounded-xl bg-amber-50">
               <RefreshCw className="h-4 w-4 text-amber-500" />
             </div>
@@ -331,7 +426,7 @@ export default function CourseAbout() {
         </div>
 
         {/* ── Progress bar ── */}
-        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+        <div className="rounded-3xl border border-slate-200 bg-white p-4 shadow-sm sm:p-5">
           <div className="mb-3 flex items-center justify-between gap-2">
             <p className="text-sm font-bold text-slate-800">Course Progress</p>
             <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-bold text-primary">{progressPct}%</span>
@@ -344,7 +439,7 @@ export default function CourseAbout() {
         </div>
 
         {/* ── Curriculum ── */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
             <BookOpen className="h-4 w-4 text-primary" />
             <p className="text-sm font-bold text-slate-800">Course Content</p>
@@ -401,7 +496,7 @@ export default function CourseAbout() {
         </div>
 
         {/* ── Order & dispatch ── */}
-        <div className="rounded-2xl border border-slate-200 bg-white shadow-sm overflow-hidden">
+        <div className="rounded-3xl border border-slate-200 bg-white shadow-sm overflow-hidden">
           <div className="flex items-center gap-2 border-b border-slate-100 px-5 py-4">
             <Package className="h-4 w-4 text-primary" />
             <p className="text-sm font-bold text-slate-800">Order & Dispatch Info</p>
@@ -417,6 +512,10 @@ export default function CourseAbout() {
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Order Date</p>
                   <p className="text-sm font-semibold text-slate-700">{fmtFull(latestOrder.orderDate || latestOrder.createdAt)}</p>
                 </div>
+                <div className="space-y-0.5">
+                  <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Amount</p>
+                  <p className="inline-flex items-center text-sm font-bold text-slate-800"><IndianRupee className="h-3.5 w-3.5 text-[#E74623]" />{Number(latestOrder.amount || 0).toLocaleString()}</p>
+                </div>
                 <div className="space-y-1">
                   <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Dispatch Status</p>
                   <DispatchBadge status={latestOrder.dispatchStatus || "pending"} />
@@ -431,6 +530,11 @@ export default function CourseAbout() {
                     <p className="mt-1 text-xs text-amber-800">{latestOrder.dispatchNote}</p>
                   </div>
                 )}
+                <div className="sm:col-span-2">
+                  <Button variant="outline" className="h-10 rounded-xl border-slate-200 text-xs font-bold" onClick={downloadCourseInvoice}>
+                    <Download className="mr-2 h-4 w-4" /> Download Invoice
+                  </Button>
+                </div>
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-6 text-center">
@@ -442,8 +546,8 @@ export default function CourseAbout() {
         </div>
 
         {/* ── Actions ── */}
-        <div className="flex flex-wrap gap-3">
-          <Button className="gap-2 rounded-xl px-6 font-semibold" onClick={handleContinueLearning}>
+        <div className="grid grid-cols-1 gap-2 sm:flex sm:flex-wrap sm:gap-3">
+          <Button className="gap-2 rounded-xl bg-[#E74623] px-6 font-semibold text-white hover:bg-[#d13a1a]" onClick={handleContinueLearning}>
             <PlayCircle className="h-4 w-4" /> Continue Learning
           </Button>
           <Button variant="outline" className="gap-2 rounded-xl px-5 font-semibold border-slate-200" onClick={() => navigate(`/course/${course.id}`)}>

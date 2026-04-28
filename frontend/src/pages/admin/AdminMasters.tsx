@@ -838,7 +838,7 @@ export default function AdminMasters() {
   }
 
   return (
-    <div className="mx-auto max-w-7xl animate-in fade-in duration-500 pb-16">
+    <div className="w-full animate-in fade-in duration-500 pb-16">
       <div className="mb-8 flex flex-col justify-between gap-4 border-b border-gray-100 pb-6 sm:flex-row sm:items-end">
         <div>
           <h1 className="text-3xl font-bold tracking-tight text-gray-900">Platform Masters</h1>

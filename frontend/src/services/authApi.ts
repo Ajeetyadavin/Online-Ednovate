@@ -655,6 +655,27 @@ export interface StudentDashboardData {
   }>;
 }
 
+export interface StudentTestAttemptReport {
+  id: string;
+  paperId: string;
+  paperTitle: string;
+  submittedAt: string;
+  totalQuestions: number;
+  attempted: number;
+  correct: number;
+  wrong: number;
+  scorePercent: number;
+  timeTakenSeconds: number;
+  questions?: Array<{
+    questionNo: number;
+    questionText: string;
+    userAnswer: string;
+    correctAnswer: string;
+    isCorrect: boolean;
+    status: "correct" | "wrong" | "not_attempted";
+  }>;
+}
+
 export interface StudentOrderLine {
   id: number;
   orderId: string;
@@ -727,6 +748,33 @@ export const getStudentDashboardApi = async (): Promise<AuthActionResult<Student
     };
   } catch (error) {
     return { ok: false, message: error instanceof Error ? error.message : "Failed to load dashboard." };
+  }
+};
+
+export const getStudentTestAttemptsApi = async (): Promise<AuthActionResult<StudentTestAttemptReport[]>> => {
+  try {
+    const response = await fetch("/api/auth/student/test-attempts", { headers: authHeaders(false) });
+    const parsed = await parseResponseMessage(response, "Failed to load test attempts.");
+    if (!parsed.ok) return { ok: false, message: parsed.message };
+    const payload = parsed.payload as { items?: StudentTestAttemptReport[] };
+    return { ok: true, message: "Test attempts loaded.", data: Array.isArray(payload.items) ? payload.items : [] };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to load test attempts." };
+  }
+};
+
+export const saveStudentTestAttemptApi = async (report: StudentTestAttemptReport): Promise<AuthActionResult<{ id: string }>> => {
+  try {
+    const response = await fetch("/api/auth/student/test-attempts", {
+      method: "POST",
+      headers: authHeaders(),
+      body: JSON.stringify({ report }),
+    });
+    const parsed = await parseResponseMessage(response, "Failed to save test attempt.");
+    if (!parsed.ok) return { ok: false, message: parsed.message };
+    return { ok: true, message: "Test attempt saved.", data: parsed.payload as { id: string } };
+  } catch (error) {
+    return { ok: false, message: error instanceof Error ? error.message : "Failed to save test attempt." };
   }
 };
 

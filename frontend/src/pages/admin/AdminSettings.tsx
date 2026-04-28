@@ -73,6 +73,18 @@ type PaymentGatewaySettings = {
   };
 };
 
+type AiProvider = "gemini" | "grok" | "openrouter";
+
+type AiExtractionSettings = {
+  provider: AiProvider;
+  geminiApiKey: string;
+  geminiModel: string;
+  grokApiKey: string;
+  grokModel: string;
+  openRouterApiKey: string;
+  openRouterModel: string;
+};
+
 const defaultPaymentGateways = (): PaymentGatewaySettings => ({
   cod: {
     enabled: true,
@@ -99,6 +111,22 @@ const defaultPaymentGateways = (): PaymentGatewaySettings => ({
     apiBaseUrl: "",
   },
 });
+
+const defaultAiExtraction = (): AiExtractionSettings => ({
+  provider: "gemini",
+  geminiApiKey: "",
+  geminiModel: "gemini-1.5-flash",
+  grokApiKey: "",
+  grokModel: "grok-2-vision-latest",
+  openRouterApiKey: "",
+  openRouterModel: "google/gemini-2.0-flash-001",
+});
+
+const aiModelOptions: Record<AiProvider, string[]> = {
+  gemini: ["gemini-1.5-flash", "gemini-1.5-pro", "gemini-2.0-flash", "gemini-2.5-flash"],
+  grok: ["grok-2-vision-latest", "grok-2-latest", "grok-3-latest", "grok-3-mini-latest"],
+  openrouter: ["google/gemini-2.0-flash-001", "openai/gpt-4o-mini", "anthropic/claude-3.5-sonnet", "meta-llama/llama-3.1-70b-instruct"],
+};
 
 type TemplateKey =
   | "user_purchase"
@@ -219,6 +247,7 @@ export default function AdminSettings() {
       otpTtlSeconds: "300",
       messageTemplate: "Your OTP for {{platformName}} is {{otp}}. It is valid for {{minutes}} minutes.",
     } as SmsOtpSettings,
+    aiExtraction: defaultAiExtraction(),
     paymentGateways: defaultPaymentGateways(),
     emailAutomationEnabled: true,
     emailAdminRecipients: "",
@@ -259,6 +288,10 @@ export default function AdminSettings() {
   const [smtpTestToEmail, setSmtpTestToEmail] = useState("");
   const [isSmtpTesting, setIsSmtpTesting] = useState(false);
   const [smtpTestResult, setSmtpTestResult] = useState<{ type: "success" | "error"; message: string } | null>(null);
+  const [aiConnection, setAiConnection] = useState<{ status: "idle" | "testing" | "success" | "error"; message: string }>({
+    status: "idle",
+    message: "Not tested",
+  });
   const [dragSidebarItemId, setDragSidebarItemId] = useState<string | null>(null);
   const [dragOverSidebarItemId, setDragOverSidebarItemId] = useState<string | null>(null);
   const [uploadingSocialIconKey, setUploadingSocialIconKey] = useState<SocialPlatform | null>(null);
@@ -313,7 +346,11 @@ export default function AdminSettings() {
           : site.paymentGatewaySettings && typeof site.paymentGatewaySettings === "object"
             ? site.paymentGatewaySettings
             : {}) as Record<string, unknown>;
+        const aiRaw = (response?.settings?.aiExtraction && typeof response.settings.aiExtraction === "object"
+          ? response.settings.aiExtraction
+          : {}) as Record<string, unknown>;
         const paymentDefaults = defaultPaymentGateways();
+        const aiDefaults = defaultAiExtraction();
         const codRaw = (paymentRaw.cod && typeof paymentRaw.cod === "object" ? paymentRaw.cod : {}) as Record<string, unknown>;
         const easebuzzRaw = (paymentRaw.easebuzz && typeof paymentRaw.easebuzz === "object" ? paymentRaw.easebuzz : {}) as Record<string, unknown>;
         const payuRaw = (paymentRaw.payu && typeof paymentRaw.payu === "object" ? paymentRaw.payu : {}) as Record<string, unknown>;
@@ -368,6 +405,17 @@ export default function AdminSettings() {
             messageTemplate:
               String(smsOtpRaw.messageTemplate || "").trim()
               || "Your OTP for {{platformName}} is {{otp}}. It is valid for {{minutes}} minutes.",
+          },
+          aiExtraction: {
+            provider: ["gemini", "grok", "openrouter"].includes(String(aiRaw.provider || ""))
+              ? (String(aiRaw.provider) as AiProvider)
+              : aiDefaults.provider,
+            geminiApiKey: String(aiRaw.geminiApiKey || ""),
+            geminiModel: String(aiRaw.geminiModel || aiDefaults.geminiModel),
+            grokApiKey: String(aiRaw.grokApiKey || ""),
+            grokModel: String(aiRaw.grokModel || aiDefaults.grokModel),
+            openRouterApiKey: String(aiRaw.openRouterApiKey || ""),
+            openRouterModel: String(aiRaw.openRouterModel || aiDefaults.openRouterModel),
           },
           paymentGateways: {
             cod: {
@@ -539,6 +587,49 @@ export default function AdminSettings() {
         [field]: value,
       },
     }));
+  };
+
+  const handleAiExtractionChange = (field: keyof AiExtractionSettings, value: string) => {
+    setAiConnection({ status: "idle", message: "Not tested" });
+    setSettings((prev) => ({
+      ...prev,
+      aiExtraction: {
+        ...prev.aiExtraction,
+        [field]: value,
+      },
+    }));
+  };
+
+  const getActiveAiModel = () => (
+    settings.aiExtraction.provider === "gemini"
+      ? settings.aiExtraction.geminiModel
+      : settings.aiExtraction.provider === "grok"
+        ? settings.aiExtraction.grokModel
+        : settings.aiExtraction.openRouterModel
+  );
+
+  const getActiveAiModelField = (): keyof AiExtractionSettings => (
+    settings.aiExtraction.provider === "gemini"
+      ? "geminiModel"
+      : settings.aiExtraction.provider === "grok"
+        ? "grokModel"
+        : "openRouterModel"
+  );
+
+  const handleAiConnectionTest = async () => {
+    setAiConnection({ status: "testing", message: "Testing connection..." });
+    try {
+      const result = await adminApi.testAiExtractionConnection(settings.aiExtraction);
+      setAiConnection({
+        status: "success",
+        message: result?.message || `Connected to ${settings.aiExtraction.provider}`,
+      });
+    } catch (apiError) {
+      setAiConnection({
+        status: "error",
+        message: apiError instanceof Error ? apiError.message : "AI connection failed",
+      });
+    }
   };
 
   const handleTemplateChange = (key: TemplateKey, field: keyof EmailTemplate, value: string | boolean) => {
@@ -754,6 +845,7 @@ export default function AdminSettings() {
         fromEmail: settings.smtp.fromEmail,
         replyTo: settings.smtp.replyTo,
       },
+      aiExtraction: settings.aiExtraction,
       emailAutomation: {
         enabled: settings.emailAutomationEnabled,
         adminRecipients: parseAdminRecipients(settings.emailAdminRecipients),
@@ -775,6 +867,7 @@ export default function AdminSettings() {
       });
       await adminApi.savePlatformSettings(payload);
       setSaved(true);
+      void handleAiConnectionTest();
       setTimeout(() => setSaved(false), 3000);
     } catch (apiError) {
       setError(apiError instanceof Error ? apiError.message : "Failed to save settings");
@@ -849,6 +942,7 @@ export default function AdminSettings() {
         fromEmail: settings.smtp.fromEmail,
         replyTo: settings.smtp.replyTo,
       },
+      aiExtraction: settings.aiExtraction,
       emailAutomation: {
         enabled: settings.emailAutomationEnabled,
         adminRecipients: parseAdminRecipients(settings.emailAdminRecipients),
@@ -918,7 +1012,7 @@ export default function AdminSettings() {
       )}
 
       <Tabs defaultValue="general" className="w-full">
-        <TabsList className="grid w-full grid-cols-7 mb-6 rounded-lg border border-gray-200 bg-gray-50 p-1">
+        <TabsList className="grid w-full grid-cols-2 gap-1 mb-6 rounded-lg border border-gray-200 bg-gray-50 p-1 sm:grid-cols-4 lg:grid-cols-8">
           <TabsTrigger value="general" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
             <Globe className="w-3.5 h-3.5" />
             General
@@ -938,6 +1032,10 @@ export default function AdminSettings() {
           <TabsTrigger value="sms" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
             <MessageSquare className="w-3.5 h-3.5" />
             SMS OTP
+          </TabsTrigger>
+          <TabsTrigger value="ai" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
+            <Sparkles className="w-3.5 h-3.5" />
+            AI
           </TabsTrigger>
           <TabsTrigger value="payment" className="gap-1.5 rounded-md text-xs font-medium text-gray-600 data-[state=active]:bg-white data-[state=active]:text-gray-900">
             <CreditCard className="w-3.5 h-3.5" />
@@ -1574,6 +1672,186 @@ export default function AdminSettings() {
                     onChange={(e) => handleSmsOtpChange("messageTemplate", e.target.value)}
                   />
                   <p className="text-xs text-gray-500">Use placeholders: {'{otp}'}, {'{minutes}'}, {'{platformName}'}, {'{mobile}'}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="ai" className="space-y-6">
+          <Card className="rounded-2xl border border-gray-200 bg-white shadow-none">
+            <CardHeader className="border-b border-gray-200 bg-gray-50/60 pb-4">
+              <CardTitle className="flex items-center gap-2 text-gray-900">
+                <Sparkles className="w-5 h-5" /> AI Question Extraction
+              </CardTitle>
+              <CardDescription>
+                Select the provider and model used by CrackIt AI Extract Question.
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-5">
+              <datalist id="geminiModelSuggestions">
+                {aiModelOptions.gemini.map((model) => <option key={model} value={model} />)}
+              </datalist>
+              <datalist id="grokModelSuggestions">
+                {aiModelOptions.grok.map((model) => <option key={model} value={model} />)}
+              </datalist>
+              <datalist id="openRouterModelSuggestions">
+                {aiModelOptions.openrouter.map((model) => <option key={model} value={model} />)}
+              </datalist>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="aiProvider">Active Provider</Label>
+                  <select
+                    id="aiProvider"
+                    className="h-10 rounded-md border border-input bg-background px-3 text-sm"
+                    value={settings.aiExtraction.provider}
+                    onChange={(e) => handleAiExtractionChange("provider", e.target.value as AiProvider)}
+                  >
+                    <option value="gemini">Gemini</option>
+                    <option value="grok">Grok / xAI</option>
+                    <option value="openrouter">OpenRouter</option>
+                  </select>
+                </div>
+
+                <div className="grid gap-2">
+                  <Label htmlFor="activeAiModel">Active Model / Custom Model</Label>
+                  <Input
+                    id="activeAiModel"
+                    list={`${settings.aiExtraction.provider === "openrouter" ? "openRouter" : settings.aiExtraction.provider}ModelSuggestions`}
+                    placeholder="Enter any supported model id"
+                    value={getActiveAiModel()}
+                    onChange={(e) => handleAiExtractionChange(getActiveAiModelField(), e.target.value)}
+                  />
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-gray-200 bg-gray-50 px-4 py-3">
+                <div className="flex items-center gap-3">
+                  <span
+                    className={`h-3 w-3 rounded-full ${
+                      aiConnection.status === "success"
+                        ? "bg-emerald-500 shadow-[0_0_0_4px_rgba(16,185,129,0.15)]"
+                        : aiConnection.status === "error"
+                          ? "bg-red-500 shadow-[0_0_0_4px_rgba(239,68,68,0.12)]"
+                          : aiConnection.status === "testing"
+                            ? "bg-amber-400 shadow-[0_0_0_4px_rgba(245,158,11,0.14)]"
+                            : "bg-gray-300"
+                    }`}
+                  />
+                  <div>
+                    <p className="text-sm font-medium text-gray-900">
+                      {aiConnection.status === "success" ? "Connected" : aiConnection.status === "error" ? "Not connected" : aiConnection.status === "testing" ? "Checking..." : "Connection not tested"}
+                    </p>
+                    <p className="text-xs text-gray-600">{aiConnection.message}</p>
+                  </div>
+                </div>
+                <Button type="button" variant="outline" className="gap-2" onClick={handleAiConnectionTest} disabled={aiConnection.status === "testing"}>
+                  {aiConnection.status === "testing" ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
+                  Test Connection
+                </Button>
+              </div>
+
+              <div className="grid grid-cols-1 gap-4">
+                <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="font-semibold text-gray-900">Gemini</Label>
+                      <p className="text-xs text-gray-500">Google Gemini API for PDF text and image extraction.</p>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${settings.aiExtraction.provider === "gemini" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
+                      {settings.aiExtraction.provider === "gemini" ? "Active" : "Standby"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid gap-2">
+                      <Label htmlFor="geminiApiKey">API Key</Label>
+                      <Input
+                        id="geminiApiKey"
+                        type="password"
+                        placeholder="Gemini API key"
+                        value={settings.aiExtraction.geminiApiKey}
+                        onChange={(e) => handleAiExtractionChange("geminiApiKey", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="geminiModel">Model / Custom Model</Label>
+                      <Input
+                        id="geminiModel"
+                        list="geminiModelSuggestions"
+                        placeholder="gemini-1.5-flash"
+                        value={settings.aiExtraction.geminiModel}
+                        onChange={(e) => handleAiExtractionChange("geminiModel", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="font-semibold text-gray-900">Grok / xAI</Label>
+                      <p className="text-xs text-gray-500">OpenAI-compatible xAI endpoint for CrackIt extraction.</p>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${settings.aiExtraction.provider === "grok" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
+                      {settings.aiExtraction.provider === "grok" ? "Active" : "Standby"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid gap-2">
+                      <Label htmlFor="grokApiKey">API Key</Label>
+                      <Input
+                        id="grokApiKey"
+                        type="password"
+                        placeholder="xAI API key"
+                        value={settings.aiExtraction.grokApiKey}
+                        onChange={(e) => handleAiExtractionChange("grokApiKey", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="grokModel">Model / Custom Model</Label>
+                      <Input
+                        id="grokModel"
+                        list="grokModelSuggestions"
+                        placeholder="grok-2-vision-latest"
+                        value={settings.aiExtraction.grokModel}
+                        onChange={(e) => handleAiExtractionChange("grokModel", e.target.value)}
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="rounded-lg border border-gray-200 p-4 space-y-3">
+                  <div className="flex items-center justify-between gap-3">
+                    <div>
+                      <Label className="font-semibold text-gray-900">OpenRouter</Label>
+                      <p className="text-xs text-gray-500">OpenRouter API key with selectable routed model.</p>
+                    </div>
+                    <span className={`rounded-full px-2 py-1 text-xs font-medium ${settings.aiExtraction.provider === "openrouter" ? "bg-emerald-50 text-emerald-700" : "bg-gray-100 text-gray-600"}`}>
+                      {settings.aiExtraction.provider === "openrouter" ? "Active" : "Standby"}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                    <div className="grid gap-2">
+                      <Label htmlFor="openRouterApiKey">API Key</Label>
+                      <Input
+                        id="openRouterApiKey"
+                        type="password"
+                        placeholder="OpenRouter API key"
+                        value={settings.aiExtraction.openRouterApiKey}
+                        onChange={(e) => handleAiExtractionChange("openRouterApiKey", e.target.value)}
+                      />
+                    </div>
+                    <div className="grid gap-2">
+                      <Label htmlFor="openRouterModel">Model / Custom Model</Label>
+                      <Input
+                        id="openRouterModel"
+                        list="openRouterModelSuggestions"
+                        placeholder="provider/model-id"
+                        value={settings.aiExtraction.openRouterModel}
+                        onChange={(e) => handleAiExtractionChange("openRouterModel", e.target.value)}
+                      />
+                    </div>
+                  </div>
                 </div>
               </div>
             </CardContent>

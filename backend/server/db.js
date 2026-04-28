@@ -587,6 +587,110 @@ export async function ensureSchema() {
   await pool.query("CREATE INDEX IF NOT EXISTS idx_faculty_sessions_active ON faculty_sessions(is_active, expires_at)");
 
   await pool.query(`
+    CREATE TABLE IF NOT EXISTS crackit_questions (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      course_id TEXT,
+      level_id TEXT,
+      subject_id TEXT,
+      chapter_id TEXT,
+      sub_chapter_id TEXT,
+      type TEXT NOT NULL, -- mcq, msq, tf, short, match, fill
+      difficulty TEXT NOT NULL DEFAULT 'medium', -- easy, medium, hard
+      question_text TEXT NOT NULL,
+      options JSONB NOT NULL DEFAULT '[]'::jsonb,
+      correct_answer JSONB NOT NULL DEFAULT '{}'::jsonb,
+      explanation TEXT,
+      metadata JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_crackit_questions_course ON crackit_questions(course_id)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_crackit_questions_subject ON crackit_questions(subject_id)");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS crackit_papers (
+      id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+      paper_code TEXT UNIQUE NOT NULL,
+      title TEXT NOT NULL,
+      nature TEXT NOT NULL DEFAULT 'objective', -- objective, subjective
+      category TEXT, -- Test Paper, etc.
+      remark_teacher TEXT,
+      remark_students TEXT,
+      description TEXT,
+      total_time INTEGER NOT NULL DEFAULT 60, -- minutes
+      course_id TEXT,
+      level_id TEXT,
+      subject_id TEXT,
+      chapter_id TEXT,
+      sub_chapter_id TEXT,
+      passing_percent NUMERIC(5,2) NOT NULL DEFAULT 40,
+      attempts_allowed INTEGER NOT NULL DEFAULT 1,
+      thumbnail_url TEXT,
+      verification_status TEXT NOT NULL DEFAULT 'unverified',
+      price NUMERIC(12,2) NOT NULL DEFAULT 0,
+      original_price NUMERIC(12,2),
+      is_visible BOOLEAN NOT NULL DEFAULT TRUE,
+      created_by TEXT,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+
+  await pool.query("ALTER TABLE crackit_papers ADD COLUMN IF NOT EXISTS thumbnail_url TEXT");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS crackit_paper_questions (
+      paper_id UUID REFERENCES crackit_papers(id) ON DELETE CASCADE,
+      question_id UUID REFERENCES crackit_questions(id) ON DELETE CASCADE,
+      sort_order INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (paper_id, question_id)
+    );
+  `);
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS student_test_access (
+      id BIGSERIAL PRIMARY KEY,
+      student_id TEXT NOT NULL,
+      paper_id UUID NOT NULL REFERENCES crackit_papers(id),
+      order_id TEXT,
+      purchased_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      expires_at TIMESTAMPTZ,
+      attempts_used INTEGER NOT NULL DEFAULT 0,
+      is_enabled BOOLEAN NOT NULL DEFAULT TRUE,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      UNIQUE(student_id, paper_id)
+    );
+  `);
+
+  await pool.query("ALTER TABLE student_test_access ALTER COLUMN student_id TYPE TEXT USING student_id::text");
+
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_test_access_student ON student_test_access(student_id)");
+
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS student_test_attempts (
+      id TEXT PRIMARY KEY,
+      student_id TEXT NOT NULL,
+      paper_id UUID NOT NULL REFERENCES crackit_papers(id) ON DELETE CASCADE,
+      paper_title TEXT NOT NULL,
+      submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+      total_questions INTEGER NOT NULL DEFAULT 0,
+      attempted INTEGER NOT NULL DEFAULT 0,
+      correct INTEGER NOT NULL DEFAULT 0,
+      wrong INTEGER NOT NULL DEFAULT 0,
+      score_percent NUMERIC(5,2) NOT NULL DEFAULT 0,
+      time_taken_seconds INTEGER NOT NULL DEFAULT 0,
+      report JSONB NOT NULL DEFAULT '{}'::jsonb,
+      created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+    );
+  `);
+  await pool.query("ALTER TABLE student_test_attempts ALTER COLUMN student_id TYPE TEXT USING student_id::text");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_test_attempts_student ON student_test_attempts(student_id, submitted_at DESC)");
+  await pool.query("CREATE INDEX IF NOT EXISTS idx_student_test_attempts_paper ON student_test_attempts(paper_id)");
+
+  await pool.query(`
     CREATE TABLE IF NOT EXISTS faculty_earnings_ledger (
       id BIGSERIAL PRIMARY KEY,
       faculty_id TEXT NOT NULL REFERENCES faculty_profiles(id) ON DELETE CASCADE,

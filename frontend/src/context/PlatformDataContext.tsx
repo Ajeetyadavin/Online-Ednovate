@@ -87,6 +87,31 @@ export interface ManagedCoupon {
   }>;
 }
 
+export interface ManagedTestPaper {
+  id: string;
+  paperCode: string;
+  title: string;
+  nature: "objective" | "subjective" | string;
+  category: string;
+  remarkTeacher: string;
+  remarkStudents: string;
+  description: string;
+  totalTime: number;
+  courseId: string;
+  levelId: string;
+  subjectId: string;
+  chapterId: string;
+  subChapterId: string;
+  passingPercent: number;
+  attemptsAllowed: number;
+  thumbnailUrl?: string;
+  price: number;
+  originalPrice?: number;
+  isVisible: boolean;
+  questionIds?: string[];
+  createdAt: string;
+}
+
 export interface Lesson {
   id: string;
   title: string;
@@ -123,6 +148,7 @@ interface PlatformDataState {
   testimonials: ManagedTestimonial[];
   announcements: ManagedAnnouncement[];
   coupons: ManagedCoupon[];
+  testPapers: ManagedTestPaper[];
   curricula: Record<string, Chapter[]>;
 }
 
@@ -158,6 +184,7 @@ interface PlatformDataContextType extends PlatformDataState {
   getCurriculumForCourse: (courseId: string, courseTitle?: string) => Chapter[];
   setCurriculumForCourse: (courseId: string, curriculum: Chapter[]) => void;
   setCourseDemoLesson: (courseId: string, lessonId?: string) => void;
+  refreshData: () => Promise<void>;
   resetPlatformData: () => void;
 }
 
@@ -612,8 +639,6 @@ const normalizeCurriculum = (curriculum: unknown): Chapter[] => {
         lessons,
       } satisfies Chapter;
     });
-    // Removed the filter that was removing chapters with no lessons
-    // Chapters can be created empty and have lessons added later
 };
 
 const pickCourseDemoLessonId = (chapters: Chapter[], preferredLessonId?: string): string | null => {
@@ -655,6 +680,7 @@ const createDefaultState = (): PlatformDataState => {
     testimonials: [],
     announcements: [],
     coupons: [],
+    testPapers: [],
     curricula: {},
   };
 };
@@ -668,125 +694,80 @@ const PlatformDataContext = createContext<PlatformDataContextType | null>(null);
 export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
   const [state, setState] = useState<PlatformDataState>(() => loadInitialState());
 
-  useEffect(() => {
-    let isMounted = true;
+  const refreshData = async () => {
+    try {
+      const stored = localStorage.getItem("admin_session_v2");
+      const adminToken = stored ? JSON.parse(stored)?.token : null;
+      const headers = adminToken ? { "Authorization": `Bearer ${adminToken}` } : {};
 
-    const syncFromApi = async () => {
-      try {
-        const [coursesResponse, categoriesResponse, homepageResponse, couponsResponse] = await Promise.all([
-          fetch("/api/courses"),
-          fetch("/api/categories").catch(() => null),
-          fetch("/api/homepage").catch(() => null),
-          fetch("/api/coupons").catch(() => null),
-        ]);
+      const [coursesRes, categoriesRes, homepageRes, couponsRes, testPapersRes] = await Promise.all([
+        fetch("/api/courses"),
+        fetch("/api/admin/categories", { headers }).catch(() => ({ ok: false })),
+        fetch("/api/homepage").catch(() => ({ ok: false })),
+        fetch("/api/admin/coupons", { headers }).catch(() => ({ ok: false })),
+        fetch(adminToken ? "/api/admin/crackit/papers" : "/api/test-papers", { headers }).catch(() => ({ ok: false })),
+      ]);
 
-        if (
-          !coursesResponse.ok &&
-          (!categoriesResponse || !categoriesResponse.ok) &&
-          (!homepageResponse || !homepageResponse.ok)
-        ) {
-          return;
-        }
+      const data = await (coursesRes.ok ? coursesRes.json() : Promise.resolve({ courses: [], curricula: {} }));
+      const categoriesData = categoriesRes.ok ? await categoriesRes.json() : { items: [] };
+      const homepageData = homepageRes.ok ? await homepageRes.json() : { banners: [], testimonials: [], announcements: [] };
+      const couponsData = couponsRes.ok ? await couponsRes.json() : { items: [] };
+      const testPapersData = testPapersRes.ok ? await testPapersRes.json() : { items: [] };
 
-        const data = coursesResponse.ok
-          ? ((await coursesResponse.json()) as {
-              courses?: unknown[];
-              curricula?: Record<string, unknown>;
-            })
-          : ({} as {
-              courses?: unknown[];
-              curricula?: Record<string, unknown>;
-            });
+      setState((prev) => {
+        const nextCourses = Array.isArray(data.courses)
+          ? data.courses.map((c: any, i: number) => normalizeCourse(c, i))
+          : prev.courses;
 
-        const categoryData = categoriesResponse && categoriesResponse.ok
-          ? ((await categoriesResponse.json()) as { items?: unknown[] })
-          : ({ items: undefined } as { items?: unknown[] });
-
-        const homepageData = homepageResponse && homepageResponse.ok
-          ? ((await homepageResponse.json()) as {
-              banners?: unknown[];
-              testimonials?: unknown[];
-              announcements?: unknown[];
-            })
-          : ({ banners: undefined, testimonials: undefined, announcements: undefined } as {
-              banners?: unknown[];
-              testimonials?: unknown[];
-              announcements?: unknown[];
-            });
-
-        const couponsData = couponsResponse && couponsResponse.ok
-          ? ((await couponsResponse.json()) as { items?: unknown[] })
-          : ({ items: undefined } as { items?: unknown[] });
-
-        if (!isMounted) return;
-
-        setState((prev) => {
-          const apiCourses = Array.isArray(data.courses)
-            ? data.courses.map((course, index) => normalizeCourse(course as Partial<ManagedCourse>, index))
-            : prev.courses;
-
-          const nextCourses = apiCourses.length > 0 ? apiCourses : prev.courses;
-          const nextCurricula: Record<string, Chapter[]> = { ...prev.curricula };
-
-          nextCourses.forEach((course) => {
-            const raw = data.curricula?.[course.id];
-            const parsed = normalizeCurriculum(raw);
-
-            if (parsed.length > 0) {
-              nextCurricula[course.id] = parsed;
-            } else if (!nextCurricula[course.id]) {
-              nextCurricula[course.id] = createFallbackCurriculum(course.title);
-            }
-          });
-
-          const nextCategories = Array.isArray(categoryData.items)
-            ? categoryData.items.map((category, index) => normalizeCategory(category as Partial<ManagedCategory>, index))
-            : prev.categories;
-
-          const nextBanners = Array.isArray(homepageData.banners)
-            ? homepageData.banners.map((banner, index) => normalizeBanner(banner as Partial<ManagedBanner>, index))
-            : prev.banners;
-
-          const nextTestimonials = Array.isArray(homepageData.testimonials)
-            ? homepageData.testimonials.map((testimonial, index) =>
-                normalizeTestimonial(testimonial as Partial<ManagedTestimonial>, index),
-              )
-            : prev.testimonials;
-
-          const nextAnnouncements = Array.isArray(homepageData.announcements)
-            ? homepageData.announcements.map((announcement, index) =>
-                normalizeAnnouncement(announcement as Partial<ManagedAnnouncement>, index),
-              )
-            : prev.announcements;
-
-            const nextCoupons = Array.isArray(couponsData.items)
-              ? couponsData.items.map((coupon, index) =>
-                  normalizeCoupon(coupon as Partial<ManagedCoupon>, index),
-                )
-              : prev.coupons;
-
-          return {
-            ...prev,
-            courses: nextCourses,
-            categories: nextCategories,
-            banners: nextBanners,
-            testimonials: nextTestimonials,
-            announcements: nextAnnouncements,
-              coupons: nextCoupons,
-            curricula: ensureCourseScopedDemos(nextCurricula),
-          };
+        const nextCurricula = { ...prev.curricula };
+        nextCourses.forEach((c) => {
+          const raw = data.curricula?.[c.id];
+          const parsed = normalizeCurriculum(raw);
+          nextCurricula[c.id] = parsed.length > 0 ? parsed : (nextCurricula[c.id] || createFallbackCurriculum(c.title));
         });
-      } catch {
-        // Keep local storage as fallback when API is unavailable.
-        console.error('[PlatformDataProvider] Error syncing from API');
-      }
-    };
 
-    syncFromApi();
+        return {
+          ...prev,
+          courses: nextCourses,
+          categories: Array.isArray(categoriesData.items) ? categoriesData.items.map(normalizeCategory) : prev.categories,
+          banners: Array.isArray(homepageData.banners) ? homepageData.banners.map(normalizeBanner) : prev.banners,
+          testimonials: Array.isArray(homepageData.testimonials) ? homepageData.testimonials.map(normalizeTestimonial) : prev.testimonials,
+          announcements: Array.isArray(homepageData.announcements) ? homepageData.announcements.map(normalizeAnnouncement) : prev.announcements,
+          coupons: Array.isArray(couponsData.items) ? couponsData.items.map(normalizeCoupon) : prev.coupons,
+          testPapers: Array.isArray(testPapersData.items) ? testPapersData.items.map((row: any) => ({
+                id: String(row.id),
+                paperCode: String(row.paper_code || ""),
+                title: String(row.title || ""),
+                nature: String(row.nature || "objective") as any,
+                category: String(row.category || ""),
+                remarkTeacher: String(row.remark_teacher || ""),
+                remarkStudents: String(row.remark_students || ""),
+                description: String(row.description || ""),
+                totalTime: Number(row.total_time || 0),
+                courseId: String(row.course_id || ""),
+                levelId: String(row.level_id || ""),
+                subjectId: String(row.subject_id || ""),
+                chapterId: String(row.chapter_id || ""),
+                subChapterId: String(row.sub_chapter_id || ""),
+                passingPercent: Number(row.passing_percent || 0),
+                attemptsAllowed: Number(row.attempts_allowed || 0),
+                thumbnailUrl: String(row.thumbnail_url || ""),
+                price: Number(row.price || 0),
+                originalPrice: row.original_price ? Number(row.original_price) : undefined,
+                isVisible: row.is_visible !== false,
+                questionIds: Array.isArray(row.question_ids) ? row.question_ids.map((id: unknown) => String(id)) : [],
+                createdAt: String(row.created_at || ""),
+          })) : prev.testPapers,
+          curricula: ensureCourseScopedDemos(nextCurricula),
+        };
+      });
+    } catch (e) {
+      console.error(e);
+    }
+  };
 
-    return () => {
-      isMounted = false;
-    };
+  useEffect(() => {
+    refreshData();
   }, []);
 
   const value = useMemo<PlatformDataContextType>(() => {
@@ -1068,6 +1049,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
       getCurriculumForCourse,
       setCurriculumForCourse,
       setCourseDemoLesson,
+      refreshData,
       resetPlatformData,
     };
   }, [state]);

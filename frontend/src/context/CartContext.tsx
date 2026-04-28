@@ -7,6 +7,9 @@ import {
   type StudentCourseAccessSelf,
 } from "@/services/authApi";
 import { progressFromViews } from "@/lib/studentAccess";
+import type { ManagedCourse, ManagedTestPaper } from "@/context/PlatformDataContext";
+
+export type CartItem = ManagedCourse | ManagedTestPaper;
 
 interface OrderRecord {
   id: string;
@@ -51,14 +54,21 @@ interface PurchasedCourse extends Course {
   purchaseRefId?: string;
 }
 
+interface PurchasedTestPaper extends ManagedTestPaper {
+  purchasedOn: string;
+  purchasedAt?: string;
+  purchaseRefId?: string;
+}
+
 interface CartContextType {
-  items: Course[];
-  addToCart: (course: Course) => void;
-  removeFromCart: (courseId: string) => void;
-  isInCart: (courseId: string) => boolean;
+  items: CartItem[];
+  addToCart: (item: CartItem) => void;
+  removeFromCart: (itemId: string) => void;
+  isInCart: (itemId: string) => boolean;
   cartCount: number;
   clearCart: () => void;
   purchasedCourses: PurchasedCourse[];
+  purchasedTestPapers: PurchasedTestPaper[];
   orders: OrderRecord[];
   isPurchased: (courseId: string) => boolean;
   completePurchase: (orderData: {
@@ -90,6 +100,7 @@ interface CartContextType {
 
 const CART_STORAGE_KEY = "ednovate_cart_items";
 const PURCHASED_STORAGE_KEY = "ednovate_purchased_courses";
+const PURCHASED_TEST_PAPERS_STORAGE_KEY = "ednovate_purchased_test_papers";
 const ORDERS_STORAGE_KEY = "ednovate_orders";
 
 const parseStored = <T,>(key: string, fallback: T): T => {
@@ -105,6 +116,12 @@ const shouldIncludeDashboardOrderItem = (item: RemoteOrderItem) => {
   const itemType = String(item.itemType || "course").trim().toLowerCase();
   if (!String(item.courseId || "").trim()) return false;
   return itemType === "course" || itemType === "package";
+};
+
+const shouldIncludeDashboardTestPaperItem = (item: RemoteOrderItem) => {
+  const itemType = String(item.itemType || "").trim().toLowerCase();
+  if (!String(item.courseId || "").trim()) return false;
+  return itemType === "test_series" || itemType === "test-series" || itemType === "testpaper";
 };
 
 const isStudentSessionFailure = (message: string) => /session|token|authoriz|logged out|expired/i.test(message);
@@ -138,9 +155,12 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       return /e\s*-?book/i.test(modeLabel) || /e\s*-?book/i.test(bookLabel);
     };
 
-  const [items, setItems] = useState<Course[]>(() => parseStored<Course[]>(CART_STORAGE_KEY, []));
+  const [items, setItems] = useState<CartItem[]>(() => parseStored<CartItem[]>(CART_STORAGE_KEY, []));
   const [purchasedCourses, setPurchasedCourses] = useState<PurchasedCourse[]>(() =>
     parseStored<PurchasedCourse[]>(PURCHASED_STORAGE_KEY, [])
+  );
+  const [purchasedTestPapers, setPurchasedTestPapers] = useState<PurchasedTestPaper[]>(() =>
+    parseStored<PurchasedTestPaper[]>(PURCHASED_TEST_PAPERS_STORAGE_KEY, [])
   );
   const [orders, setOrders] = useState<OrderRecord[]>(() => parseStored<OrderRecord[]>(ORDERS_STORAGE_KEY, []));
 
@@ -150,14 +170,17 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     if (!currentStudentId) {
       previousStudentIdRef.current = "";
       setPurchasedCourses([]);
+      setPurchasedTestPapers([]);
       setOrders([]);
       localStorage.removeItem(PURCHASED_STORAGE_KEY);
+      localStorage.removeItem(PURCHASED_TEST_PAPERS_STORAGE_KEY);
       localStorage.removeItem(ORDERS_STORAGE_KEY);
       return;
     }
 
     if (previousStudentIdRef.current && previousStudentIdRef.current !== currentStudentId) {
       setPurchasedCourses([]);
+      setPurchasedTestPapers([]);
       setOrders([]);
     }
 
@@ -172,15 +195,17 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
     const loadRemoteDashboard = async () => {
       try {
-        const [dashboardResponse, coursesResponse] = await Promise.all([
+        const [dashboardResponse, coursesResponse, testPapersResponse] = await Promise.all([
           fetch("/api/auth/student/dashboard", {
             headers: { Authorization: `Bearer ${token}` },
           }),
           fetch("/api/courses"),
+          fetch("/api/test-papers").catch(() => ({ ok: false, json: async () => ({ items: [] }) })),
         ]);
 
         if (dashboardResponse.status === 401 || dashboardResponse.status === 403) {
           setPurchasedCourses([]);
+          setPurchasedTestPapers([]);
           setOrders([]);
           void logout();
           return;
@@ -192,6 +217,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
         const dashboardPayload = await dashboardResponse.json();
         const coursesPayload = await coursesResponse.json();
+        const testPapersPayload = testPapersResponse.ok ? await testPapersResponse.json() : { items: [] };
 
         const accessItems: StudentCourseAccessSelf[] = Array.isArray(dashboardPayload?.courseAccess)
           ? dashboardPayload.courseAccess
@@ -200,6 +226,32 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
           ? dashboardPayload.videoActivity
           : [];
         const courses: Course[] = Array.isArray(coursesPayload?.courses) ? coursesPayload.courses : [];
+        const testPapers: ManagedTestPaper[] = Array.isArray(testPapersPayload?.items)
+          ? testPapersPayload.items.map((row: any) => ({
+              id: String(row.id),
+              paperCode: String(row.paper_code || row.paperCode || ""),
+              title: String(row.title || ""),
+              nature: String(row.nature || "objective"),
+              category: String(row.category || ""),
+              remarkTeacher: String(row.remark_teacher || row.remarkTeacher || ""),
+              remarkStudents: String(row.remark_students || row.remarkStudents || ""),
+              description: String(row.description || ""),
+              totalTime: Number(row.total_time || row.totalTime || 0),
+              courseId: String(row.course_id || row.courseId || ""),
+              levelId: String(row.level_id || row.levelId || ""),
+              subjectId: String(row.subject_id || row.subjectId || ""),
+              chapterId: String(row.chapter_id || row.chapterId || ""),
+              subChapterId: String(row.sub_chapter_id || row.subChapterId || ""),
+              passingPercent: Number(row.passing_percent || row.passingPercent || 0),
+              attemptsAllowed: Number(row.attempts_allowed || row.attemptsAllowed || 0),
+              thumbnailUrl: String(row.thumbnail_url || row.thumbnailUrl || ""),
+              price: Number(row.price || 0),
+              originalPrice: row.original_price || row.originalPrice ? Number(row.original_price || row.originalPrice) : undefined,
+              isVisible: row.is_visible !== false,
+              questionIds: Array.isArray(row.question_ids || row.questionIds) ? (row.question_ids || row.questionIds).map((id: unknown) => String(id)) : [],
+              createdAt: String(row.created_at || row.createdAt || ""),
+            }))
+          : [];
 
         const progressByCourse = activityItems.reduce<Record<string, number>>((acc, item) => {
           const courseId = String(item?.courseId || "").trim();
@@ -253,6 +305,29 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
 
         setPurchasedCourses(nextPurchased);
 
+        const nextPurchasedTestPapers = serverOrders
+          .flatMap((order: { id?: string; date?: string; items?: RemoteOrderItem[] }) => {
+            const orderDate = String(order?.date || "").trim();
+            const orderId = String(order?.id || "").trim();
+            const items = Array.isArray(order?.items) ? order.items : [];
+            return items.map((item, index) => ({ item, orderDate, orderId, index }));
+          })
+          .filter(({ item }) => shouldIncludeDashboardTestPaperItem(item))
+          .map(({ item, orderDate, orderId, index }) => {
+            const paperId = String(item.courseId || "").trim();
+            if (!paperId) return null;
+            const base = testPapers.find((paper) => paper.id === paperId);
+            if (!base) return null;
+            return {
+              ...base,
+              purchasedOn: orderDate || new Date().toLocaleDateString("en-IN"),
+              purchasedAt: orderDate,
+              purchaseRefId: String(item.purchaseRefId || `${orderId || "order"}:${index}:${paperId}`).trim(),
+            } satisfies PurchasedTestPaper;
+          })
+          .filter(Boolean) as PurchasedTestPaper[];
+        setPurchasedTestPapers(nextPurchasedTestPapers);
+
         const nextOrders: OrderRecord[] = serverOrders.map((order: any) => ({
           id: String(order.id || `ORD-${Date.now()}`),
           date: String(order.date || ""),
@@ -298,26 +373,30 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   }, [purchasedCourses]);
 
   useEffect(() => {
+    localStorage.setItem(PURCHASED_TEST_PAPERS_STORAGE_KEY, JSON.stringify(purchasedTestPapers));
+  }, [purchasedTestPapers]);
+
+  useEffect(() => {
     localStorage.setItem(ORDERS_STORAGE_KEY, JSON.stringify(orders));
   }, [orders]);
 
-  const addToCart = (course: Course) => {
+  const addToCart = (item: CartItem) => {
     setItems((prev) => {
-      const existingIndex = prev.findIndex((c) => c.id === course.id);
+      const existingIndex = prev.findIndex((c) => c.id === item.id);
       if (existingIndex >= 0) {
         const next = [...prev];
-        next[existingIndex] = course;
+        next[existingIndex] = item;
         return next;
       }
-      return [...prev, course];
+      return [...prev, item];
     });
   };
 
-  const removeFromCart = (courseId: string) => {
-    setItems((prev) => prev.filter((c) => c.id !== courseId));
+  const removeFromCart = (itemId: string) => {
+    setItems((prev) => prev.filter((c) => c.id !== itemId));
   };
 
-  const isInCart = (courseId: string) => items.some((c) => c.id === courseId);
+  const isInCart = (itemId: string) => items.some((c) => c.id === itemId);
   const isPurchased = (courseId: string) => purchasedCourses.some((c) => c.id === courseId);
 
   const completePurchase = async (orderData: {
@@ -400,26 +479,27 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       const rawAttemptEndDate = String(item.selectedAttemptEndDate || "").trim();
       const parsedAttemptEndDate = rawAttemptEndDate ? new Date(rawAttemptEndDate) : null;
       const hasValidAttemptEndDate = Boolean(parsedAttemptEndDate && Number.isFinite(parsedAttemptEndDate.getTime()));
+      const isTestPaper = "paperCode" in item;
       const base = {
         courseId: item.id,
         courseTitle: item.title,
-        durationDays: Math.max(1, Number(item.selectedValidityDays || 180)),
-        expiresAt: hasValidAttemptEndDate ? parsedAttemptEndDate!.toISOString() : undefined,
-        totalViews: Math.max(1, Number(item.selectedViews || 2)),
-        isUnlimitedViews: item.unlimitedViewsEnabled === true,
+        durationDays: isTestPaper ? 365 : Math.max(1, Number((item as ManagedCourse).selectedValidityDays || 180)),
+        expiresAt: !isTestPaper && (item as ManagedCourse).selectedAttemptEndDate ? new Date((item as ManagedCourse).selectedAttemptEndDate!).toISOString() : undefined,
+        totalViews: isTestPaper ? 1 : Math.max(1, Number((item as ManagedCourse).selectedViews || 2)),
+        isUnlimitedViews: !isTestPaper && (item as ManagedCourse).unlimitedViewsEnabled === true,
         usedViews: 0,
         isEnabled: true,
         baseAmount: lineAmounts.baseAmount,
         taxAmount: lineAmounts.taxAmount,
         amount: lineAmounts.amount,
-        modeLabel: getModeLabel(item) || "",
-        bookLabel: getBookLabel(item) || "",
-        itemType: isEbookSelection(item) ? "ebook" : "course",
-        isEbook: isEbookSelection(item),
+        modeLabel: !isTestPaper ? getModeLabel(item as ManagedCourse) || "" : "",
+        bookLabel: !isTestPaper ? getBookLabel(item as ManagedCourse) || "" : "",
+        itemType: isTestPaper ? "test_series" : (isEbookSelection(item as ManagedCourse) ? "ebook" : "course"),
+        isEbook: !isTestPaper && isEbookSelection(item as ManagedCourse),
         grantAccess: true,
         createOrderLine: true,
       };
-      if (item.isCombo && Array.isArray(item.packageCourseIds) && item.packageCourseIds.length > 0) {
+      if (!isTestPaper && (item as ManagedCourse).isCombo && Array.isArray((item as ManagedCourse).packageCourseIds) && (item as ManagedCourse).packageCourseIds!.length > 0) {
         const packageOrderLine = {
           ...base,
           itemType: "package",
@@ -473,6 +553,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     if (!remote.ok) {
       if (isStudentSessionFailure(remote.message || "")) {
         setPurchasedCourses([]);
+        setPurchasedTestPapers([]);
         setOrders([]);
         void logout();
       }
@@ -484,6 +565,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       const allItems: PurchasedCourse[] = [];
 
       for (const item of currentCart) {
+        if ("paperCode" in item) continue;
         const purchaseRefPrefix = `${orderData.orderId || `local-${Date.now()}`}:${item.id}`;
         // Add the package/course itself for normal courses only.
         if (!item.isCombo) {
@@ -519,17 +601,31 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
       return [...prev, ...allItems];
     });
 
+    setPurchasedTestPapers((prev) => {
+      const testItems = currentCart
+        .filter((item): item is ManagedTestPaper => "paperCode" in item)
+        .map((item, index) => ({
+          ...item,
+          purchasedOn: now,
+          purchasedAt: new Date().toISOString(),
+          purchaseRefId: `${orderData.orderId || `local-${Date.now()}`}:${item.id}:test:${prev.length + index}`,
+        }));
+      return [...prev, ...testItems];
+    });
+
     // Add order
     setOrders((prev) => [
       {
         id: orderData.orderId,
         date: now,
         items: currentCart.map((i) => ({
+          courseId: i.id,
           title: i.title,
           price: i.price,
           taxPercentage: Number(i.taxPercentage || 0),
-          modeLabel: getModeLabel(i),
-          bookLabel: getBookLabel(i),
+          modeLabel: "paperCode" in i ? "" : getModeLabel(i),
+          bookLabel: "paperCode" in i ? "" : getBookLabel(i),
+          itemType: "paperCode" in i ? "test_series" : ((i as ManagedCourse).isCombo ? "package" : "course"),
         })),
         subtotal: Number(orderData.subtotal || 0) || undefined,
         couponDiscount: Number(orderData.couponDiscount || 0) || undefined,
@@ -565,7 +661,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     <CartContext.Provider
       value={{
         items, addToCart, removeFromCart, isInCart, cartCount: items.length, clearCart: () => setItems([]),
-        purchasedCourses, orders, isPurchased, completePurchase, updateProgress, updateOrderStatus,
+        purchasedCourses, purchasedTestPapers, orders, isPurchased, completePurchase, updateProgress, updateOrderStatus,
       }}
     >
       {children}

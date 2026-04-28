@@ -1,4 +1,5 @@
 import { useAdminAuth } from "@/context/AdminAuthContext";
+import { usePlatformData } from "@/context/PlatformDataContext";
 import { Navigate, Outlet, NavLink, useLocation, useNavigate } from "react-router-dom";
 import { useEffect, useMemo, useState } from "react";
 import {
@@ -25,6 +26,7 @@ import {
   SlidersHorizontal,
   Braces,
   ChevronDown,
+  Target,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -63,10 +65,12 @@ const iconMap = {
   subadmins: Shield,
   logs: ScrollText,
   apis: Braces,
+  crackit: Target,
 };
 
 const AdminLayout = () => {
   const { admin, isAuthenticated, isLoading, logout, hasPermission } = useAdminAuth();
+  const { refreshData } = usePlatformData();
   const navigate = useNavigate();
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -74,7 +78,14 @@ const AdminLayout = () => {
   const [homepageExpanded, setHomepageExpanded] = useState(false);
   const [coursesExpanded, setCoursesExpanded] = useState(false);
   const [usersExpanded, setUsersExpanded] = useState(false);
+  const [crackitExpanded, setCrackitExpanded] = useState(false);
   const location = useLocation();
+
+  useEffect(() => {
+    if (isAuthenticated) {
+      refreshData();
+    }
+  }, [isAuthenticated]);
 
   useEffect(() => {
     try {
@@ -128,6 +139,12 @@ const AdminLayout = () => {
     }
   }, [location.pathname]);
 
+  useEffect(() => {
+    if (location.pathname.startsWith("/admin/crackit")) {
+      setCrackitExpanded(true);
+    }
+  }, [location.pathname]);
+
   if (isLoading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-white">
@@ -162,6 +179,10 @@ const AdminLayout = () => {
   const isUsersGroupActive = ["/admin/users", "/admin/subadmins", "/admin/faculty"].some((path) =>
     location.pathname.startsWith(path),
   );
+  const crackitParentItem = allowedNavItems.find((item) => item.id === "crackit") || null;
+  const crackitChildItems = allowedNavItems.filter((item) => item.id === "crackit-questions" || item.id === "crackit-papers");
+  const showCrackitGroup = Boolean(crackitParentItem) || crackitChildItems.length > 0;
+  const isCrackitGroupActive = location.pathname.startsWith("/admin/crackit");
   const currentModule =
     ADMIN_SIDEBAR_DEFINITIONS.find((item) => location.pathname.startsWith(item.to))?.moduleKey || "dashboard";
   const currentNavItem = navItems.find((item) => location.pathname.startsWith(item.to));
@@ -194,7 +215,7 @@ const AdminLayout = () => {
         {/* Navigation */}
         <nav className="flex-1 overflow-y-auto py-4 px-3 space-y-2">
           {allowedNavItems.map((item) => {
-            if (item.id === "header" || item.id === "announcements" || item.id === "subadmins" || item.id === "packages" || item.id === "faculty") {
+            if (item.id === "header" || item.id === "announcements" || item.id === "subadmins" || item.id === "packages" || item.id === "faculty" || item.id === "crackit-questions" || item.id === "crackit-papers") {
               return null;
             }
 
@@ -366,6 +387,53 @@ const AdminLayout = () => {
               );
             }
 
+            if (item.id === "crackit" && showCrackitGroup && crackitParentItem) {
+              return (
+                <div key={item.to} className="space-y-1">
+                  <button
+                    type="button"
+                    onClick={() => setCrackitExpanded((prev) => !prev)}
+                    className={`flex w-full items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 text-sm font-medium ${
+                      isCrackitGroupActive
+                        ? "bg-gradient-to-r from-orange-500 to-orange-600 text-white shadow-lg"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
+                    }`}
+                  >
+                    <Target className="w-5 h-5 flex-shrink-0" />
+                    {sidebarOpen && (
+                      <>
+                        <span className="truncate flex-1 text-left">Crack It</span>
+                        <ChevronDown className={`w-4 h-4 shrink-0 transition-transform duration-200 ${crackitExpanded ? "rotate-180" : ""}`} />
+                      </>
+                    )}
+                  </button>
+
+                  {sidebarOpen && crackitExpanded && (
+                    <div className="ml-6 space-y-1 border-l border-orange-100 pl-3">
+                      {crackitChildItems.map((childItem) => {
+                        const isActive = location.pathname === childItem.to;
+                        const Icon = iconMap[childItem.iconName] || Target;
+                        return (
+                          <NavLink
+                            key={childItem.to}
+                            to={childItem.to}
+                            className={`flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all duration-200 text-sm font-medium ${
+                              isActive
+                                ? "bg-orange-50 text-orange-700"
+                                : "text-gray-600 hover:text-gray-900 hover:bg-orange-50"
+                            }`}
+                          >
+                            <Icon className="w-4 h-4 flex-shrink-0" />
+                            <span className="truncate">{childItem.label}</span>
+                          </NavLink>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            }
+
             const isActive = location.pathname === item.to;
             const Icon = iconMap[item.iconName] || LayoutDashboard;
             return (
@@ -462,7 +530,7 @@ const AdminLayout = () => {
 
         {/* Page Content */}
         <main className="flex-1 overflow-auto">
-          <div className="p-6">
+          <div className="">
             {canViewCurrentModule ? (
               <Outlet />
             ) : (

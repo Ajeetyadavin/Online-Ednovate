@@ -72,7 +72,7 @@ const FacultySection = () => {
       <div className="pointer-events-none absolute -top-20 -right-20 h-72 w-72 rounded-full bg-primary/10 blur-3xl" />
       <div className="pointer-events-none absolute -bottom-16 -left-16 h-64 w-64 rounded-full bg-accent/10 blur-3xl" />
 
-      <div className="relative mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+      <div className="relative w-full px-4 sm:px-6 lg:px-8">
         <div className="mb-4 md:mb-5">
           <div className="inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-white/80 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.06em] text-primary">
             <GraduationCap className="h-3 w-3" />

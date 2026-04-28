@@ -238,7 +238,7 @@ export default function AdminDashboard() {
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-center">
+              <div key={i} className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-left">
                 <p className="text-xs text-slate-500 mb-1">Loading...</p>
                 <div className="h-8 flex items-center justify-center">
                   <Loader2 className="w-5 h-5 text-amber-500 animate-spin" />
@@ -281,15 +281,15 @@ export default function AdminDashboard() {
             <CardDescription className="text-amber-700">Learner access issues detected. Review the Students module.</CardDescription>
           </CardHeader>
           <CardContent className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-center">
+            <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-left">
               <p className="text-xs text-slate-500 mb-1">Expired Access</p>
               <p className="text-2xl font-bold text-red-600">{accessSummary.expired}</p>
             </div>
-            <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-center">
+            <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-left">
               <p className="text-xs text-slate-500 mb-1">Out of Views</p>
               <p className="text-2xl font-bold text-amber-600">{accessSummary.outOfViews}</p>
             </div>
-            <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-center">
+            <div className="rounded-lg bg-white/80 border border-amber-200/50 p-3 text-left">
               <p className="text-xs text-slate-500 mb-1">Disabled Access</p>
               <p className="text-2xl font-bold text-slate-700">{accessSummary.disabled}</p>
             </div>

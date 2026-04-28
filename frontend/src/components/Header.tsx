@@ -84,7 +84,26 @@ const Header = () => {
       visible: true,
     }));
 
-  const navLinks = [...orderedNavLinks, ...collectionNavLinks];
+  const navLinks = (() => {
+    const existingLinks = [...orderedNavLinks, ...collectionNavLinks];
+    if (existingLinks.some((link) => String(link.href || "") === "/test-series")) {
+      return existingLinks;
+    }
+    const testSeriesLink = {
+      id: "nav-test-series",
+      label: "Test Series",
+      href: "/test-series",
+      hasDropdown: false,
+      visible: true,
+    };
+    const courseIndex = existingLinks.findIndex((link) => String(link.href || "") === "/packages");
+    if (courseIndex < 0) return [...existingLinks, testSeriesLink];
+    return [
+      ...existingLinks.slice(0, courseIndex + 1),
+      testSeriesLink,
+      ...existingLinks.slice(courseIndex + 1),
+    ];
+  })();
   const customHeaderButtons = headerSettings.customButtons
     .filter((button) => button.visible)
     .filter((button) => button.label.toLowerCase() !== "book demo" && button.label.toLowerCase() !== "signup for free");
@@ -147,7 +166,7 @@ const Header = () => {
       {/* Top info bar */}
       {headerSettings.topBarVisible && (
       <div className="hidden md:block bg-[rgb(38,72,151)] text-primary-foreground text-[11px] border-b border-primary-foreground/10">
-        <div className="container mx-auto px-4 h-8 flex justify-between items-center">
+        <div className="w-full px-4 md:px-6 h-8 flex justify-between items-center">
           <div className="flex items-center gap-4">
             <span className="text-primary-foreground/85">{headerSettings.topBarPhone}</span>
             <span className="w-px h-3 bg-primary-foreground/25" />
@@ -169,7 +188,7 @@ const Header = () => {
             : "bg-background/90 backdrop-blur-md border-b border-border/60"
         }`}
       >
-        <div className="container mx-auto px-4 flex items-center justify-between h-[68px] sm:h-[74px] gap-2">
+        <div className="w-full px-4 md:px-6 flex items-center justify-between h-[68px] sm:h-[74px] gap-2">
           <Link to="/" className="flex items-center group shrink-0">
             <img
               src={logoUrl}

@@ -77,7 +77,7 @@ const PopularCourses = () => {
         <div className="absolute -bottom-24 -right-16 w-72 h-72 rounded-full bg-accent/10 blur-3xl" />
       </div>
 
-      <div className="container mx-auto px-4 relative z-10">
+      <div className="w-full px-4 md:px-6 relative z-10">
         <div ref={titleRef} className={`text-center mb-7 md:mb-9 reveal-up ${titleVisible ? "visible" : ""}`}>
           <h2 className="text-2xl md:text-4xl font-black tracking-tight text-foreground">Explore Courses</h2>
           <p className="text-sm md:text-base text-muted-foreground max-w-xl mx-auto mt-2">

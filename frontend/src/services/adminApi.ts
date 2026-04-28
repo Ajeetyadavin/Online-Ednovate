@@ -119,6 +119,15 @@ export interface PlatformSettingsPayload {
     adminRecipients?: string[];
     templates: Record<string, { enabled: boolean; subject: string; body: string; sendToAdmin?: boolean }>;
   };
+  aiExtraction?: {
+    provider: "gemini" | "grok" | "openrouter";
+    geminiApiKey?: string;
+    geminiModel?: string;
+    grokApiKey?: string;
+    grokModel?: string;
+    openRouterApiKey?: string;
+    openRouterModel?: string;
+  };
   siteSettings?: Record<string, unknown>;
   homepage?: {
     exploreCategoryIds?: string[];
@@ -1688,6 +1697,16 @@ export const adminApi = {
         method: "PUT",
         headers: withAuthHeaders(),
         body: JSON.stringify({ settings }),
+      }),
+    );
+  },
+
+  async testAiExtractionConnection(aiExtraction: NonNullable<PlatformSettingsPayload["aiExtraction"]>) {
+    return parseResponse<{ ok: boolean; provider?: string; model?: string; message?: string }>(
+      await fetch("/api/admin/ai-extraction/test", {
+        method: "POST",
+        headers: withAuthHeaders(),
+        body: JSON.stringify({ aiExtraction }),
       }),
     );
   },

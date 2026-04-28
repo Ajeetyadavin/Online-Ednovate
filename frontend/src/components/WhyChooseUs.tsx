@@ -20,7 +20,7 @@ const WhyChooseUs = () => {
 
   return (
     <section id="why-choose" className="py-8 md:py-10" style={{ backgroundColor }}>
-      <div className="container mx-auto px-4">
+      <div className="w-full px-4 md:px-6">
         <div ref={titleRef} className={`text-center mb-8 reveal-up ${titleVisible ? "visible" : ""}`}>
           <span className="text-sm font-extrabold uppercase tracking-widest" style={{ color: textColor }}>Why Ednovate</span>
           <h2 className="section-title mt-2">

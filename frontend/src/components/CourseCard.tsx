@@ -81,10 +81,10 @@ const CourseCard = ({ course }: CourseCardProps) => {
       </div>
 
       {/* Content */}
-      <div className="p-2 sm:p-3.5 flex-1 flex flex-col">
-        <h3 className="font-black text-foreground text-[12px] sm:text-[14px] mb-1 sm:mb-1.5 line-clamp-2 min-h-[2rem] sm:min-h-[2.25rem] leading-tight">{course.title}</h3>
+      <div className="p-2 sm:p-3.5 flex-1 flex flex-col text-left">
+        <h3 className="font-black text-foreground text-[12px] sm:text-[14px] mb-1 sm:mb-1.5 line-clamp-2 min-h-[2rem] sm:min-h-[2.25rem] leading-tight text-left">{course.title}</h3>
         
-        <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-foreground mb-2.5">
+        <div className="hidden sm:flex items-center gap-1 text-xs font-bold text-foreground mb-2.5 text-left">
           <User className="w-3 h-3" />
           <span>{course.professor}</span>
         </div>

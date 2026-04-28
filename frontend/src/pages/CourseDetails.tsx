@@ -8,6 +8,7 @@ import LoginModal from "@/components/LoginModal";
 import VideoPlayer from "@/components/VideoPlayer";
 import confetti from "canvas-confetti";
 import {
+  ArrowLeft,
   PlayCircle,
   Clock,
   Globe,
@@ -866,6 +867,14 @@ const CourseDetails = () => {
     navigate("/checkout");
   };
 
+  const handleBack = () => {
+    if (window.history.length > 1) {
+      navigate(-1);
+      return;
+    }
+    navigate("/packages");
+  };
+
   const toggleDeliveryModeSelection = (modeId: string, checked: boolean) => {
     setSelectedDeliveryModeIds((prev) => {
       if (checked) {
@@ -882,7 +891,7 @@ const CourseDetails = () => {
   if (!matchedCourse) {
     return (
       <div className="flex items-center justify-center py-32">
-        <div className="text-center">
+        <div className="text-left">
           <h2 className="text-2xl font-bold text-foreground mb-2">Course Not Found</h2>
           <p className="text-muted-foreground mb-4">The course you're looking for doesn't exist.</p>
           <Button onClick={() => navigate("/")}>Go Home</Button>
@@ -897,6 +906,14 @@ const CourseDetails = () => {
       {/* Breadcrumb */}
       <div className="bg-secondary/50 border-b border-border">
         <div className="max-w-7xl mx-auto px-4 py-3 flex items-center gap-1.5 text-xs sm:text-sm text-muted-foreground overflow-x-auto whitespace-nowrap">
+          <button
+            type="button"
+            onClick={handleBack}
+            className="mr-1 inline-flex h-8 shrink-0 items-center gap-1.5 rounded-full border border-primary/15 bg-background px-3 text-[11px] font-bold text-primary shadow-sm active:scale-95 md:hidden"
+          >
+            <ArrowLeft className="h-3.5 w-3.5" />
+            Back
+          </button>
           <Link to="/" className="hover:text-primary transition-colors">Home</Link>
           <ChevronRight className="w-3.5 h-3.5 shrink-0" />
           <Link to="/packages" className="hover:text-primary transition-colors">{breadcrumbCategoryLabel}</Link>
@@ -948,8 +965,8 @@ const CourseDetails = () => {
                   />
                 )}
                 <div className="absolute inset-0 bg-gradient-to-t from-black/65 via-black/30 to-transparent" />
-                <div className="relative text-center p-6 z-10">
-                  <div className="w-16 h-16 sm:w-20 sm:h-20 mx-auto mb-4 rounded-2xl bg-primary-foreground/15 flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-500">
+                <div className="relative text-left p-6 z-10">
+                  <div className="w-16 h-16 sm:w-20 sm:h-20 mb-4 rounded-2xl bg-primary-foreground/15 flex items-center justify-center backdrop-blur-sm group-hover:scale-110 transition-transform duration-500">
                     <PlayCircle className="w-8 h-8 sm:w-10 sm:h-10 text-primary-foreground" />
                   </div>
                   <h2 className="text-primary-foreground text-lg sm:text-2xl font-bold mb-2">{course.title}</h2>
@@ -974,7 +991,7 @@ const CourseDetails = () => {
                 <button
                   key={tab.key}
                   onClick={() => setActiveTab(tab.key)}
-                  className={`flex-1 py-3 text-sm font-semibold text-center transition-all duration-300 border-b-2 tap-bounce ${
+                  className={`flex-1 py-3 text-sm font-semibold text-left transition-all duration-300 border-b-2 tap-bounce ${
                     activeTab === tab.key
                       ? "border-accent text-accent"
                       : "border-transparent text-muted-foreground hover:text-foreground"
@@ -1110,9 +1127,9 @@ const CourseDetails = () => {
 
             {showRatings && activeTab === "ratings" && (
               <div className="mb-6">
-                <div className="bg-card rounded-xl border border-border p-6 text-center">
+                <div className="bg-card rounded-xl border border-border p-6 text-left">
                   <div className="text-5xl font-extrabold text-foreground mb-2">{effectiveRatingValue.toFixed(1)}</div>
-                  <div className="flex justify-center gap-1 mb-2">
+                  <div className="flex gap-1 mb-2">
                     {[1, 2, 3, 4, 5].map((s) => (
                       <Star
                         key={s}
@@ -1371,16 +1388,16 @@ const CourseDetails = () => {
 
               {/* Trust Badges */}
               <div className="bg-card rounded-xl border border-border p-4 flex items-center justify-around">
-                <div className="text-center">
-                  <Award className="w-6 h-6 text-accent mx-auto mb-1" />
+                <div className="text-left">
+                  <Award className="w-6 h-6 text-accent mb-1" />
                   <span className="text-[10px] text-muted-foreground font-medium">Certified</span>
                 </div>
-                <div className="text-center">
-                  <Shield className="w-6 h-6 text-primary mx-auto mb-1" />
+                <div className="text-left">
+                  <Shield className="w-6 h-6 text-primary mb-1" />
                   <span className="text-[10px] text-muted-foreground font-medium">Secure Pay</span>
                 </div>
-                <div className="text-center">
-                  <Headphones className="w-6 h-6 text-accent mx-auto mb-1" />
+                <div className="text-left">
+                  <Headphones className="w-6 h-6 text-accent mb-1" />
                   <span className="text-[10px] text-muted-foreground font-medium">24/7 Support</span>
                 </div>
               </div>
@@ -1554,7 +1571,7 @@ const CourseDetails = () => {
                         key={option}
                         type="button"
                         onClick={() => setSelectedViews(Number(option) || 1)}
-                        className={`rounded-xl border px-3 py-2 text-center text-xs font-bold transition-colors ${
+                        className={`rounded-xl border px-3 py-2 text-left text-xs font-bold transition-colors ${
                           checked ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground"
                         }`}
                       >
@@ -1577,7 +1594,7 @@ const CourseDetails = () => {
                         key={days}
                         type="button"
                         onClick={() => setSelectedValidityDays(Number(days) || backendDefaultValidityDays)}
-                        className={`rounded-xl border px-3 py-2 text-center text-xs font-bold transition-colors ${
+                        className={`rounded-xl border px-3 py-2 text-left text-xs font-bold transition-colors ${
                           checked ? "border-primary bg-primary/10 text-primary" : "border-border bg-background text-foreground"
                         }`}
                       >

@@ -327,6 +327,10 @@ export interface SiteSettings {
     showCoursesSection: boolean;
     showQuickLinksSection: boolean;
   };
+  courseMasters?: {
+    subjects: any[];
+    [key: string]: any;
+  };
 }
 
 const createDefaultSettings = (): SiteSettings => ({
@@ -1130,7 +1134,10 @@ export function SiteSettingsProvider({ children }: { children: ReactNode }) {
 
     const loadFromBackend = async () => {
       try {
-        const response = await fetch("/api/platform-settings");
+        const stored = localStorage.getItem("admin_session_v2");
+        const adminToken = stored ? JSON.parse(stored)?.token : null;
+        const headers = adminToken ? { "Authorization": `Bearer ${adminToken}` } : {};
+        const response = await fetch("/api/platform-settings", { headers });
         if (!response.ok) return;
         const payload = await response.json().catch(() => ({}));
         const backendSettings = payload?.settings?.siteSettings;

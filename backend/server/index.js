@@ -14,6 +14,10 @@ import { fileURLToPath } from "node:url";
 
 import { checkDatabaseConnection, ensureSchema, pool } from "./db.js";
 import { sanitizeRequest, schemas, adminRateLimiter, loginRateLimiter, maskSensitiveSettings, processIncomingSettings, decryptPassword } from "./sanitize.js";
+import { GoogleGenerativeAI } from "@google/generative-ai";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
+const pdf = require("pdf-parse");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -1103,11 +1107,16 @@ const sanitizePlatformSettings = (payload) => {
       linkedin: String(socialIconUrls.linkedin || ""),
       whatsapp: String(socialIconUrls.whatsapp || ""),
     },
+    courseMasters: siteSettings.courseMasters || { subjects: [] },
   };
   const homepage = data.homepage && typeof data.homepage === "object" ? data.homepage : {};
   const smtp = data.smtp && typeof data.smtp === "object" ? data.smtp : {};
   const emailAutomation = data.emailAutomation && typeof data.emailAutomation === "object" ? data.emailAutomation : {};
   const templates = emailAutomation.templates && typeof emailAutomation.templates === "object" ? emailAutomation.templates : {};
+  const aiExtraction = data.aiExtraction && typeof data.aiExtraction === "object" ? data.aiExtraction : {};
+  const selectedAiProvider = ["gemini", "grok", "openrouter"].includes(String(aiExtraction.provider || "").toLowerCase())
+    ? String(aiExtraction.provider || "").toLowerCase()
+    : "gemini";
 
   const normalizeEmailList = (value) => {
     const raw = Array.isArray(value)
@@ -1194,6 +1203,15 @@ const sanitizePlatformSettings = (payload) => {
           "Hello {{studentName}},\n\nYour new account is ready.\nStart learning now.\n\n{{platformName}}",
         ),
       },
+    },
+    aiExtraction: {
+      provider: selectedAiProvider,
+      geminiApiKey: String(aiExtraction.geminiApiKey || "").trim(),
+      geminiModel: normalizeGeminiModelName(aiExtraction.geminiModel || process.env.GEMINI_MODEL || "gemini-1.5-flash"),
+      grokApiKey: String(aiExtraction.grokApiKey || "").trim(),
+      grokModel: String(aiExtraction.grokModel || process.env.GROK_MODEL || "grok-2-vision-latest").trim() || "grok-2-vision-latest",
+      openRouterApiKey: String(aiExtraction.openRouterApiKey || "").trim(),
+      openRouterModel: String(aiExtraction.openRouterModel || process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001").trim() || "google/gemini-2.0-flash-001",
     },
     siteSettings: normalizedSiteSettings,
     homepage: {
@@ -6809,6 +6827,720 @@ app.delete("/api/courses/:id", requireAdminPermission("courses", "delete"), asyn
   }
 });
 
+// --- Crack It (Test Series) Module ---
+
+app.get("/api/admin/crackit/questions", requireAdminPermission("crackit", "read"), async (request, response) => {
+  try {
+    const { courseId, levelId, subjectId, chapterId, type, difficulty } = request.query;
+    let query = "SELECT * FROM crackit_questions WHERE 1=1";
+    const params = [];
+
+    if (courseId) {
+      params.push(courseId);
+      query += ` AND course_id = $${params.length}`;
+    }
+    if (levelId) {
+      params.push(levelId);
+      query += ` AND level_id = $${params.length}`;
+    }
+    if (subjectId) {
+      params.push(subjectId);
+      query += ` AND subject_id = $${params.length}`;
+    }
+    if (chapterId) {
+      params.push(chapterId);
+      query += ` AND chapter_id = $${params.length}`;
+    }
+    if (type) {
+      params.push(type);
+      query += ` AND type = $${params.length}`;
+    }
+    if (difficulty) {
+      params.push(difficulty);
+      query += ` AND difficulty = $${params.length}`;
+    }
+
+    query += " ORDER BY created_at DESC";
+    const result = await pool.query(query, params);
+    response.json({ items: result.rows });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch questions" });
+  }
+});
+
+app.delete("/api/admin/crackit/questions/:id", requireAdminPermission("crackit", "edit"), async (request, response) => {
+  try {
+    const questionId = String(request.params.id || "").trim();
+    if (!questionId) {
+      response.status(400).json({ message: "Question id is required" });
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM crackit_paper_questions WHERE question_id = $1", [questionId]);
+      const deleted = await client.query("DELETE FROM crackit_questions WHERE id = $1 RETURNING id", [questionId]);
+      if (deleted.rowCount === 0) {
+        await client.query("ROLLBACK");
+        response.status(404).json({ message: "Question not found" });
+        return;
+      }
+      await client.query("COMMIT");
+      response.json({ ok: true });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete question" });
+  }
+});
+
+app.post("/api/admin/crackit/questions", requireAdminPermission("crackit", "edit"), async (request, response) => {
+  try {
+    const { id, course_id, level_id, subject_id, chapter_id, sub_chapter_id, type, difficulty, question_text, options, correct_answer, explanation, metadata } = request.body;
+    
+    // Ensure JSON fields are objects or valid JSON strings
+    const finalOptions = Array.isArray(options) ? JSON.stringify(options) : (options || "[]");
+    const finalCorrect = typeof correct_answer === 'object' ? JSON.stringify(correct_answer) : (correct_answer || "{}");
+    const finalMeta = typeof metadata === 'object' ? JSON.stringify(metadata) : (metadata || "{}");
+
+    if (id && id.length > 5) { // Simple check for a real ID
+      // Update
+      await pool.query(
+        `UPDATE crackit_questions SET 
+          course_id = $1, level_id = $2, subject_id = $3, chapter_id = $4, sub_chapter_id = $5,
+          type = $6, difficulty = $7, question_text = $8, options = $9::jsonb, 
+          correct_answer = $10::jsonb, explanation = $11, metadata = $12::jsonb, updated_at = NOW()
+        WHERE id = $13`,
+        [course_id || null, level_id || null, subject_id || null, chapter_id || null, sub_chapter_id || null, 
+         type, difficulty, question_text, finalOptions, finalCorrect, explanation || null, finalMeta, id]
+      );
+    } else {
+      // Insert
+      await pool.query(
+        `INSERT INTO crackit_questions 
+          (course_id, level_id, subject_id, chapter_id, sub_chapter_id, type, difficulty, question_text, options, correct_answer, explanation, metadata)
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb, $11, $12::jsonb)`,
+        [course_id || null, level_id || null, subject_id || null, chapter_id || null, sub_chapter_id || null, 
+         type, difficulty, question_text, finalOptions, finalCorrect, explanation || null, finalMeta]
+      );
+    }
+    response.json({ ok: true });
+  } catch (error) {
+    console.error("CRACKIT QUESTION SAVE ERROR:", error);
+    response.status(500).json({ 
+      message: error instanceof Error ? error.message : "Failed to save question",
+      detail: (error && typeof error === 'object' && 'detail' in error) ? error.detail : undefined
+    });
+  }
+});
+
+const getCrackItExtractionPrompt = () => `
+  Extract multiple-choice and other educational questions from the provided content and return them as a valid JSON array.
+  Return JSON only. No markdown and no explanation outside the JSON.
+  Preserve mathematical formulas, equations, symbols, roots, fractions, exponents, subscripts, matrices, limits, integrals, summations and inequalities accurately.
+  Convert formulas to LaTeX-style inline notation when needed, for example \\(x^2 + y^2\\), \\frac{a}{b}, \\sqrt{x}, x_1, \\sum_{i=1}^{n}.
+  Wrap every mathematical expression in inline LaTeX delimiters \\(...\\), or display delimiters \\[...\\] for large matrices/cases/multi-line equations.
+  For advanced formulas use valid KaTeX-compatible LaTeX: \\begin{matrix}, \\begin{pmatrix}, \\begin{cases}, \\lim_{x\\to0}, \\int_a^b, \\sum_{i=1}^n, \\vec{x}, \\bar{x}, \\hat{x}.
+  Because the output must be JSON, every LaTeX backslash must be escaped as double backslash, for example "\\\\frac{a}{b}" and "\\\\sqrt{x}".
+  Do not simplify, solve, rewrite, or change formula meaning. Keep the same variables, signs, units, and option order from the source.
+  If the source contains Hindi/English mixed text, keep the original language and only normalize formulas.
+  If a formula is visually unclear, preserve the readable parts and mark only the unclear fragment as "[unclear]" inside the same field.
+  Each object in the array MUST follow this structure:
+  {
+    "question_text": "The full text of the question",
+    "type": "mcq",
+    "options": ["Option A", "Option B", "Option C", "Option D"],
+    "correct_answer": { "value": "Option A" },
+    "difficulty": "medium",
+    "explanation": "Why this is correct"
+  }
+  Allowed type values: mcq, msq, tf, short, match, fill.
+  Use null for options when options are not applicable.
+  Use easy, medium, or hard for difficulty.
+`;
+
+const normalizeGeminiModelName = (value) => {
+  const model = String(value || "").trim();
+  if (!model) return "gemini-1.5-flash";
+  if (model.startsWith("models/")) return model.replace(/^models\//, "");
+  if (model.startsWith("gemini-")) return model;
+  if (/^\d/.test(model) || model.startsWith("flash") || model.startsWith("pro")) {
+    return `gemini-${model}`;
+  }
+  return model;
+};
+
+const getImageCapableAiModel = (provider, model) => {
+  const selected = String(model || "").trim();
+  const lower = selected.toLowerCase();
+  if (provider === "gemini") {
+    return normalizeGeminiModelName(selected || "gemini-1.5-flash");
+  }
+  if (provider === "grok") {
+    if (lower.includes("vision")) return selected;
+    return "grok-2-vision-latest";
+  }
+  if (provider === "openrouter") {
+    if (
+      lower.includes("vision") ||
+      lower.includes("gpt-4o") ||
+      lower.includes("gemini") ||
+      lower.includes("claude-3") ||
+      lower.includes("qwen-vl") ||
+      lower.includes("llava")
+    ) {
+      return selected;
+    }
+    return "google/gemini-2.0-flash-001";
+  }
+  return selected;
+};
+
+const getConfiguredAiExtraction = async (overrides = {}) => {
+  const settings = sanitizePlatformSettings(await getPlatformSettings());
+  const savedAi = settings.aiExtraction && typeof settings.aiExtraction === "object" ? settings.aiExtraction : {};
+  const incomingAi = overrides && typeof overrides === "object" ? sanitizePlatformSettings({ aiExtraction: overrides }).aiExtraction : {};
+  const ai = { ...savedAi, ...incomingAi };
+  ["geminiApiKey", "grokApiKey", "openRouterApiKey"].forEach((key) => {
+    if (!incomingAi?.[key] || incomingAi[key] === "••••••" || incomingAi[key] === "******") {
+      ai[key] = savedAi[key] || "";
+    }
+  });
+  const provider = ["gemini", "grok", "openrouter"].includes(String(ai.provider || "").toLowerCase())
+    ? String(ai.provider || "").toLowerCase()
+    : "gemini";
+  const apiKeys = {
+    gemini: decryptPassword(String(ai.geminiApiKey || "").trim()) || process.env.GEMINI_API_KEY || "",
+    grok: decryptPassword(String(ai.grokApiKey || "").trim()) || process.env.GROK_API_KEY || process.env.XAI_API_KEY || "",
+    openrouter: decryptPassword(String(ai.openRouterApiKey || "").trim()) || process.env.OPENROUTER_API_KEY || "",
+  };
+  const models = {
+    gemini: normalizeGeminiModelName(ai.geminiModel || process.env.GEMINI_MODEL || "gemini-1.5-flash"),
+    grok: String(ai.grokModel || process.env.GROK_MODEL || "grok-2-vision-latest").trim() || "grok-2-vision-latest",
+    openrouter: String(ai.openRouterModel || process.env.OPENROUTER_MODEL || "google/gemini-2.0-flash-001").trim() || "google/gemini-2.0-flash-001",
+  };
+
+  return {
+    provider,
+    apiKey: String(apiKeys[provider] || "").trim(),
+    model: models[provider],
+  };
+};
+
+const getOpenAiCompatibleContent = (prompt, file) => {
+  if (!file) return prompt;
+
+  return [
+    { type: "text", text: `${prompt}\n\nRead the uploaded image carefully and extract all visible questions.` },
+    {
+      type: "image_url",
+      image_url: {
+        url: `data:${file.mimetype};base64,${file.buffer.toString("base64")}`,
+      },
+    },
+  ];
+};
+
+const callOpenAiCompatibleAi = async ({ apiKey, model, endpoint, prompt, file, providerName }) => {
+  const aiResponse = await fetch(endpoint, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${apiKey}`,
+      "Content-Type": "application/json",
+      "HTTP-Referer": process.env.PUBLIC_APP_URL || process.env.CORS_ORIGIN || "http://localhost:8081",
+      "X-Title": "Ednovate CrackIt",
+    },
+    body: JSON.stringify({
+      model,
+      temperature: 0.1,
+      messages: [
+        {
+          role: "user",
+          content: getOpenAiCompatibleContent(prompt, file),
+        },
+      ],
+    }),
+  });
+
+  const payload = await aiResponse.json().catch(() => ({}));
+  if (!aiResponse.ok) {
+    const message = payload?.error?.message || payload?.message || `${providerName} request failed`;
+    if (/support image|image input|no endpoint/i.test(message)) {
+      throw new Error(`${providerName} selected model does not support image upload. Use a vision model such as Gemini Flash, GPT-4o, Claude 3, Qwen-VL, or Grok Vision.`);
+    }
+    throw new Error(message);
+  }
+
+  const content = payload?.choices?.[0]?.message?.content;
+  if (Array.isArray(content)) {
+    return content.map((part) => part?.text || "").join("\n");
+  }
+
+  return String(content || "");
+};
+
+const extractQuestionsWithConfiguredAi = async ({ prompt, file, aiExtraction }) => {
+  const config = await getConfiguredAiExtraction(aiExtraction);
+  if (!config.apiKey) {
+    throw new Error(`${config.provider} API key is not configured in Admin Settings`);
+  }
+  const modelName = file ? getImageCapableAiModel(config.provider, config.model) : config.model;
+
+  if (config.provider === "gemini") {
+    const genAI = new GoogleGenerativeAI(config.apiKey);
+    const model = genAI.getGenerativeModel({ model: modelName });
+    const result = file
+      ? await model.generateContent([
+          `${prompt}\n\nRead the uploaded image carefully and extract all visible questions.`,
+          {
+            inlineData: {
+              data: file.buffer.toString("base64"),
+              mimeType: file.mimetype,
+            },
+          },
+        ])
+      : await model.generateContent(prompt);
+    return result.response.text();
+  }
+
+  if (config.provider === "grok") {
+    return callOpenAiCompatibleAi({
+      apiKey: config.apiKey,
+      model: modelName,
+      endpoint: "https://api.x.ai/v1/chat/completions",
+      prompt,
+      file,
+      providerName: "Grok",
+    });
+  }
+
+  return callOpenAiCompatibleAi({
+    apiKey: config.apiKey,
+    model: modelName,
+    endpoint: "https://openrouter.ai/api/v1/chat/completions",
+    prompt,
+    file,
+    providerName: "OpenRouter",
+  });
+};
+
+const normalizeExtractedQuestionText = (value) => (
+  typeof value === "string"
+    ? value
+        .replace(/\s+\n/g, "\n")
+        .replace(/\n\s+/g, "\n")
+        .replace(/[ \t]{2,}/g, " ")
+        .trim()
+    : value
+);
+
+const normalizeExtractedQuestions = (questions) => {
+  if (!Array.isArray(questions)) return [];
+  return questions.map((item) => {
+    const question = item && typeof item === "object" ? item : {};
+    return {
+      ...question,
+      question_text: normalizeExtractedQuestionText(question.question_text),
+      options: Array.isArray(question.options)
+        ? question.options.map((option) => normalizeExtractedQuestionText(option))
+        : question.options,
+      correct_answer: question.correct_answer && typeof question.correct_answer === "object"
+        ? {
+            ...question.correct_answer,
+            value: normalizeExtractedQuestionText(question.correct_answer.value),
+          }
+        : question.correct_answer,
+      explanation: normalizeExtractedQuestionText(question.explanation),
+    };
+  });
+};
+
+const parseAiQuestionJson = (rawJson) => {
+  try {
+    return JSON.parse(rawJson);
+  } catch (firstError) {
+    const repaired = String(rawJson || "").replace(/\\(?!["\\/bfnrtu])/g, "\\\\");
+    try {
+      return JSON.parse(repaired);
+    } catch {
+      throw firstError;
+    }
+  }
+};
+
+app.post("/api/admin/ai-extraction/test", requireAdminPermission("settings", "edit"), async (request, response) => {
+  try {
+    const aiExtraction = request.body?.aiExtraction && typeof request.body.aiExtraction === "object"
+      ? request.body.aiExtraction
+      : {};
+    const config = await getConfiguredAiExtraction(aiExtraction);
+    if (!config.apiKey) {
+      response.status(400).json({ ok: false, message: `${config.provider} API key is missing` });
+      return;
+    }
+
+    const text = await extractQuestionsWithConfiguredAi({
+      aiExtraction,
+      file: null,
+      prompt: 'Reply with exactly this JSON: [{"question_text":"Connection test","type":"short","options":null,"correct_answer":{"value":"ok"},"difficulty":"easy","explanation":"ok"}]',
+    });
+
+    response.json({
+      ok: true,
+      provider: config.provider,
+      model: config.model,
+      message: text ? "AI connection is working" : "AI connection responded without text",
+    });
+  } catch (error) {
+    response.status(500).json({
+      ok: false,
+      message: error instanceof Error ? error.message : "AI connection test failed",
+    });
+  }
+});
+
+app.post("/api/admin/crackit/extract-questions", requireAdminPermission("crackit", "edit"), upload.single("file"), async (request, response) => {
+  try {
+    if (!request.file) {
+      response.status(400).json({ message: "No PDF or image file uploaded" });
+      return;
+    }
+
+    let aiExtraction = {};
+    if (request.body?.aiExtraction) {
+      try {
+        const parsed = typeof request.body.aiExtraction === "string"
+          ? JSON.parse(request.body.aiExtraction)
+          : request.body.aiExtraction;
+        aiExtraction = parsed && typeof parsed === "object" ? parsed : {};
+      } catch {
+        aiExtraction = {};
+      }
+    }
+
+    const extractionPrompt = getCrackItExtractionPrompt();
+    const mimeType = String(request.file.mimetype || "").toLowerCase();
+    let resultText;
+
+    if (mimeType.startsWith("image/")) {
+      resultText = await extractQuestionsWithConfiguredAi({ prompt: extractionPrompt, file: request.file, aiExtraction });
+    } else {
+      const data = await pdf(request.file.buffer);
+      const text = data.text;
+
+      if (!text || text.trim().length < 10) {
+        response.status(400).json({ message: "Could not extract enough text from PDF. If this is a scanned PDF, upload the page as an image." });
+        return;
+      }
+
+      resultText = await extractQuestionsWithConfiguredAi({
+        aiExtraction,
+        file: null,
+        prompt: `
+        ${extractionPrompt}
+        
+        Text:
+        ${text.slice(0, 30000)}
+      `,
+      });
+    }
+    
+    // Clean JSON from markdown code blocks if present
+    const jsonMatch = resultText.match(/\[[\s\S]*\]/);
+    if (!jsonMatch) {
+      response.status(500).json({ message: "AI failed to generate a valid JSON list of questions" });
+      return;
+    }
+
+    const questions = normalizeExtractedQuestions(parseAiQuestionJson(jsonMatch[0]));
+    response.json({ items: questions });
+  } catch (error) {
+    console.error("[CRACKIT_AI_ERROR]", error);
+    response.status(500).json({ message: error instanceof Error ? error.message : "AI extraction failed" });
+  }
+});
+
+app.get("/api/test-papers", async (request, response) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        p.*,
+        COALESCE(
+          array_agg(pq.question_id::text ORDER BY pq.sort_order)
+            FILTER (WHERE pq.question_id IS NOT NULL),
+          ARRAY[]::text[]
+        ) AS question_ids
+      FROM crackit_papers p
+      LEFT JOIN crackit_paper_questions pq ON pq.paper_id = p.id
+      WHERE p.is_visible IS NOT FALSE
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    `);
+    response.json({ items: result.rows });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch test papers" });
+  }
+});
+
+const studentHasTestPaperAccess = async (studentId, paperId) => {
+  const result = await pool.query(
+    `
+    SELECT 1
+    FROM student_orders
+    WHERE student_id = $1
+      AND course_id = $2
+      AND LOWER(COALESCE(item_type, '')) IN ('test_series', 'test-series', 'testpaper')
+      AND LOWER(COALESCE(status, 'completed')) = 'completed'
+    LIMIT 1
+    `,
+    [studentId, paperId],
+  );
+  return result.rowCount > 0;
+};
+
+const getStudentTestAttemptLimit = async (studentId, paperId) => {
+  const result = await pool.query(
+    `
+    SELECT
+      COALESCE(p.attempts_allowed, 1)::int AS attempts_allowed,
+      COUNT(a.id)::int AS attempts_used
+    FROM crackit_papers p
+    LEFT JOIN student_test_attempts a ON a.paper_id = p.id AND a.student_id = $1
+    WHERE p.id = $2
+    GROUP BY p.id, p.attempts_allowed
+    `,
+    [studentId, paperId],
+  );
+  const row = result.rows[0] || {};
+  return {
+    attemptsAllowed: Math.max(1, Number(row.attempts_allowed || 1)),
+    attemptsUsed: Math.max(0, Number(row.attempts_used || 0)),
+  };
+};
+
+app.get("/api/test-papers/:id/questions", requireStudentSession, async (request, response) => {
+  try {
+    const paperId = String(request.params.id || "").trim();
+    const studentId = request.studentSession.studentId;
+    const hasAccess = await studentHasTestPaperAccess(studentId, paperId);
+    if (!hasAccess) {
+      response.status(403).json({ message: "Purchase required to attempt this test paper" });
+      return;
+    }
+    const attemptLimit = await getStudentTestAttemptLimit(studentId, paperId);
+    if (attemptLimit.attemptsUsed >= attemptLimit.attemptsAllowed) {
+      response.status(403).json({
+        message: "Attempt limit reached for this test paper",
+        code: "ATTEMPT_LIMIT_REACHED",
+        attemptsAllowed: attemptLimit.attemptsAllowed,
+        attemptsUsed: attemptLimit.attemptsUsed,
+      });
+      return;
+    }
+    const result = await pool.query(`
+      SELECT q.id, q.type, q.difficulty, q.question_text, q.options, q.correct_answer, q.explanation, q.metadata
+      FROM crackit_paper_questions pq
+      JOIN crackit_questions q ON q.id = pq.question_id
+      JOIN crackit_papers p ON p.id = pq.paper_id
+      WHERE pq.paper_id = $1 AND p.is_visible IS NOT FALSE
+      ORDER BY pq.sort_order ASC, q.created_at ASC
+    `, [paperId]);
+    response.json({ items: result.rows });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch test paper questions" });
+  }
+});
+
+app.get("/api/auth/student/test-attempts", requireStudentSession, async (request, response) => {
+  try {
+    const studentId = request.studentSession.studentId;
+    const result = await pool.query(
+      `
+      SELECT *
+      FROM student_test_attempts
+      WHERE student_id = $1
+      ORDER BY submitted_at DESC
+      LIMIT 100
+      `,
+      [studentId],
+    );
+    response.json({
+      items: result.rows.map((row) => ({
+        id: row.id,
+        paperId: String(row.paper_id || ""),
+        paperTitle: row.paper_title,
+        submittedAt: row.submitted_at,
+        totalQuestions: Number(row.total_questions || 0),
+        attempted: Number(row.attempted || 0),
+        correct: Number(row.correct || 0),
+        wrong: Number(row.wrong || 0),
+        scorePercent: Number(row.score_percent || 0),
+        timeTakenSeconds: Number(row.time_taken_seconds || 0),
+        questions: Array.isArray(row.report?.questions) ? row.report.questions : [],
+      })),
+    });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch test attempts" });
+  }
+});
+
+app.post("/api/auth/student/test-attempts", requireStudentSession, async (request, response) => {
+  try {
+    const studentId = request.studentSession.studentId;
+    const report = request.body?.report && typeof request.body.report === "object" ? request.body.report : request.body;
+    const paperId = String(report?.paperId || "").trim();
+    if (!paperId) {
+      response.status(400).json({ message: "paperId is required" });
+      return;
+    }
+    const hasAccess = await studentHasTestPaperAccess(studentId, paperId);
+    if (!hasAccess) {
+      response.status(403).json({ message: "Purchase required to submit this test attempt" });
+      return;
+    }
+    const attemptId = String(report?.id || `attempt-${Date.now()}`).trim();
+    const existingAttemptResult = await pool.query(
+      "SELECT id FROM student_test_attempts WHERE id = $1 AND student_id = $2 LIMIT 1",
+      [attemptId, studentId],
+    );
+    const attemptLimit = await getStudentTestAttemptLimit(studentId, paperId);
+    if (existingAttemptResult.rowCount === 0 && attemptLimit.attemptsUsed >= attemptLimit.attemptsAllowed) {
+      response.status(403).json({
+        message: "Attempt limit reached for this test paper",
+        code: "ATTEMPT_LIMIT_REACHED",
+        attemptsAllowed: attemptLimit.attemptsAllowed,
+        attemptsUsed: attemptLimit.attemptsUsed,
+      });
+      return;
+    }
+
+    const submittedAt = report?.submittedAt ? new Date(report.submittedAt) : new Date();
+    await pool.query(
+      `
+      INSERT INTO student_test_attempts
+      (id, student_id, paper_id, paper_title, submitted_at, total_questions, attempted, correct, wrong, score_percent, time_taken_seconds, report)
+      VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12::jsonb)
+      ON CONFLICT (id)
+      DO UPDATE SET
+        paper_title = EXCLUDED.paper_title,
+        submitted_at = EXCLUDED.submitted_at,
+        total_questions = EXCLUDED.total_questions,
+        attempted = EXCLUDED.attempted,
+        correct = EXCLUDED.correct,
+        wrong = EXCLUDED.wrong,
+        score_percent = EXCLUDED.score_percent,
+        time_taken_seconds = EXCLUDED.time_taken_seconds,
+        report = EXCLUDED.report
+      `,
+      [
+        attemptId,
+        studentId,
+        paperId,
+        String(report?.paperTitle || "Test Paper"),
+        submittedAt,
+        Math.max(0, Number(report?.totalQuestions || 0)),
+        Math.max(0, Number(report?.attempted || 0)),
+        Math.max(0, Number(report?.correct || 0)),
+        Math.max(0, Number(report?.wrong || 0)),
+        Math.max(0, Number(report?.scorePercent || 0)),
+        Math.max(0, Number(report?.timeTakenSeconds || 0)),
+        JSON.stringify({
+          ...report,
+          id: attemptId,
+          paperId,
+          questions: Array.isArray(report?.questions) ? report.questions : [],
+        }),
+      ],
+    );
+    response.json({ ok: true, id: attemptId });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save test attempt" });
+  }
+});
+
+app.get("/api/admin/crackit/papers", requireAdminPermission("crackit", "read"), async (request, response) => {
+  try {
+    const result = await pool.query(`
+      SELECT
+        p.*,
+        COALESCE(
+          array_agg(pq.question_id::text ORDER BY pq.sort_order)
+            FILTER (WHERE pq.question_id IS NOT NULL),
+          ARRAY[]::text[]
+        ) AS question_ids
+      FROM crackit_papers p
+      LEFT JOIN crackit_paper_questions pq ON pq.paper_id = p.id
+      GROUP BY p.id
+      ORDER BY p.created_at DESC
+    `);
+    response.json({ items: result.rows });
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch papers" });
+  }
+});
+
+app.post("/api/admin/crackit/papers", requireAdminPermission("crackit", "edit"), async (request, response) => {
+  try {
+    const { id, paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url, price, original_price, is_visible, question_ids } = request.body;
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      
+      let paperId = id;
+      if (id) {
+        // Update
+        await client.query(
+          `UPDATE crackit_papers SET 
+            paper_code = $1, title = $2, nature = $3, category = $4, remark_teacher = $5,
+            remark_students = $6, description = $7, total_time = $8, course_id = $9,
+            level_id = $10, subject_id = $11, chapter_id = $12, sub_chapter_id = $13,
+            passing_percent = $14, attempts_allowed = $15, thumbnail_url = $16, price = $17, original_price = $18,
+            is_visible = $19, updated_at = NOW()
+          WHERE id = $20`,
+          [paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url || null, price, original_price, is_visible, id]
+        );
+      } else {
+        // Insert
+        const insertRes = await client.query(
+          `INSERT INTO crackit_papers 
+            (paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url, price, original_price, is_visible)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+          RETURNING id`,
+          [paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url || null, price, original_price, is_visible]
+        );
+        paperId = insertRes.rows[0].id;
+      }
+
+      // Sync questions
+      if (Array.isArray(question_ids)) {
+        await client.query("DELETE FROM crackit_paper_questions WHERE paper_id = $1", [paperId]);
+        for (let i = 0; i < question_ids.length; i++) {
+          await client.query(
+            "INSERT INTO crackit_paper_questions (paper_id, question_id, sort_order) VALUES ($1, $2, $3)",
+            [paperId, question_ids[i], i]
+          );
+        }
+      }
+
+      await client.query("COMMIT");
+      response.json({ ok: true, id: paperId });
+    } catch (e) {
+      await client.query("ROLLBACK");
+      throw e;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save paper" });
+  }
+});
+
 app.get("/api/courses/:id/curriculum", async (request, response) => {
   try {
     const result = await pool.query(
@@ -8930,7 +9662,7 @@ app.patch("/api/admin/bunny/videos/:videoId", requireAdminPermission("settings",
 app.get("/api/platform-settings", async (_request, response) => {
   try {
     const data = sanitizePlatformSettings(await getPlatformSettings());
-    response.json({ settings: data });
+    response.json({ settings: maskSensitiveSettings(data) });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to load settings" });
   }
@@ -8951,6 +9683,8 @@ app.put("/api/admin/platform-settings", requireAdminPermission("settings", "edit
   try {
     const existingRaw = sanitizePlatformSettings(await getPlatformSettings());
     const incomingRaw = request.body?.settings && typeof request.body.settings === "object" ? request.body.settings : {};
+    const incomingHasAiExtraction = incomingRaw.aiExtraction && typeof incomingRaw.aiExtraction === "object";
+    const incomingHasCourseMasters = incomingRaw.siteSettings?.courseMasters && typeof incomingRaw.siteSettings.courseMasters === "object";
     
     // Process incoming settings to handle password updates properly
     const processedIncoming = processIncomingSettings(incomingRaw, existingRaw);
@@ -8975,9 +9709,16 @@ app.put("/api/admin/platform-settings", requireAdminPermission("settings", "edit
           ...((incoming.emailAutomation && incoming.emailAutomation.templates) || {}),
         },
       },
+      aiExtraction: {
+        ...(existingRaw.aiExtraction || {}),
+        ...(incomingHasAiExtraction ? (incoming.aiExtraction || {}) : {}),
+      },
       siteSettings: {
         ...(existingRaw.siteSettings || {}),
         ...(incoming.siteSettings || {}),
+        courseMasters: incomingHasCourseMasters
+          ? incoming.siteSettings?.courseMasters
+          : existingRaw.siteSettings?.courseMasters,
       },
       homepage: {
         ...(existingRaw.homepage || {}),
@@ -9081,6 +9822,7 @@ app.put("/api/admin/homepage/platform-settings", requireAdminPermission("homepag
   try {
     const existingRaw = sanitizePlatformSettings(await getPlatformSettings());
     const incomingRaw = request.body?.settings && typeof request.body.settings === "object" ? request.body.settings : {};
+    const incomingHasCourseMasters = incomingRaw.siteSettings?.courseMasters && typeof incomingRaw.siteSettings.courseMasters === "object";
     const incoming = sanitizePlatformSettings(incomingRaw);
     const nextData = sanitizePlatformSettings({
       ...existingRaw,
@@ -9104,6 +9846,9 @@ app.put("/api/admin/homepage/platform-settings", requireAdminPermission("homepag
       siteSettings: {
         ...(existingRaw.siteSettings || {}),
         ...(incoming.siteSettings || {}),
+        courseMasters: incomingHasCourseMasters
+          ? incoming.siteSettings?.courseMasters
+          : existingRaw.siteSettings?.courseMasters,
       },
       homepage: {
         ...(existingRaw.homepage || {}),

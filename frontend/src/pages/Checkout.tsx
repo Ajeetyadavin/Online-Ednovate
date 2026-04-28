@@ -12,6 +12,9 @@ import { usePlatformData, type ManagedCoupon } from "@/context/PlatformDataConte
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import LoginModal from "@/components/LoginModal";
 import { toast } from "@/hooks/use-toast";
+import type { ManagedCourse, ManagedTestPaper } from "@/context/PlatformDataContext";
+
+type CartItem = ManagedCourse | ManagedTestPaper;
 
 const Checkout = () => {
   const { items, cartCount, orders, completePurchase } = useCart();
@@ -34,9 +37,10 @@ const Checkout = () => {
   const [country, setCountry] = useState("India");
   const [pincode, setPincode] = useState("");
 
-  const getModeLabel = (item: (typeof items)[number]): string | undefined => {
-    if (!item.deliveryModePricingEnabled) return undefined;
-    const modes = Array.isArray(item.deliveryModes) ? item.deliveryModes : [];
+  const getModeLabel = (item: CartItem): string | undefined => {
+    if (!("deliveryModePricingEnabled" in item) || !item.deliveryModePricingEnabled) return undefined;
+    const managed = item as ManagedCourse;
+    const modes = Array.isArray(managed.deliveryModes) ? managed.deliveryModes : [];
     const selectedIds = Array.isArray(item.selectedDeliveryModeIds)
       ? item.selectedDeliveryModeIds
       : String(item.selectedDeliveryModeId || "").trim()
@@ -47,9 +51,10 @@ const Checkout = () => {
     return labels.length > 0 ? labels.join(", ") : undefined;
   };
 
-  const getBookLabel = (item: (typeof items)[number]): string | undefined => {
-    if (!item.bookAddonEnabled) return undefined;
-    const addons = Array.isArray(item.bookAddons) ? item.bookAddons : [];
+  const getBookLabel = (item: CartItem): string | undefined => {
+    if (!("bookAddonEnabled" in item) || !item.bookAddonEnabled) return undefined;
+    const managed = item as ManagedCourse;
+    const addons = Array.isArray(managed.bookAddons) ? managed.bookAddons : [];
     const selectedIds = Array.isArray(item.selectedBookAddonIds) ? item.selectedBookAddonIds : [];
     if (selectedIds.length === 0 || addons.length === 0) return undefined;
     const labels = addons.filter((addon) => selectedIds.includes(addon.id)).map((addon) => addon.label);
@@ -114,7 +119,7 @@ const Checkout = () => {
   }, [enabledMethods, paymentMethod]);
 
   const totalPrice = items.reduce((sum, item) => sum + item.price, 0);
-  const totalOriginal = items.reduce((sum, item) => sum + item.originalPrice, 0);
+  const totalOriginal = items.reduce((sum, item) => sum + (item.originalPrice || item.price), 0);
   const totalSavings = totalOriginal - totalPrice;
   const getCouponDiscount = (candidate: ManagedCoupon): number => {
     const eligibleAmount =
@@ -166,7 +171,7 @@ const Checkout = () => {
     return items.reduce((sum, item) => {
       const discountAllocation = allocatedCouponByItem.get(item.id) || 0;
       const taxableAmount = Math.max(0, item.price - discountAllocation);
-      const taxRate = Math.max(0, Number(item.taxPercentage || 0));
+      const taxRate = "taxPercentage" in item ? Math.max(0, Number(item.taxPercentage || 0)) : 0;
       return sum + Math.round((taxableAmount * taxRate) / 100);
     }, 0);
   }, [items, appliedCoupon, couponDiscount]);
@@ -203,7 +208,7 @@ const Checkout = () => {
     return items.map((item) => {
       const discountAllocation = allocatedCouponByItem.get(item.id) || 0;
       const baseAmount = Math.max(0, item.price - discountAllocation);
-      const taxRate = Math.max(0, Number(item.taxPercentage || 0));
+      const taxRate = "taxPercentage" in item ? Math.max(0, Number(item.taxPercentage || 0)) : 0;
       const lineTax = Math.round((baseAmount * taxRate) / 100);
       return {
         courseId: item.id,
@@ -316,8 +321,10 @@ const Checkout = () => {
 
   const requiresShippingAddress = useMemo(() => {
     return items.some((item) => {
-      const mode = String(getModeLabel(item) || "").toLowerCase();
-      const books = String(getBookLabel(item) || "").toLowerCase();
+      if ("paperCode" in item) return false;
+      const managed = item as ManagedCourse;
+      const mode = String(getModeLabel(managed) || "").toLowerCase();
+      const books = String(getBookLabel(managed) || "").toLowerCase();
       const hasPenDrive = /pen\s*-?drive/.test(mode);
       const hasPhysicalBook = /physical|hard\s*copy|printed|book/.test(books) && !/ebook|e\s*-?notes|enotes/.test(books);
       return hasPenDrive || hasPhysicalBook;
@@ -373,7 +380,7 @@ const Checkout = () => {
     const orderItems = items.map((item) => ({
       title: item.title,
       price: item.price,
-      taxPercentage: Number(item.taxPercentage || 0),
+      taxPercentage: "taxPercentage" in item ? Number(item.taxPercentage || 0) : 0,
       modeLabel: getModeLabel(item),
       bookLabel: getBookLabel(item),
     }));
@@ -649,6 +656,9 @@ const Checkout = () => {
                       )}
                       {getBookLabel(item) && (
                         <p className="text-[10px] text-indigo-600 font-medium mt-0.5">Books: {getBookLabel(item)}</p>
+                      )}
+                      {"paperCode" in item && (
+                        <p className="text-[10px] text-emerald-600 font-medium mt-0.5">Test Series • {(item as ManagedTestPaper).paperCode}</p>
                       )}
                     </div>
                     <span className="text-xs font-semibold text-foreground whitespace-nowrap">₹{item.price.toLocaleString()}</span>
