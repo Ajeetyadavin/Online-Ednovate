@@ -334,11 +334,12 @@ const ContactUs = () => {
                 </div>
                 
                 <div className="space-y-2 text-sm">
-                  <p><span className="font-bold">A/C Name:</span> Ednovate Edtech Pvt Ltd</p>
+                  <p><span className="font-bold">Bank Name:</span> HDFC Bank Ltd</p>
+                  <p><span className="font-bold">A/C Name:</span> Ednovate Edutech Private Limited</p>
+                  <p><span className="font-bold">A/C No.:</span> 50200066371383</p>
+                  <p><span className="font-bold">IFSC Code:</span> HDFC0000079</p>
+                  <p><span className="font-bold">Branch Name:</span> Sana Building, Linkid Road, Santacruz (West) Mumbai-400054</p>
                   <p><span className="font-bold">TID:</span> 62459033</p>
-                  <p><span className="font-bold">Bank:</span> Update Your Bank</p>
-                  <p><span className="font-bold">A/C No:</span> XXXX XXXX XXXX</p>
-                  <p><span className="font-bold">IFSC:</span> XXXXX000000</p>
                 </div>
               </div>
             </div>
