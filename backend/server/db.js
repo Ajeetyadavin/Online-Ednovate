@@ -620,6 +620,7 @@ export async function ensureSchema() {
       remark_students TEXT,
       description TEXT,
       total_time INTEGER NOT NULL DEFAULT 60, -- minutes
+      question_time_limit_seconds INTEGER NOT NULL DEFAULT 0, -- 0 = no per-question timer
       course_id TEXT,
       level_id TEXT,
       subject_id TEXT,
@@ -639,6 +640,7 @@ export async function ensureSchema() {
   `);
 
   await pool.query("ALTER TABLE crackit_papers ADD COLUMN IF NOT EXISTS thumbnail_url TEXT");
+  await pool.query("ALTER TABLE crackit_papers ADD COLUMN IF NOT EXISTS question_time_limit_seconds INTEGER NOT NULL DEFAULT 0");
 
   await pool.query(`
     CREATE TABLE IF NOT EXISTS crackit_paper_questions (

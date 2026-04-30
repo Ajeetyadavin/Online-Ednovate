@@ -101,6 +101,32 @@ const mapStudentCourseAccess = (row) => ({
   updatedAt: row.updated_at,
 });
 
+const mapStudentTestSeriesAccess = (row) => {
+  const attemptsAllowed = Math.max(0, Number(row.attempts_allowed || 0));
+  const attemptsUsed = Math.max(0, Number(row.attempts_used || 0));
+  return {
+    id: Number(row.id),
+    studentId: row.student_id,
+    paperId: row.paper_id,
+    paperCode: row.paper_code || "",
+    title: row.title || "Test Paper",
+    description: row.description || "",
+    totalTime: Math.max(0, Number(row.total_time || 0)),
+    questionTimeLimitSeconds: Math.max(0, Number(row.question_time_limit_seconds || 0)),
+    thumbnailUrl: row.thumbnail_url || "",
+    price: Math.max(0, Number(row.price || 0)),
+    attemptsAllowed,
+    attemptsUsed,
+    remainingAttempts: attemptsAllowed > 0 ? Math.max(0, attemptsAllowed - attemptsUsed) : 0,
+    purchasedAt: row.purchased_at,
+    expiresAt: row.expires_at,
+    isEnabled: row.is_enabled !== false,
+    isVisible: row.is_visible !== false,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+};
+
 const normalizeVideoQualityPreference = (value) => {
   const normalized = String(value || "auto").trim().toLowerCase();
   if (["auto", "high", "medium", "low"].includes(normalized)) return normalized;
@@ -142,6 +168,9 @@ const mapStudentOrderLine = (row) => {
     id: Number(row.id),
     orderId: String(row.order_id || ""),
     studentId: String(row.student_id || ""),
+    studentName: String(row.student_name || ""),
+    studentEmail: String(row.student_email || ""),
+    studentMobile: String(row.student_mobile || ""),
     customerName: String(row.customer_name || ""),
     customerEmail: String(row.customer_email || ""),
     customerPhone: String(row.customer_phone || ""),
@@ -199,6 +228,8 @@ const groupStudentOrders = (rows) => {
         courseId: line.courseId,
         title: line.courseTitle,
         price: line.amount,
+        baseAmount: line.baseAmount,
+        taxAmount: line.taxAmount,
         itemType: line.itemType,
         modeLabel: line.modeLabel,
         bookLabel: line.bookLabel,
@@ -207,6 +238,8 @@ const groupStudentOrders = (rows) => {
         trackingId: line.trackingId,
       });
       existing.total += line.amount;
+      existing.baseAmount += line.baseAmount;
+      existing.taxAmount += line.taxAmount;
       existing.updatedAt = existing.updatedAt > line.updatedAt ? existing.updatedAt : line.updatedAt;
       if (line.dispatchStatus !== "delivered") {
         existing.dispatchStatus = line.dispatchStatus;
@@ -228,6 +261,20 @@ const groupStudentOrders = (rows) => {
       trackingId: line.trackingId,
       dispatchNote: line.dispatchNote,
       paymentMethod: line.paymentMethod,
+      customerName: line.customerName,
+      customerEmail: line.customerEmail,
+      customerPhone: line.customerPhone,
+      studentName: line.studentName,
+      studentEmail: line.studentEmail,
+      studentMobile: line.studentMobile,
+      shippingAddressLine1: line.shippingAddressLine1,
+      shippingAddressLine2: line.shippingAddressLine2,
+      shippingCity: line.shippingCity,
+      shippingState: line.shippingState,
+      shippingCountry: line.shippingCountry,
+      shippingPincode: line.shippingPincode,
+      baseAmount: line.baseAmount,
+      taxAmount: line.taxAmount,
       total: line.amount,
       updatedAt: line.updatedAt,
       items: [
@@ -236,6 +283,8 @@ const groupStudentOrders = (rows) => {
           courseId: line.courseId,
           title: line.courseTitle,
           price: line.amount,
+          baseAmount: line.baseAmount,
+          taxAmount: line.taxAmount,
           itemType: line.itemType,
           modeLabel: line.modeLabel,
           bookLabel: line.bookLabel,
@@ -3854,17 +3903,18 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
       const modeLabel = String(rawItem?.modeLabel || "").trim();
       const bookLabel = String(rawItem?.bookLabel || "").trim();
       const itemType = String(rawItem?.itemType || "course").trim().toLowerCase() || "course";
+      const isTestSeries = ["test_series", "test-series", "testpaper"].includes(itemType);
       const isEbook = rawItem?.isEbook === true
         || /e\s*-?book/i.test(modeLabel)
         || /e\s*-?book/i.test(bookLabel)
         || itemType === "ebook";
-      const grantAccess = rawItem?.grantAccess !== false;
+      const grantAccess = !isTestSeries && rawItem?.grantAccess !== false;
       const createOrderLine = rawItem?.createOrderLine !== false;
 
       if (!courseId) continue;
 
       let isUnlimitedViews = explicitUnlimited === true;
-      if (explicitUnlimited === null) {
+      if (!isTestSeries && explicitUnlimited === null) {
         const courseResult = await pool.query("SELECT payload FROM courses WHERE id = $1 LIMIT 1", [courseId]);
         const payload = courseResult.rows[0]?.payload;
         if (payload && typeof payload === "object" && payload.unlimitedViewsEnabled === true) {
@@ -3875,6 +3925,34 @@ app.post("/api/auth/student/purchase", requireStudentSession, async (request, re
       const title = courseTitle || courseId;
       purchasedTitles.push(title);
       purchaseAmountTotal += amount;
+
+      if (isTestSeries && rawItem?.grantAccess !== false) {
+        await pool.query(
+          `
+          INSERT INTO student_test_access
+          (student_id, paper_id, order_id, purchased_at, expires_at, is_enabled, updated_at)
+          VALUES ($1,$2,$3,$4,$5,TRUE,NOW())
+          ON CONFLICT (student_id, paper_id)
+          DO UPDATE SET
+            order_id = COALESCE(EXCLUDED.order_id, student_test_access.order_id),
+            purchased_at = LEAST(student_test_access.purchased_at, EXCLUDED.purchased_at),
+            expires_at = CASE
+              WHEN student_test_access.expires_at IS NULL THEN EXCLUDED.expires_at
+              WHEN EXCLUDED.expires_at IS NULL THEN student_test_access.expires_at
+              ELSE GREATEST(student_test_access.expires_at, EXCLUDED.expires_at)
+            END,
+            is_enabled = TRUE,
+            updated_at = NOW()
+          `,
+          [
+            studentId,
+            courseId,
+            orderId || null,
+            purchaseDate,
+            explicitExpiresAt || null,
+          ],
+        );
+      }
 
       if (grantAccess) {
         const expiresAt = explicitExpiresAt || new Date(Date.now() + durationDays * 24 * 60 * 60 * 1000).toISOString();
@@ -5175,9 +5253,89 @@ app.post("/api/admin/quick-login", requireAdminPermission("users", "edit"), asyn
 app.get("/api/students/:id/details", requireAdminPermission("users", "read"), async (request, response) => {
   try {
     const studentId = String(request.params.id || "").trim();
-    const [studentResult, courseAccessResult, loginResult, videoResult, notificationResult] = await Promise.all([
+    const [studentResult, courseAccessResult, testAccessResult, loginResult, videoResult, notificationResult] = await Promise.all([
       pool.query("SELECT * FROM students WHERE id = $1", [studentId]),
-      pool.query("SELECT * FROM student_course_access WHERE student_id = $1 ORDER BY updated_at DESC", [studentId]),
+      pool.query(
+        `SELECT ca.*
+         FROM student_course_access ca
+         WHERE ca.student_id = $1
+           AND NOT EXISTS (
+             SELECT 1
+             FROM student_orders o
+             WHERE o.student_id = ca.student_id
+               AND o.course_id = ca.course_id
+               AND LOWER(COALESCE(o.item_type, '')) IN ('test_series', 'test-series', 'testpaper')
+           )
+         ORDER BY ca.updated_at DESC`,
+        [studentId],
+      ),
+      pool.query(
+        `WITH combined AS (
+           SELECT
+             a.id,
+             a.student_id,
+             a.paper_id::text AS paper_id,
+             a.order_id,
+             a.purchased_at,
+             a.expires_at,
+             COALESCE((
+               SELECT COUNT(*)::int
+               FROM student_test_attempts sta
+               WHERE sta.student_id = a.student_id AND sta.paper_id = a.paper_id
+             ), a.attempts_used, 0) AS attempts_used,
+             a.is_enabled,
+             a.created_at,
+             a.updated_at,
+             p.paper_code,
+             p.title,
+             p.description,
+             p.total_time,
+             p.question_time_limit_seconds,
+             p.thumbnail_url,
+             p.price,
+             p.attempts_allowed,
+             p.is_visible,
+             0 AS source_rank
+           FROM student_test_access a
+           LEFT JOIN crackit_papers p ON p.id = a.paper_id
+           WHERE a.student_id = $1
+           UNION ALL
+           SELECT
+             NULL::bigint AS id,
+             o.student_id,
+             o.course_id AS paper_id,
+             o.order_id,
+             COALESCE(o.order_date, o.created_at) AS purchased_at,
+             NULL::timestamptz AS expires_at,
+             COALESCE((
+               SELECT COUNT(*)::int
+               FROM student_test_attempts sta
+               WHERE sta.student_id = o.student_id AND sta.paper_id::text = o.course_id
+             ), 0) AS attempts_used,
+             TRUE AS is_enabled,
+             o.created_at,
+             o.updated_at,
+             p.paper_code,
+             COALESCE(p.title, o.course_title) AS title,
+             p.description,
+             p.total_time,
+             p.question_time_limit_seconds,
+             p.thumbnail_url,
+             p.price,
+             p.attempts_allowed,
+             p.is_visible,
+             1 AS source_rank
+           FROM student_orders o
+           LEFT JOIN crackit_papers p ON p.id::text = o.course_id
+           WHERE o.student_id = $1
+             AND LOWER(COALESCE(o.item_type, '')) IN ('test_series', 'test-series', 'testpaper')
+             AND LOWER(COALESCE(o.status, 'completed')) = 'completed'
+         )
+         SELECT DISTINCT ON (paper_id) *
+         FROM combined
+         ORDER BY paper_id, source_rank, updated_at DESC NULLS LAST`,
+        [studentId],
+      ),
       pool.query("SELECT * FROM student_login_logs WHERE student_id = $1 ORDER BY created_at DESC LIMIT 200", [studentId]),
       pool.query("SELECT * FROM student_video_activity WHERE student_id = $1 ORDER BY last_viewed_at DESC LIMIT 500", [studentId]),
       pool.query("SELECT * FROM student_notifications WHERE student_id = $1 ORDER BY created_at DESC LIMIT 200", [studentId]),
@@ -5191,6 +5349,7 @@ app.get("/api/students/:id/details", requireAdminPermission("users", "read"), as
     response.json({
       student: mapStudentRow(studentResult.rows[0]),
       courseAccess: courseAccessResult.rows.map(mapStudentCourseAccess),
+      testSeriesAccess: testAccessResult.rows.map(mapStudentTestSeriesAccess),
       loginLogs: loginResult.rows.map(mapStudentLoginLog),
       videoActivity: videoResult.rows.map(mapStudentVideoActivity),
       notifications: notificationResult.rows.map(mapStudentNotification),
@@ -5700,9 +5859,14 @@ app.post("/api/students/:id/message", requireAdminPermission("users", "edit"), a
     const subject = String(request.body?.subject || "").trim();
     const message = String(request.body?.message || "").trim();
     const sentBy = String(request.adminSession?.admin?.email || "system");
+    const supportedChannels = new Set(["in_app", "email"]);
 
     if (!message) {
       response.status(400).json({ message: "message is required" });
+      return;
+    }
+    if (!supportedChannels.has(channel)) {
+      response.status(400).json({ message: `${channel} messaging is not configured for this admin action` });
       return;
     }
 
@@ -5711,17 +5875,19 @@ app.post("/api/students/:id/message", requireAdminPermission("users", "edit"), a
       [studentId, channel, subject || null, message, sentBy],
     );
 
-    const studentResult = await pool.query("SELECT name, email FROM students WHERE id = $1 LIMIT 1", [studentId]);
-    const student = studentResult.rows[0];
-    void sendAutomatedMail({
-      eventKey: "user_notification",
-      toEmail: student?.email,
-      variables: {
-        studentName: student?.name || "Student",
-        notificationMessage: message,
-      },
-      fallbackSubject: subject || "Notification from Ednovate",
-    }).catch(() => {});
+    if (channel === "email") {
+      const studentResult = await pool.query("SELECT name, email FROM students WHERE id = $1 LIMIT 1", [studentId]);
+      const student = studentResult.rows[0];
+      void sendAutomatedMail({
+        eventKey: "user_notification",
+        toEmail: student?.email,
+        variables: {
+          studentName: student?.name || "Student",
+          notificationMessage: message,
+        },
+        fallbackSubject: subject || "Notification from Ednovate",
+      }).catch(() => {});
+    }
 
     response.json({ ok: true });
   } catch (error) {
@@ -6717,6 +6883,7 @@ app.post("/api/courses/upsert", requireAdminPermission("courses", "edit"), async
     const nextCourse = {
       ...course,
       facultyIds,
+      revenueShareEnabled: course?.revenueShareEnabled === true,
     };
 
     await pool.query(
@@ -6865,6 +7032,39 @@ app.get("/api/admin/crackit/questions", requireAdminPermission("crackit", "read"
     response.json({ items: result.rows });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to fetch questions" });
+  }
+});
+
+app.delete("/api/admin/crackit/questions", requireAdminPermission("crackit", "edit"), async (request, response) => {
+  try {
+    const ids = Array.isArray(request.body?.ids)
+      ? request.body.ids.map((id) => String(id || "").trim()).filter(Boolean)
+      : [];
+    const uniqueIds = Array.from(new Set(ids));
+    if (uniqueIds.length === 0) {
+      response.status(400).json({ message: "Question ids are required" });
+      return;
+    }
+    if (uniqueIds.some((id) => !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(id))) {
+      response.status(400).json({ message: "Question ids must be valid UUIDs" });
+      return;
+    }
+
+    const client = await pool.connect();
+    try {
+      await client.query("BEGIN");
+      await client.query("DELETE FROM crackit_paper_questions WHERE question_id = ANY($1::uuid[])", [uniqueIds]);
+      const deleted = await client.query("DELETE FROM crackit_questions WHERE id = ANY($1::uuid[]) RETURNING id", [uniqueIds]);
+      await client.query("COMMIT");
+      response.json({ ok: true, deleted: deleted.rowCount });
+    } catch (error) {
+      await client.query("ROLLBACK");
+      throw error;
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    response.status(500).json({ message: error instanceof Error ? error.message : "Failed to delete questions" });
   }
 });
 
@@ -7290,17 +7490,34 @@ app.get("/api/test-papers", async (request, response) => {
 const studentHasTestPaperAccess = async (studentId, paperId) => {
   const result = await pool.query(
     `
-    SELECT 1
-    FROM student_orders
-    WHERE student_id = $1
-      AND course_id = $2
-      AND LOWER(COALESCE(item_type, '')) IN ('test_series', 'test-series', 'testpaper')
-      AND LOWER(COALESCE(status, 'completed')) = 'completed'
-    LIMIT 1
+    SELECT
+      EXISTS (
+        SELECT 1
+        FROM student_test_access a
+        WHERE a.student_id = $1
+          AND a.paper_id::text = $2
+      ) AS direct_exists,
+      EXISTS (
+        SELECT 1
+        FROM student_test_access a
+        WHERE a.student_id = $1
+          AND a.paper_id::text = $2
+          AND a.is_enabled IS NOT FALSE
+          AND (a.expires_at IS NULL OR a.expires_at > NOW())
+      ) AS direct_allowed,
+      EXISTS (
+        SELECT 1
+        FROM student_orders o
+        WHERE o.student_id = $1
+          AND o.course_id = $2
+          AND LOWER(COALESCE(o.item_type, '')) IN ('test_series', 'test-series', 'testpaper')
+          AND LOWER(COALESCE(o.status, 'completed')) = 'completed'
+      ) AS order_allowed
     `,
     [studentId, paperId],
   );
-  return result.rowCount > 0;
+  const row = result.rows[0] || {};
+  return row.direct_exists ? row.direct_allowed === true : row.order_allowed === true;
 };
 
 const getStudentTestAttemptLimit = async (studentId, paperId) => {
@@ -7311,7 +7528,7 @@ const getStudentTestAttemptLimit = async (studentId, paperId) => {
       COUNT(a.id)::int AS attempts_used
     FROM crackit_papers p
     LEFT JOIN student_test_attempts a ON a.paper_id = p.id AND a.student_id = $1
-    WHERE p.id = $2
+    WHERE p.id::text = $2
     GROUP BY p.id, p.attempts_allowed
     `,
     [studentId, paperId],
@@ -7347,7 +7564,7 @@ app.get("/api/test-papers/:id/questions", requireStudentSession, async (request,
       FROM crackit_paper_questions pq
       JOIN crackit_questions q ON q.id = pq.question_id
       JOIN crackit_papers p ON p.id = pq.paper_id
-      WHERE pq.paper_id = $1 AND p.is_visible IS NOT FALSE
+      WHERE pq.paper_id::text = $1 AND p.is_visible IS NOT FALSE
       ORDER BY pq.sort_order ASC, q.created_at ASC
     `, [paperId]);
     response.json({ items: result.rows });
@@ -7457,6 +7674,21 @@ app.post("/api/auth/student/test-attempts", requireStudentSession, async (reques
         }),
       ],
     );
+    await pool.query(
+      `
+      UPDATE student_test_access
+      SET attempts_used = (
+            SELECT COUNT(*)::int
+            FROM student_test_attempts sta
+            WHERE sta.student_id = $1
+              AND sta.paper_id::text = $2
+          ),
+          updated_at = NOW()
+      WHERE student_id = $1
+        AND paper_id::text = $2
+      `,
+      [studentId, paperId],
+    );
     response.json({ ok: true, id: attemptId });
   } catch (error) {
     response.status(500).json({ message: error instanceof Error ? error.message : "Failed to save test attempt" });
@@ -7486,7 +7718,8 @@ app.get("/api/admin/crackit/papers", requireAdminPermission("crackit", "read"), 
 
 app.post("/api/admin/crackit/papers", requireAdminPermission("crackit", "edit"), async (request, response) => {
   try {
-    const { id, paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url, price, original_price, is_visible, question_ids } = request.body;
+    const { id, paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, question_time_limit_seconds, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url, price, original_price, is_visible, question_ids } = request.body;
+    const safeQuestionTimeLimitSeconds = Math.max(0, Math.floor(Number(question_time_limit_seconds || 0)));
 
     const client = await pool.connect();
     try {
@@ -7501,18 +7734,18 @@ app.post("/api/admin/crackit/papers", requireAdminPermission("crackit", "edit"),
             remark_students = $6, description = $7, total_time = $8, course_id = $9,
             level_id = $10, subject_id = $11, chapter_id = $12, sub_chapter_id = $13,
             passing_percent = $14, attempts_allowed = $15, thumbnail_url = $16, price = $17, original_price = $18,
-            is_visible = $19, updated_at = NOW()
-          WHERE id = $20`,
-          [paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url || null, price, original_price, is_visible, id]
+            is_visible = $19, question_time_limit_seconds = $20, updated_at = NOW()
+          WHERE id = $21`,
+          [paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url || null, price, original_price, is_visible, safeQuestionTimeLimitSeconds, id]
         );
       } else {
         // Insert
         const insertRes = await client.query(
           `INSERT INTO crackit_papers 
-            (paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url, price, original_price, is_visible)
-          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19)
+            (paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url, price, original_price, is_visible, question_time_limit_seconds)
+          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20)
           RETURNING id`,
-          [paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url || null, price, original_price, is_visible]
+          [paper_code, title, nature, category, remark_teacher, remark_students, description, total_time, course_id, level_id, subject_id, chapter_id, sub_chapter_id, passing_percent, attempts_allowed, thumbnail_url || null, price, original_price, is_visible, safeQuestionTimeLimitSeconds]
         );
         paperId = insertRes.rows[0].id;
       }
@@ -7613,6 +7846,16 @@ const buildCourseLookup = async () => {
     };
     return acc;
   }, {});
+};
+
+const buildRevenueShareCourseSet = async (dbClient, courseIds) => {
+  const uniqueCourseIds = Array.from(new Set((Array.isArray(courseIds) ? courseIds : []).map((id) => String(id || "").trim()).filter(Boolean)));
+  if (uniqueCourseIds.length === 0) return new Set();
+  const result = await dbClient.query(
+    "SELECT id FROM courses WHERE id = ANY($1::text[]) AND COALESCE((payload->>'revenueShareEnabled')::boolean, FALSE) = TRUE",
+    [uniqueCourseIds],
+  );
+  return new Set(result.rows.map((row) => String(row.id || "").trim()).filter(Boolean));
 };
 
 const mapFacultyProfile = (row, courseLookup = {}, options = {}) => {
@@ -8036,7 +8279,11 @@ app.get("/api/faculty/dashboard/monthly", requireFacultySession, async (request,
     const facultyId = String(faculty.id || "").trim();
     const fromDate = parseDateParam(request.query?.from);
     const toDate = parseDateParam(request.query?.to);
-    const facultyCourseSet = new Set(courseIds.map((id) => String(id || "").trim()).filter(Boolean));
+    const facultyCourseSet = await buildRevenueShareCourseSet(pool, courseIds);
+    if (facultyCourseSet.size === 0) {
+      response.json({ items: [] });
+      return;
+    }
     const [ordersResult, courseStatsMap] = await Promise.all([
       fetchEligibleFacultyOrders({ courseIds: Array.from(facultyCourseSet), fromDate, toDate }),
       buildCourseInstructorStatsMap(pool, Array.from(facultyCourseSet)),
@@ -8095,7 +8342,11 @@ app.get("/api/faculty/dashboard/courses", requireFacultySession, async (request,
     const facultyId = String(faculty.id || "").trim();
     const fromDate = parseDateParam(request.query?.from);
     const toDate = parseDateParam(request.query?.to);
-    const facultyCourseSet = new Set(courseIds.map((id) => String(id || "").trim()).filter(Boolean));
+    const facultyCourseSet = await buildRevenueShareCourseSet(pool, courseIds);
+    if (facultyCourseSet.size === 0) {
+      response.json({ items: [] });
+      return;
+    }
     const [ordersResult, courseStatsMap] = await Promise.all([
       fetchEligibleFacultyOrders({ courseIds: Array.from(facultyCourseSet), fromDate, toDate }),
       buildCourseInstructorStatsMap(pool, Array.from(facultyCourseSet)),
@@ -8155,7 +8406,11 @@ app.get("/api/faculty/dashboard/sales", requireFacultySession, async (request, r
     const page = Math.max(1, toSafeInt(request.query?.page, 1, { min: 1, max: 50000 }));
     const limit = Math.max(1, Math.min(200, toSafeInt(request.query?.limit, 25, { min: 1, max: 200 })));
     const offset = (page - 1) * limit;
-    const facultyCourseSet = new Set(courseIds.map((id) => String(id || "").trim()).filter(Boolean));
+    const facultyCourseSet = await buildRevenueShareCourseSet(pool, courseIds);
+    if (facultyCourseSet.size === 0) {
+      response.json({ items: [], total: 0, page, limit });
+      return;
+    }
     const [ordersResult, courseStatsMap] = await Promise.all([
       fetchEligibleFacultyOrders({ courseIds: Array.from(facultyCourseSet), fromDate, toDate }),
       buildCourseInstructorStatsMap(pool, Array.from(facultyCourseSet)),
@@ -8217,10 +8472,14 @@ app.get("/api/faculty/dashboard/payouts", requireFacultySession, async (request,
       return;
     }
 
-    const facultyCourseSet = new Set(courseIds);
+    const facultyCourseSet = await buildRevenueShareCourseSet(pool, courseIds);
+    if (facultyCourseSet.size === 0) {
+      response.json({ pendingAmount: 0, paidAmount: 0, currency: "INR", payouts: [] });
+      return;
+    }
     const [ordersResult, courseStatsMap, paidResult, payoutsResult] = await Promise.all([
-      fetchEligibleFacultyOrders({ courseIds, fromDate: null, toDate: null }),
-      buildCourseInstructorStatsMap(pool, courseIds),
+      fetchEligibleFacultyOrders({ courseIds: Array.from(facultyCourseSet), fromDate: null, toDate: null }),
+      buildCourseInstructorStatsMap(pool, Array.from(facultyCourseSet)),
       pool.query("SELECT COALESCE(SUM(amount), 0)::numeric(12,2) AS paid_amount FROM faculty_payouts WHERE faculty_id = $1", [facultyId]),
       pool.query("SELECT id, amount, currency, status, reference_id, payout_date, note, created_at FROM faculty_payouts WHERE faculty_id = $1 ORDER BY payout_date DESC, id DESC LIMIT 100", [facultyId]),
     ]);
