@@ -17,7 +17,7 @@ import { sanitizeRequest, schemas, adminRateLimiter, loginRateLimiter, maskSensi
 import { GoogleGenerativeAI } from "@google/generative-ai";
 import { createRequire } from "module";
 const require = createRequire(import.meta.url);
-const pdf = require("pdf-parse");
+const pdfParse = require("pdf-parse");
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -7234,6 +7234,10 @@ const getConfiguredAiExtraction = async (overrides = {}) => {
 
 const getOpenAiCompatibleContent = (prompt, file) => {
   if (!file) return prompt;
+  const mimeType = String(file.mimetype || "").toLowerCase();
+  if (!mimeType.startsWith("image/")) {
+    throw new Error("Selected AI provider/model supports image upload only here. For PDF extraction, use Gemini or upload a text-based PDF.");
+  }
 
   return [
     { type: "text", text: `${prompt}\n\nRead the uploaded image carefully and extract all visible questions.` },
@@ -7296,7 +7300,7 @@ const extractQuestionsWithConfiguredAi = async ({ prompt, file, aiExtraction }) 
     const model = genAI.getGenerativeModel({ model: modelName });
     const result = file
       ? await model.generateContent([
-          `${prompt}\n\nRead the uploaded image carefully and extract all visible questions.`,
+          `${prompt}\n\nRead the uploaded document carefully and extract all visible questions.`,
           {
             inlineData: {
               data: file.buffer.toString("base64"),
@@ -7327,6 +7331,25 @@ const extractQuestionsWithConfiguredAi = async ({ prompt, file, aiExtraction }) 
     file,
     providerName: "OpenRouter",
   });
+};
+
+const extractPdfText = async (buffer) => {
+  if (typeof pdfParse === "function") {
+    const result = await pdfParse(buffer);
+    return String(result?.text || "");
+  }
+
+  if (pdfParse && typeof pdfParse.PDFParse === "function") {
+    const parser = new pdfParse.PDFParse({ data: buffer });
+    try {
+      const result = await parser.getText();
+      return String(result?.text || "");
+    } finally {
+      await parser.destroy().catch(() => undefined);
+    }
+  }
+
+  throw new Error("Unsupported pdf-parse export shape");
 };
 
 const normalizeExtractedQuestionText = (value) => (
@@ -7430,24 +7453,42 @@ app.post("/api/admin/crackit/extract-questions", requireAdminPermission("crackit
     if (mimeType.startsWith("image/")) {
       resultText = await extractQuestionsWithConfiguredAi({ prompt: extractionPrompt, file: request.file, aiExtraction });
     } else {
-      const data = await pdf(request.file.buffer);
-      const text = data.text;
-
-      if (!text || text.trim().length < 10) {
-        response.status(400).json({ message: "Could not extract enough text from PDF. If this is a scanned PDF, upload the page as an image." });
-        return;
+      let text = "";
+      try {
+        text = await extractPdfText(request.file.buffer);
+      } catch (pdfError) {
+        console.warn("[CRACKIT_PDF_TEXT_ERROR]", pdfError);
       }
 
-      resultText = await extractQuestionsWithConfiguredAi({
-        aiExtraction,
-        file: null,
-        prompt: `
-        ${extractionPrompt}
-        
-        Text:
-        ${text.slice(0, 30000)}
-      `,
-      });
+      if (!text || text.trim().length < 10) {
+        const config = await getConfiguredAiExtraction(aiExtraction);
+        if (config.provider !== "gemini") {
+          response.status(400).json({
+            message: "Could not extract readable text from this PDF. For scanned/image PDFs, select Gemini in Admin Settings or upload the page as an image.",
+          });
+          return;
+        }
+
+        resultText = await extractQuestionsWithConfiguredAi({
+          prompt: extractionPrompt,
+          file: {
+            ...request.file,
+            mimetype: mimeType || "application/pdf",
+          },
+          aiExtraction,
+        });
+      } else {
+        resultText = await extractQuestionsWithConfiguredAi({
+          aiExtraction,
+          file: null,
+          prompt: `
+          ${extractionPrompt}
+          
+          Text:
+          ${text.slice(0, 30000)}
+        `,
+        });
+      }
     }
     
     // Clean JSON from markdown code blocks if present
