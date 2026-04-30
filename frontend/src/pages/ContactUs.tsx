@@ -37,10 +37,7 @@ const ContactUs = () => {
 
   const callValue = COMPANY_CONTACT.callPhone;
   const whatsappValue = COMPANY_CONTACT.whatsappPhone;
-  const callDigits = normalizePhoneDigits(callValue);
-  const whatsappDigits = normalizePhoneDigits(whatsappValue);
-  const telLink = callDigits ? `tel:+${toIndiaDialDigits(callValue)}` : "";
-  const whatsappLink = whatsappDigits ? `https://wa.me/${toIndiaDialDigits(whatsappValue)}` : "";
+  const whatsappLink = `https://wa.me/${toIndiaDialDigits(whatsappValue)}`;
   const emailLink = `mailto:${COMPANY_CONTACT.email}`;
   const mapsQuery = encodeURIComponent(COMPANY_ADDRESS_TEXT);
   const socialIconLinks = [
@@ -188,33 +185,39 @@ const ContactUs = () => {
               </form>
             </div>
 
-            {/* Quick Contact Cards */}
-            <div className="mt-6 grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <a 
-                href={telLink || undefined}
-                className="group rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-all"
-                style={{ borderColor: "rgba(38,71,150,0.28)" }}
-              >
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg transition-colors" style={{ backgroundColor: "rgba(38,71,150,0.12)" }}>
-                  <PhoneCall className="h-6 w-6" style={{ color: BRAND_BLUE }} />
-                </div>
-                <h3 className="text-lg font-bold text-slate-900">Call Us</h3>
-                <p className="mt-2 font-bold text-slate-800">{callValue}</p>
-              </a>
+            {/* Payment Details */}
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-white p-5 shadow-sm text-slate-800">
+              <div className="mb-4 flex items-center gap-2" style={{ color: BRAND_BLUE }}>
+                <QrCode className="h-5 w-5" />
+                <h3 className="text-lg font-bold">Bank Details</h3>
+              </div>
 
-              <a 
-                href={whatsappLink || undefined}
-                target="_blank"
-                rel="noreferrer"
-                className="group rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-[#25D366]/30"
-              >
-                <div className="mb-4 flex h-12 w-12 items-center justify-center">
-                  <BrandSocialIcon brand="whatsapp" className="h-12 w-12" />
+              <div className="grid gap-5 md:grid-cols-[170px_1fr] md:items-start">
+                <div className="mx-auto w-full max-w-[170px] rounded-xl border border-slate-200 bg-white p-3 shadow-sm md:mx-0">
+                  <img
+                    src="/payment-qr.jpg"
+                    alt="Ednovate payment QR code"
+                    className="h-36 w-full rounded-lg object-contain"
+                    loading="lazy"
+                  />
+                  <p className="mt-2 text-center text-xs font-semibold text-slate-600">Scan &amp; Pay</p>
                 </div>
-                <h3 className="text-lg font-bold text-slate-900">WhatsApp</h3>
-                <p className="text-sm text-slate-500 mt-1">Quick chat, quick reply</p>
-                <p className="mt-2 font-bold text-slate-800">{whatsappValue}</p>
-              </a>
+
+                <dl className="grid gap-x-4 gap-y-2 text-sm sm:grid-cols-[120px_1fr]">
+                  <dt className="font-bold text-slate-700">Bank Name:</dt>
+                  <dd className="text-slate-900">HDFC Bank Ltd</dd>
+                  <dt className="font-bold text-slate-700">A/C Name:</dt>
+                  <dd className="text-slate-900">Ednovate Edutech Private Limited</dd>
+                  <dt className="font-bold text-slate-700">A/C No.:</dt>
+                  <dd className="font-semibold text-slate-900">50200066371383</dd>
+                  <dt className="font-bold text-slate-700">IFSC Code:</dt>
+                  <dd className="text-slate-900">HDFC0000079</dd>
+                  <dt className="font-bold text-slate-700">Branch Name:</dt>
+                  <dd className="text-slate-900">Sana Building, Linkid Road, Santacruz (West) Mumbai-400054</dd>
+                  <dt className="font-bold text-slate-700">TID:</dt>
+                  <dd className="text-slate-900">62459033</dd>
+                </dl>
+              </div>
             </div>
           </div>
 
@@ -223,7 +226,6 @@ const ContactUs = () => {
             {/* Contact Info Card */}
             <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm">
               <h3 className="text-xl font-bold" style={{ color: BRAND_BLUE }}>Get in Touch</h3>
-              <p className="text-sm text-slate-500 mt-1">Prefer face-to-face? Visit us!</p>
 
               <div className="mt-6 space-y-4">
                 <div className="flex items-start gap-3">
@@ -312,35 +314,6 @@ const ContactUs = () => {
                 >
                   Open in Maps <ArrowRight className="w-4 h-4" />
                 </a>
-              </div>
-            </div>
-
-            {/* Bank Details Card */}
-            <div className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm text-slate-800">
-              <div className="flex items-center gap-2 mb-4" style={{ color: BRAND_BLUE }}>
-                <QrCode className="w-5 h-5" />
-                <h3 className="text-lg font-bold">Bank Details</h3>
-              </div>
-              
-              <div className="flex flex-col gap-4 sm:flex-row">
-                <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
-                  <img
-                    src="/payment-qr.jpg"
-                    alt="Ednovate payment QR code"
-                    className="h-32 w-32 rounded-lg object-contain"
-                    loading="lazy"
-                  />
-                  <p className="mt-2 text-center text-xs font-semibold text-slate-600">Scan &amp; Pay</p>
-                </div>
-                
-                <div className="space-y-2 text-sm">
-                  <p><span className="font-bold">Bank Name:</span> HDFC Bank Ltd</p>
-                  <p><span className="font-bold">A/C Name:</span> Ednovate Edutech Private Limited</p>
-                  <p><span className="font-bold">A/C No.:</span> 50200066371383</p>
-                  <p><span className="font-bold">IFSC Code:</span> HDFC0000079</p>
-                  <p><span className="font-bold">Branch Name:</span> Sana Building, Linkid Road, Santacruz (West) Mumbai-400054</p>
-                  <p><span className="font-bold">TID:</span> 62459033</p>
-                </div>
               </div>
             </div>
 
