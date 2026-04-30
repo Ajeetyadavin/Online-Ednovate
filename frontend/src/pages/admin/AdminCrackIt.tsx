@@ -38,6 +38,7 @@ const createBlankPaperForm = () => ({
   price: 0,
   original_price: 0,
   total_time: 60,
+  question_time_limit_seconds: 0,
   total_marks: 100,
   passing_percent: 40,
   attempts_allowed: 1,
@@ -62,6 +63,36 @@ const createBlankAcademicTarget = () => ({
   subject_id: "",
   chapter_id: ""
 });
+
+type ExtractionProgress = {
+  elapsedSeconds: number;
+  percent: number;
+  title: string;
+  detail: string;
+  status: "idle" | "running" | "complete" | "failed";
+};
+
+const extractionTimeline = [
+  { at: 0, title: "Preparing file", detail: "PDF/image ready ho raha hai." },
+  { at: 2, title: "Checking AI settings", detail: "Selected provider and model load ho raha hai." },
+  { at: 4, title: "Uploading document", detail: "File extraction server par ja rahi hai." },
+  { at: 7, title: "AI reading document", detail: "AI pages/image ko scan kar raha hai." },
+  { at: 14, title: "Detecting questions", detail: "Question, options and answer structure identify ho raha hai." },
+  { at: 24, title: "Normalizing math", detail: "Formula, options and answer format clean ho raha hai." },
+  { at: 36, title: "Building preview", detail: "Extracted questions preview ke liye prepare ho rahe hain." },
+];
+
+const buildExtractionProgress = (elapsedSeconds: number): ExtractionProgress => {
+  const current = extractionTimeline.reduce((active, step) => (elapsedSeconds >= step.at ? step : active), extractionTimeline[0]);
+  const percent = Math.min(95, Math.max(8, Math.round(8 + elapsedSeconds * 2.4)));
+  return {
+    elapsedSeconds,
+    percent,
+    title: current.title,
+    detail: current.detail,
+    status: "running",
+  };
+};
 
 const superscriptMap: Record<string, string> = {
   "0": "⁰",
@@ -280,6 +311,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
   
   // Question Bank State
   const [questions, setQuestions] = useState<any[]>([]);
+  const [selectedQuestionBankIds, setSelectedQuestionBankIds] = useState<string[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [questionFilters, setQuestionFilters] = useState({
     course_id: "all",
@@ -297,6 +329,13 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
   const [extractModalOpen, setExtractModalOpen] = useState(false);
   const [isExtracting, setIsExtracting] = useState(false);
   const [extractedPreview, setExtractedPreview] = useState<any[]>([]);
+  const [extractionProgress, setExtractionProgress] = useState<ExtractionProgress>({
+    elapsedSeconds: 0,
+    percent: 0,
+    title: "Ready",
+    detail: "Upload start karne ke baad realtime progress yaha dikhega.",
+    status: "idle",
+  });
   const [extractAcademicTarget, setExtractAcademicTarget] = useState(createBlankAcademicTarget());
   const extractSubjects = getSubjectsForAcademic(extractAcademicTarget.course_id, extractAcademicTarget.level_id);
   const extractChapters = getChaptersForSubject(extractAcademicTarget.subject_id);
@@ -340,6 +379,9 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
     if (questionFilters.chapter_id !== "all" && String(q.chapter_id || "") !== questionFilters.chapter_id) return false;
     return true;
   });
+  const visibleQuestionIds = filteredQuestions.map((q) => String(q.id || "")).filter(Boolean);
+  const selectedVisibleQuestionIds = selectedQuestionBankIds.filter((id) => visibleQuestionIds.includes(id));
+  const allVisibleQuestionsSelected = visibleQuestionIds.length > 0 && selectedVisibleQuestionIds.length === visibleQuestionIds.length;
   const filteredTestPapers = testPapers.filter((paper) => {
     const search = paperListFilters.search.trim().toLowerCase();
     if (search) {
@@ -378,6 +420,22 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
   useEffect(() => {
     fetchQuestions();
   }, []);
+  useEffect(() => {
+    const availableIds = new Set(questions.map((q) => String(q.id || "")).filter(Boolean));
+    setSelectedQuestionBankIds((prev) => prev.filter((id) => availableIds.has(id)));
+  }, [questions]);
+  useEffect(() => {
+    if (!isExtracting) return;
+    const startedAt = Date.now() - extractionProgress.elapsedSeconds * 1000;
+    const interval = window.setInterval(() => {
+      const elapsedSeconds = Math.max(0, Math.floor((Date.now() - startedAt) / 1000));
+      setExtractionProgress((prev) => {
+        if (prev.status !== "running") return prev;
+        return buildExtractionProgress(elapsedSeconds);
+      });
+    }, 1000);
+    return () => window.clearInterval(interval);
+  }, [isExtracting]);
 
   const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -394,12 +452,26 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
     }
 
     setIsExtracting(true);
+    setExtractedPreview([]);
+    setExtractionProgress({
+      elapsedSeconds: 0,
+      percent: 6,
+      title: "Preparing file",
+      detail: `${file.name} ready ho raha hai.`,
+      status: "running",
+    });
     const formData = new FormData();
     formData.append("file", file);
 
     try {
       const stored = localStorage.getItem("admin_session_v2");
       const adminToken = stored ? JSON.parse(stored)?.token : null;
+      setExtractionProgress((prev) => ({
+        ...prev,
+        percent: Math.max(prev.percent, 12),
+        title: "Checking AI settings",
+        detail: "Admin settings se selected AI provider/model load ho raha hai.",
+      }));
       const settingsRes = await fetch("/api/admin/platform-settings", {
         headers: adminToken ? { "Authorization": `Bearer ${adminToken}` } : {},
       });
@@ -410,12 +482,24 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
           formData.append("aiExtraction", JSON.stringify(aiExtraction));
         }
       }
+      setExtractionProgress((prev) => ({
+        ...prev,
+        percent: Math.max(prev.percent, 22),
+        title: "Uploading document",
+        detail: "File server ko bheji ja rahi hai. Large PDF me thoda time lag sakta hai.",
+      }));
       
       const res = await fetch("/api/admin/crackit/extract-questions", {
         method: "POST",
         headers: adminToken ? { "Authorization": `Bearer ${adminToken}` } : {},
         body: formData,
       });
+      setExtractionProgress((prev) => ({
+        ...prev,
+        percent: Math.max(prev.percent, 88),
+        title: "Building preview",
+        detail: "AI response parse karke question preview ban raha hai.",
+      }));
 
       if (res.ok) {
         const data = await res.json();
@@ -428,12 +512,33 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
             extractedBy: "ai"
           }
         })));
+        setExtractionProgress((prev) => ({
+          elapsedSeconds: prev.elapsedSeconds,
+          percent: 100,
+          title: "Extraction complete",
+          detail: `${items.length} question${items.length === 1 ? "" : "s"} extracted. Preview ready hai.`,
+          status: "complete",
+        }));
         toast({ title: "AI Extraction Complete", description: `Extracted ${data.items.length} questions.` });
       } else {
         const err = await res.json();
+        setExtractionProgress((prev) => ({
+          ...prev,
+          percent: 100,
+          title: "Extraction failed",
+          detail: err.message || "AI extraction failed.",
+          status: "failed",
+        }));
         toast({ title: "Extraction Failed", description: err.message, variant: "destructive" });
       }
     } catch (err) {
+      setExtractionProgress((prev) => ({
+        ...prev,
+        percent: 100,
+        title: "Extraction failed",
+        detail: "Network ya server error ki wajah se extraction complete nahi hua.",
+        status: "failed",
+      }));
       toast({ title: "Error", description: "Something went wrong during extraction", variant: "destructive" });
     } finally {
       setIsExtracting(false);
@@ -476,6 +581,13 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
   const openExtractModal = () => {
     setExtractAcademicTarget(createBlankAcademicTarget());
     setExtractedPreview([]);
+    setExtractionProgress({
+      elapsedSeconds: 0,
+      percent: 0,
+      title: "Ready",
+      detail: "Upload start karne ke baad realtime progress yaha dikhega.",
+      status: "idle",
+    });
     setExtractModalOpen(true);
   };
 
@@ -485,6 +597,13 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
       setExtractAcademicTarget(createBlankAcademicTarget());
       setExtractedPreview([]);
       setIsExtracting(false);
+      setExtractionProgress({
+        elapsedSeconds: 0,
+        percent: 0,
+        title: "Ready",
+        detail: "Upload start karne ke baad realtime progress yaha dikhega.",
+        status: "idle",
+      });
     }
   };
 
@@ -594,6 +713,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
       if (res.ok) {
         setQuestions((prev) => prev.filter((item) => item.id !== question.id));
         setSelectedQuestionIds((prev) => prev.filter((id) => id !== question.id));
+        setSelectedQuestionBankIds((prev) => prev.filter((id) => id !== String(question.id || "")));
         toast({ title: "Deleted", description: "Question removed from Question Bank." });
       } else {
         const err = await res.json();
@@ -601,6 +721,64 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
       }
     } catch (error) {
       toast({ title: "Delete Failed", description: "Failed to delete question", variant: "destructive" });
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const toggleQuestionBankSelection = (questionId: unknown, checked: boolean) => {
+    const id = String(questionId || "").trim();
+    if (!id) return;
+    setSelectedQuestionBankIds((prev) => {
+      if (checked) return prev.includes(id) ? prev : [...prev, id];
+      return prev.filter((item) => item !== id);
+    });
+  };
+
+  const toggleAllVisibleQuestionBankSelection = (checked: boolean) => {
+    setSelectedQuestionBankIds((prev) => {
+      if (!checked) return prev.filter((id) => !visibleQuestionIds.includes(id));
+      const next = new Set(prev);
+      visibleQuestionIds.forEach((id) => next.add(id));
+      return Array.from(next);
+    });
+  };
+
+  const handleBulkDeleteQuestions = async () => {
+    const ids = selectedQuestionBankIds;
+    if (ids.length === 0) {
+      toast({ title: "No Questions Selected", description: "Select questions before deleting.", variant: "destructive" });
+      return;
+    }
+    const confirmed = window.confirm(`Delete ${ids.length} selected question${ids.length === 1 ? "" : "s"} from Question Bank?`);
+    if (!confirmed) return;
+
+    setIsLoading(true);
+    try {
+      const stored = localStorage.getItem("admin_session_v2");
+      const adminToken = stored ? JSON.parse(stored)?.token : null;
+      const res = await fetch("/api/admin/crackit/questions", {
+        method: "DELETE",
+        headers: {
+          "Content-Type": "application/json",
+          ...(adminToken ? { "Authorization": `Bearer ${adminToken}` } : {}),
+        },
+        body: JSON.stringify({ ids }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        const deletedCount = Number(data.deleted || ids.length);
+        setQuestions((prev) => prev.filter((item) => !ids.includes(String(item.id || ""))));
+        setSelectedQuestionIds((prev) => prev.filter((id) => !ids.includes(String(id || ""))));
+        setSelectedQuestionBankIds([]);
+        toast({ title: "Deleted", description: `${deletedCount} question${deletedCount === 1 ? "" : "s"} removed from Question Bank.` });
+      } else {
+        const err = await res.json();
+        toast({ title: "Delete Failed", description: err.message || "Failed to delete selected questions", variant: "destructive" });
+      }
+    } catch (error) {
+      toast({ title: "Delete Failed", description: "Failed to delete selected questions", variant: "destructive" });
     } finally {
       setIsLoading(false);
     }
@@ -669,6 +847,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
       price: Number(paper.price || 0),
       original_price: Number(paper.originalPrice || 0),
       total_time: Number(paper.totalTime || 60),
+      question_time_limit_seconds: Number(paper.questionTimeLimitSeconds || 0),
       passing_percent: Number(paper.passingPercent || 40),
       attempts_allowed: Number(paper.attemptsAllowed || 1),
       nature: paper.nature || "objective",
@@ -769,6 +948,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
         remark_teacher: "",
         remark_students: "",
         attempts_allowed: Math.max(1, Number(paperForm.attempts_allowed || 1)),
+        question_time_limit_seconds: Math.max(0, Number(paperForm.question_time_limit_seconds || 0)),
         thumbnail_url: paperForm.thumbnail_url,
         is_visible: true,
         question_ids: selectedQuestionIds,
@@ -946,15 +1126,45 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                 </SelectContent>
               </Select>
             </div>
-            <p className="text-xs font-semibold text-slate-500">
-              Showing {filteredQuestions.length} of {questions.length} questions
-            </p>
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <p className="text-xs font-semibold text-slate-500">
+                Showing {filteredQuestions.length} of {questions.length} questions
+              </p>
+              <div className="flex flex-wrap items-center gap-2">
+                {selectedQuestionBankIds.length > 0 ? (
+                  <span className="rounded-full bg-indigo-50 px-3 py-1 text-xs font-bold text-indigo-700">
+                    {selectedQuestionBankIds.length} selected
+                  </span>
+                ) : null}
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-8 border-rose-200 text-xs font-bold text-rose-700 hover:bg-rose-50"
+                  onClick={handleBulkDeleteQuestions}
+                  disabled={isLoading || selectedQuestionBankIds.length === 0}
+                >
+                  <Trash2 className="mr-1.5 h-3.5 w-3.5" />
+                  Delete Selected
+                </Button>
+              </div>
+            </div>
           </div>
 
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <table className="w-full text-left text-sm">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
+                  <th className="w-12 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      aria-label="Select all visible questions"
+                      checked={allVisibleQuestionsSelected}
+                      disabled={visibleQuestionIds.length === 0}
+                      onChange={(event) => toggleAllVisibleQuestionBankSelection(event.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                    />
+                  </th>
                   <th className="px-4 py-3 font-bold text-slate-700">Question</th>
                   <th className="px-4 py-3 font-bold text-slate-700">Type</th>
                   <th className="px-4 py-3 font-bold text-slate-700">Difficulty</th>
@@ -962,8 +1172,20 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {filteredQuestions.map((q) => (
-                  <tr key={q.id} className="hover:bg-slate-50/50 transition-colors">
+                {filteredQuestions.map((q) => {
+                  const questionId = String(q.id || "");
+                  const isSelected = selectedQuestionBankIds.includes(questionId);
+                  return (
+                  <tr key={q.id} className={`transition-colors ${isSelected ? "bg-indigo-50/50" : "hover:bg-slate-50/50"}`}>
+                    <td className="px-4 py-3 align-top">
+                      <input
+                        type="checkbox"
+                        aria-label="Select question"
+                        checked={isSelected}
+                        onChange={(event) => toggleQuestionBankSelection(questionId, event.target.checked)}
+                        className="h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                      />
+                    </td>
                     <td className="px-4 py-3 font-medium text-slate-900">
                       <div className="line-clamp-2">
                         <MathText value={q.question_text} />
@@ -1002,10 +1224,11 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                       </div>
                     </td>
                   </tr>
-                ))}
+                  );
+                })}
                 {filteredQuestions.length === 0 && (
                   <tr>
-                    <td colSpan={4} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
+                    <td colSpan={5} className="px-4 py-10 text-center text-sm font-semibold text-slate-500">
                       No questions found for selected filters.
                     </td>
                   </tr>
@@ -1155,6 +1378,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               </div>
               <div className="flex items-center gap-2 text-[10px] text-slate-500 font-medium">
                 <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> {paper.totalTime}m</span>
+                <span className="flex items-center gap-1"><Clock className="w-3 h-3" /> Q: {Number(paper.questionTimeLimitSeconds || 0) > 0 ? `${paper.questionTimeLimitSeconds}s` : "No timer"}</span>
                 <span className="flex items-center gap-1"><Check className="w-3 h-3" /> {paper.passingPercent}% Pass</span>
               </div>
               <div className="pt-2 border-t border-slate-50 flex justify-between items-center">
@@ -1258,12 +1482,78 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
             </div>
 
             {extractedPreview.length === 0 ? (
-              <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-12 text-center space-y-4">
-                {isExtracting ? (
-                  <>
-                    <Loader2 className="w-12 h-12 text-indigo-600 animate-spin" />
-                    <p className="text-slate-600 font-bold">AI is reading your PDF and extracting questions...</p>
-                  </>
+              <div className="flex flex-col items-center justify-center border-2 border-dashed border-slate-200 rounded-2xl p-6 text-center space-y-4">
+                {isExtracting || extractionProgress.status === "failed" ? (
+                  <div className="w-full max-w-2xl space-y-4 text-left">
+                    <div className="rounded-2xl border border-indigo-100 bg-white p-4 shadow-sm">
+                      <div className="flex items-start justify-between gap-4">
+                        <div className="flex items-start gap-3">
+                          <div className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl ${extractionProgress.status === "failed" ? "bg-rose-50" : "bg-indigo-50"}`}>
+                            {extractionProgress.status === "failed" ? (
+                              <X className="h-5 w-5 text-rose-600" />
+                            ) : (
+                              <Loader2 className="h-5 w-5 animate-spin text-indigo-600" />
+                            )}
+                          </div>
+                          <div>
+                            <p className="text-sm font-black text-slate-900">{extractionProgress.title}</p>
+                            <p className="mt-1 text-xs font-medium text-slate-500">{extractionProgress.detail}</p>
+                          </div>
+                        </div>
+                        <div className="shrink-0 text-right">
+                          <p className={`text-lg font-black ${extractionProgress.status === "failed" ? "text-rose-700" : "text-indigo-700"}`}>{extractionProgress.percent}%</p>
+                          <p className="text-[11px] font-semibold text-slate-400">{extractionProgress.elapsedSeconds}s</p>
+                        </div>
+                      </div>
+                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-slate-100">
+                        <div className={`h-full rounded-full transition-all duration-500 ${extractionProgress.status === "failed" ? "bg-rose-500" : "bg-indigo-600"}`} style={{ width: `${extractionProgress.percent}%` }} />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-2 sm:grid-cols-2">
+                      {extractionTimeline.map((step) => {
+                        const isDone = extractionProgress.elapsedSeconds >= step.at;
+                        const isActive = extractionProgress.title === step.title;
+                        return (
+                          <div key={step.title} className={`flex items-start gap-2 rounded-xl border px-3 py-2 ${
+                            isActive
+                              ? "border-indigo-200 bg-indigo-50"
+                              : isDone
+                                ? "border-emerald-100 bg-emerald-50/60"
+                                : "border-slate-100 bg-white"
+                          }`}>
+                            <div className={`mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full ${
+                              isDone ? "bg-emerald-500 text-white" : "bg-slate-100 text-slate-400"
+                            }`}>
+                              {isDone ? <Check className="h-3 w-3" /> : <span className="h-1.5 w-1.5 rounded-full bg-current" />}
+                            </div>
+                            <div>
+                              <p className={`text-xs font-bold ${isActive ? "text-indigo-800" : "text-slate-700"}`}>{step.title}</p>
+                              <p className="text-[11px] text-slate-500">{step.detail}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                    {extractionProgress.status === "failed" ? (
+                      <div className="text-center">
+                        <Button
+                          type="button"
+                          variant="outline"
+                          className="rounded-xl border-slate-200"
+                          onClick={() => setExtractionProgress({
+                            elapsedSeconds: 0,
+                            percent: 0,
+                            title: "Ready",
+                            detail: "Upload start karne ke baad realtime progress yaha dikhega.",
+                            status: "idle",
+                          })}
+                        >
+                          Try Again
+                        </Button>
+                      </div>
+                    ) : null}
+                  </div>
                 ) : (
                   <>
                     <div className="w-16 h-16 bg-indigo-50 rounded-full flex items-center justify-center">
@@ -1563,7 +1853,7 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
               />
             </div>
 
-            <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-3">
+            <div className="grid grid-cols-1 gap-4 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
               <div className="space-y-2">
                 <Label>Nature</Label>
                 <Select 
@@ -1586,6 +1876,17 @@ const AdminCrackIt = ({ mode = "questions" }: AdminCrackItProps) => {
                   value={paperForm.total_time}
                   onChange={(e) => setPaperForm({ ...paperForm, total_time: Number(e.target.value) })}
                 />
+              </div>
+              <div className="space-y-2">
+                <Label>Question Time (Seconds)</Label>
+                <Input
+                  type="number"
+                  min={0}
+                  placeholder="0 = No time"
+                  value={paperForm.question_time_limit_seconds}
+                  onChange={(e) => setPaperForm({ ...paperForm, question_time_limit_seconds: Math.max(0, Number(e.target.value || 0)) })}
+                />
+                <p className="text-[11px] font-semibold text-slate-500">0 = no timer. Enter 10, 20, 30 or any seconds manually.</p>
               </div>
               <div className="space-y-2">
                 <Label>Passing %</Label>

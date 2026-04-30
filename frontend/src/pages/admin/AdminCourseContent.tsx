@@ -15,6 +15,7 @@ import { decodeVideoUrl, encodeVideoUrl, extractYouTubeVideoId, type LessonVideo
 import { adminApi, type BunnyLibraryVideo } from "@/services/adminApi";
 import { toast } from "sonner";
 import { useConfirm } from "@/context/ConfirmContext";
+import { parseLessonDurationToSeconds } from "@/utils/courseUtils";
 
 /* ─── Types ─────────────────────────────────────────────────── */
 interface NewLesson {
@@ -43,6 +44,16 @@ const emitCurriculumUpdated = (courseId: string) =>
 const formatSecondsToHms = (seconds: number) => {
   const t = Math.max(0, Math.floor(Number(seconds) || 0));
   return [Math.floor(t / 3600), Math.floor((t % 3600) / 60), t % 60].map((n) => String(n).padStart(2, "0")).join(":");
+};
+
+const formatHoursStat = (seconds: number) => {
+  const totalSeconds = Math.max(0, Math.floor(Number(seconds) || 0));
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  if (hours <= 0 && minutes <= 0) return "0h";
+  if (hours <= 0) return `${minutes}m`;
+  if (minutes <= 0) return `${hours}h`;
+  return `${hours}h ${minutes}m`;
 };
 
 const loadVideoDurationFromUrl = (url: string) =>
@@ -729,6 +740,7 @@ export default function AdminCourseContent() {
   const handleSaveLesson = async () => {
     if (!selectedCourse || !selectedChapter || !newLesson.title.trim()) { setSaveError("Lesson title is required"); return; }
     if (newLesson.type === "video" && !newLesson.videoUrl?.trim()) { setSaveError("Please provide a video URL"); return; }
+    const revenueShareEnabled = selectedCourse.revenueShareEnabled === true;
     const sanitizedInstructorShares = (Array.isArray(newLesson.instructorShares) ? newLesson.instructorShares : [])
       .map((row) => ({
         facultyId: String(row.facultyId || "").trim(),
@@ -742,12 +754,13 @@ export default function AdminCourseContent() {
         sharePercent: Number(((row.sharePercent / shareTotal) * 100).toFixed(2)),
       }))
       : [];
+    const finalInstructorShares = revenueShareEnabled ? normalizedInstructorShares : [];
     setIsSaving(true); setSaveError(null);
     let updated;
     if (editingLessonId) {
-      updated = curriculum.map((ch) => ch.id === selectedChapter.id ? { ...ch, lessons: ch.lessons.map((l) => l.id === editingLessonId ? { ...l, title: newLesson.title.trim(), description: newLesson.description?.trim() || "", duration: newLesson.duration || l.duration || "0:00", type: newLesson.type as "video" | "pdf" | "quiz", isPreview: newLesson.isPreview || false, videoSource: (newLesson.type === "video" ? newLesson.videoSource : undefined) as LessonVideoSource | undefined, videoUrl: newLesson.type === "video" ? encodeVideoUrl(newLesson.videoUrl || "") : undefined, resourceUrl: newLesson.type !== "video" ? newLesson.resourceUrl : undefined, instructorShares: newLesson.type === "video" ? normalizedInstructorShares : [] } : l) } : ch);
+      updated = curriculum.map((ch) => ch.id === selectedChapter.id ? { ...ch, lessons: ch.lessons.map((l) => l.id === editingLessonId ? { ...l, title: newLesson.title.trim(), description: newLesson.description?.trim() || "", duration: newLesson.duration || l.duration || "0:00", type: newLesson.type as "video" | "pdf" | "quiz", isPreview: newLesson.isPreview || false, videoSource: (newLesson.type === "video" ? newLesson.videoSource : undefined) as LessonVideoSource | undefined, videoUrl: newLesson.type === "video" ? encodeVideoUrl(newLesson.videoUrl || "") : undefined, resourceUrl: newLesson.type !== "video" ? newLesson.resourceUrl : undefined, instructorShares: newLesson.type === "video" ? finalInstructorShares : [] } : l) } : ch);
     } else {
-      const lesson = { id: `l_${Date.now()}`, title: newLesson.title.trim(), description: newLesson.description?.trim() || "", duration: newLesson.duration || "0:00", type: newLesson.type as "video" | "pdf" | "quiz", completed: false, locked: false, isPreview: newLesson.isPreview || false, isHomepageDemo: false, videoSource: (newLesson.type === "video" ? newLesson.videoSource : undefined) as LessonVideoSource | undefined, videoUrl: newLesson.type === "video" ? encodeVideoUrl(newLesson.videoUrl || "") : undefined, resourceUrl: newLesson.type !== "video" ? newLesson.resourceUrl : undefined, instructorShares: newLesson.type === "video" ? normalizedInstructorShares : [] };
+      const lesson = { id: `l_${Date.now()}`, title: newLesson.title.trim(), description: newLesson.description?.trim() || "", duration: newLesson.duration || "0:00", type: newLesson.type as "video" | "pdf" | "quiz", completed: false, locked: false, isPreview: newLesson.isPreview || false, isHomepageDemo: false, videoSource: (newLesson.type === "video" ? newLesson.videoSource : undefined) as LessonVideoSource | undefined, videoUrl: newLesson.type === "video" ? encodeVideoUrl(newLesson.videoUrl || "") : undefined, resourceUrl: newLesson.type !== "video" ? newLesson.resourceUrl : undefined, instructorShares: newLesson.type === "video" ? finalInstructorShares : [] };
       updated = curriculum.map((ch) => ch.id === selectedChapter.id ? { ...ch, lessons: [...ch.lessons, lesson] } : ch);
     }
     try {
@@ -813,7 +826,12 @@ export default function AdminCourseContent() {
   };
 
   /* totals */
-  const totalLessons = curriculum.reduce((s, ch) => s + ch.lessons.length, 0);
+  const totalVideoSeconds = curriculum.reduce(
+    (sum, chapter) => sum + chapter.lessons
+      .filter((lesson) => lesson.type === "video")
+      .reduce((lessonSum, lesson) => lessonSum + parseLessonDurationToSeconds(lesson.duration), 0),
+    0,
+  );
   const totalVideoLessons = curriculum.reduce((s, ch) => s + ch.lessons.filter((l) => l.type === "video").length, 0);
   const chapterVideoIds = useMemo(
     () => new Set(
@@ -852,31 +870,31 @@ export default function AdminCourseContent() {
   );
 
   return (
-    <div className="space-y-4 font-['Inter']">
+    <div className="min-h-[calc(100vh-90px)] space-y-4 rounded-3xl bg-slate-50/70 p-3 font-['Inter']">
       {/* ─── Header ─────────────────────────────────────────── */}
-      <div className="rounded-2xl border border-slate-200 bg-gradient-to-r from-white via-slate-50 to-blue-50/40 p-4 shadow-sm">
+      <div className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10">
-            <BookOpen className="h-5 w-5 text-primary" />
+          <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-900 shadow-sm">
+            <BookOpen className="h-5 w-5 text-white" />
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">Video</h1>
-            <p className="text-xs text-slate-500">Manage chapters, lessons & videos</p>
+            <h1 className="text-xl font-black text-slate-950">Course Content Studio</h1>
+            <p className="text-xs font-medium text-slate-500">Organize chapters, lessons, Bunny collections and video mapping.</p>
           </div>
 
           <div className="ml-auto flex flex-wrap items-center gap-2">
-            <span className="rounded-full bg-blue-50 px-3 py-1 text-[11px] font-semibold text-blue-700">
+            <span className="rounded-full border border-blue-100 bg-blue-50 px-3 py-1 text-[11px] font-bold text-blue-700">
               {filteredCoursePickerOptions.length} course(s) found
             </span>
             {(courseFilterId !== "all" || levelFilterId !== "all" || subjectFilter !== "all" || professorFilter !== "all") ? (
-              <span className="rounded-full bg-emerald-50 px-3 py-1 text-[11px] font-semibold text-emerald-700">Filters applied</span>
+              <span className="rounded-full border border-emerald-100 bg-emerald-50 px-3 py-1 text-[11px] font-bold text-emerald-700">Filters applied</span>
             ) : (
-              <span className="rounded-full bg-slate-100 px-3 py-1 text-[11px] font-semibold text-slate-600">No filters</span>
+              <span className="rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-[11px] font-bold text-slate-600">No filters</span>
             )}
           </div>
         </div>
 
-        <div className="mt-4 grid gap-2 rounded-2xl border border-slate-200 bg-white/95 p-3 sm:grid-cols-2 lg:grid-cols-5">
+        <div className="mt-4 grid gap-2 rounded-2xl border border-slate-200 bg-slate-50 p-3 sm:grid-cols-2 lg:grid-cols-5">
           <select
             className={sCls}
             value={courseFilterId}
@@ -925,7 +943,7 @@ export default function AdminCourseContent() {
           <Button
             type="button"
             variant="outline"
-            className="h-9 rounded-xl border-slate-200 text-xs font-semibold"
+            className="h-9 rounded-xl border-slate-200 bg-white text-xs font-bold text-slate-700"
             onClick={() => {
               setCourseFilterId("all");
               setLevelFilterId("all");
@@ -940,14 +958,14 @@ export default function AdminCourseContent() {
 
         {/* Course picker */}
         <div className="mt-3 flex w-full items-center gap-2 rounded-2xl border border-slate-200 bg-white p-2 shadow-sm">
-          <div className="hidden min-w-28 rounded-xl bg-slate-100 px-3 py-2 text-center text-[11px] font-semibold text-slate-600 sm:block">
-            Course Select
+          <div className="hidden min-w-32 rounded-xl bg-slate-900 px-3 py-2 text-center text-[11px] font-bold text-white sm:block">
+            Active Course
           </div>
 
           <Popover open={coursePickerOpen} onOpenChange={setCoursePickerOpen}>
             <PopoverTrigger asChild>
               <Button type="button" variant="outline" role="combobox" aria-expanded={coursePickerOpen}
-                className="h-10 w-full justify-between rounded-xl border-slate-200 text-left text-xs font-medium sm:w-[34rem]">
+                className="h-10 w-full justify-between rounded-xl border-slate-200 bg-white text-left text-xs font-semibold sm:w-[38rem]">
                 <span className={`truncate ${!selectedCourse ? "text-slate-400" : "font-semibold"}`}>{selectedCourse?.title || "Search and select a course to manage content..."}</span>
                 <ChevronsUpDown className="ml-2 h-3.5 w-3.5 shrink-0 opacity-50" />
               </Button>
@@ -996,27 +1014,27 @@ export default function AdminCourseContent() {
         <>
           {/* ─── Stats row ──────────────────────────────────── */}
           {selectedCourse && (
-            <div className="flex gap-3">
+            <div className="grid gap-3 sm:grid-cols-3">
               {[
                 { label: "Chapters", value: curriculum.length, color: "bg-primary/10 text-primary" },
-                { label: "Total Lessons", value: totalLessons, color: "bg-slate-100 text-slate-700" },
+                { label: "Total Hours", value: formatHoursStat(totalVideoSeconds), color: "bg-slate-100 text-slate-700" },
                 { label: "Video Lessons", value: totalVideoLessons, color: "bg-blue-100 text-blue-700" },
               ].map((stat) => (
-                <div key={stat.label} className={`flex items-center gap-2 rounded-xl px-3 py-2 text-xs font-semibold ${stat.color}`}>
-                  <span className="text-base font-bold">{stat.value}</span>
-                  <span className="font-medium">{stat.label}</span>
+                <div key={stat.label} className="rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm">
+                  <span className={`inline-flex rounded-xl px-2.5 py-1 text-base font-black ${stat.color}`}>{stat.value}</span>
+                  <span className="ml-2 text-xs font-bold text-slate-600">{stat.label}</span>
                 </div>
               ))}
             </div>
           )}
 
           {/* ─── 3-panel layout ────────────────────────────── */}
-          <div className="grid min-h-[640px] gap-4 lg:grid-cols-[280px_minmax(0,1fr)]">
+          <div className="grid min-h-[640px] gap-4 lg:grid-cols-[310px_minmax(0,1fr)]">
             {/* ── PANEL 1: Chapters ── */}
             <div className="flex min-h-[420px] flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-              <div className="flex shrink-0 items-center border-b border-slate-100 bg-gradient-to-r from-slate-50 to-blue-50/60 px-4 py-3">
+              <div className="flex shrink-0 items-center border-b border-slate-100 bg-white px-4 py-3">
                 <div>
-                  <span className="text-xs font-bold text-slate-800">Chapters</span>
+                  <span className="text-sm font-black text-slate-900">Chapters</span>
                   <p className="text-[10px] text-slate-500">Drag and drop to reorder</p>
                 </div>
                 <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-bold text-primary">{curriculum.length}</span>
@@ -1044,7 +1062,7 @@ export default function AdminCourseContent() {
                           onDragEnter={() => { dragOverChapterIdx.current = idx; }}
                           onDragOver={(e) => e.preventDefault()}
                           onDragEnd={handleChapterDrop}
-                          className={`group flex w-full items-center rounded-xl border transition-all ${isActive ? "border-primary/20 bg-primary text-white shadow-sm" : "border-slate-100 text-slate-700 hover:border-slate-200 hover:bg-slate-50"} ${dragChapterActive ? "cursor-grabbing" : "cursor-grab"}`}>
+                          className={`group flex w-full items-center rounded-xl border transition-all ${isActive ? "border-slate-900 bg-slate-900 text-white shadow-sm" : "border-slate-100 text-slate-700 hover:border-slate-200 hover:bg-slate-50"} ${dragChapterActive ? "cursor-grabbing" : "cursor-grab"}`}>
                           {/* Drag handle */}
                           <span className={`flex h-full items-center px-1.5 py-2.5 opacity-30 group-hover:opacity-70 ${isActive ? "text-white" : "text-slate-400"}`}>
                             <GripVertical className="h-3.5 w-3.5" />
@@ -1075,9 +1093,9 @@ export default function AdminCourseContent() {
               ) : (
                 <>
                   {/* Lesson panel header */}
-                  <div className="shrink-0 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-gradient-to-r from-slate-50 to-indigo-50/40 px-5 py-3">
+                  <div className="shrink-0 flex flex-wrap items-center gap-2 border-b border-slate-100 bg-white px-5 py-3">
                     <div className="min-w-0">
-                      <p className="truncate text-sm font-bold text-slate-800">{selectedChapter.title}</p>
+                      <p className="truncate text-base font-black text-slate-900">{selectedChapter.title}</p>
                       {selectedChapter.description && <p className="truncate text-xs text-slate-400">{selectedChapter.description}</p>}
                       {sharedCourseCollection.id ? (
                         <p className="mt-1 truncate text-[11px] font-semibold text-emerald-600">
@@ -1124,7 +1142,7 @@ export default function AdminCourseContent() {
                         <Button size="sm" className="gap-1.5 rounded-xl text-xs" onClick={handleOpenAddLesson}><Plus className="h-3.5 w-3.5" />Add First Lesson</Button>
                       </div>
                     ) : (
-                      <div className="space-y-2 bg-slate-50/50 p-3">
+                      <div className="space-y-2 bg-slate-50 p-3">
                         {selectedChapter.lessons.map((lesson, idx) => {
                           const Icon = TYPE_ICON[lesson.type] || Video;
                           return (
@@ -1134,7 +1152,7 @@ export default function AdminCourseContent() {
                               onDragEnter={() => { dragOverLessonIdx.current = idx; }}
                               onDragOver={(e) => e.preventDefault()}
                               onDragEnd={handleLessonDrop}
-                              className={`flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3.5 shadow-sm transition-all hover:border-slate-300 hover:shadow ${dragLessonActive ? "cursor-grabbing" : "cursor-grab"}`}>
+                              className={`flex items-center gap-3 rounded-2xl border border-slate-200 bg-white px-4 py-3 shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md ${dragLessonActive ? "cursor-grabbing" : "cursor-grab"}`}>
                               {/* Drag handle */}
                               <GripVertical className="h-4 w-4 shrink-0 text-slate-300 hover:text-slate-500" />
                               {/* Number + Icon */}
@@ -1146,7 +1164,7 @@ export default function AdminCourseContent() {
                               </div>
                               {/* Info */}
                               <div className="min-w-0 flex-1">
-                                <p className="truncate text-sm font-semibold text-slate-900">{lesson.title}</p>
+                                <p className="truncate text-sm font-bold text-slate-950">{lesson.title}</p>
                                 <div className="mt-0.5 flex flex-wrap items-center gap-2">
                                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${TYPE_STYLE[lesson.type]}`}>{TYPE_LABEL[lesson.type]}</span>
                                   {lesson.duration && <span className="text-[11px] text-slate-400">{lesson.duration}</span>}
@@ -1180,8 +1198,8 @@ export default function AdminCourseContent() {
 
       {/* ─── Chapter Dialog ──────────────────────────────── */}
       <Dialog open={chapterDialogOpen} onOpenChange={setChapterDialogOpen}>
-        <DialogContent className="max-w-md rounded-2xl border-slate-100 p-0 shadow-2xl">
-          <DialogHeader className="border-b border-slate-100 px-6 py-4">
+        <DialogContent className="max-w-md overflow-hidden rounded-2xl border-slate-100 bg-white p-0 shadow-2xl">
+          <DialogHeader className="border-b border-slate-100 bg-slate-50 px-6 py-4">
             <DialogTitle className="text-base font-bold text-slate-900">{editingChapter ? "Edit Chapter" : "Add New Chapter"}</DialogTitle>
           </DialogHeader>
           {saveError && <div className="flex items-center gap-2 border-b border-rose-100 bg-rose-50 px-6 py-2.5 text-xs text-rose-700"><AlertCircle className="h-3.5 w-3.5" />{saveError}</div>}
@@ -1210,14 +1228,15 @@ export default function AdminCourseContent() {
 
       {/* ─── Lesson Dialog ───────────────────────────────── */}
       <Dialog open={lessonDialogOpen} onOpenChange={setLessonDialogOpen}>
-        <DialogContent className="flex max-h-[88vh] max-w-lg flex-col overflow-hidden rounded-2xl border-slate-100 p-0 shadow-2xl">
-          <DialogHeader className="shrink-0 border-b border-slate-100 px-6 py-4">
-            <DialogTitle className="text-base font-bold text-slate-900">{editingLessonId ? "Edit Lesson" : "Add New Lesson"}</DialogTitle>
+        <DialogContent className="flex max-h-[90vh] max-w-2xl flex-col overflow-hidden rounded-2xl border-slate-100 bg-white p-0 shadow-2xl">
+          <DialogHeader className="shrink-0 border-b border-slate-100 bg-slate-50 px-6 py-4">
+            <DialogTitle className="text-base font-black text-slate-900">{editingLessonId ? "Edit Lesson" : "Add New Lesson"}</DialogTitle>
           </DialogHeader>
           {saveError && <div className="shrink-0 flex items-center gap-2 border-b border-rose-100 bg-rose-50 px-6 py-2.5 text-xs text-rose-700"><AlertCircle className="h-3.5 w-3.5" />{saveError}</div>}
           <div className="flex-1 overflow-y-auto">
             <LessonForm lesson={newLesson} setLesson={setNewLesson} onSave={handleSaveLesson} isEditing={!!editingLessonId}
               facultyOptions={lessonFacultyOptions}
+              revenueShareEnabled={selectedCourse?.revenueShareEnabled === true}
               onUploadVideo={handleVideoFileUpload} isUploadingVideo={isUploadingVideo} isSaving={isSaving}
               uploadProgress={lessonUploadState?.status === "uploading" ? lessonUploadState.progress : 0}
               onCancelUpload={handleCancelLessonUpload} />
@@ -1469,9 +1488,10 @@ export default function AdminCourseContent() {
 }
 
 /* ─── Lesson Form ────────────────────────────────────────────── */
-function LessonForm({ lesson, setLesson, onSave, isEditing, facultyOptions, onUploadVideo, isUploadingVideo, isSaving = false, uploadProgress = 0, onCancelUpload }: {
+function LessonForm({ lesson, setLesson, onSave, isEditing, facultyOptions, revenueShareEnabled, onUploadVideo, isUploadingVideo, isSaving = false, uploadProgress = 0, onCancelUpload }: {
   lesson: NewLesson; setLesson: Dispatch<SetStateAction<NewLesson>>;
   facultyOptions: Array<{ id: string; name: string }>;
+  revenueShareEnabled: boolean;
   onSave: () => void; isEditing: boolean; onUploadVideo: (file?: File | null) => void;
   isUploadingVideo: boolean; isSaving?: boolean; uploadProgress?: number; onCancelUpload?: () => void;
 }) {
@@ -1548,17 +1568,15 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, facultyOptions, onUp
   const FL2 = ({ children }: { children: React.ReactNode }) => <p className="mb-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">{children}</p>;
   const instructorShares = Array.isArray(lesson.instructorShares) ? lesson.instructorShares : [];
   const selectedInstructorIds = new Set(instructorShares.map((row) => String(row.facultyId || "").trim()).filter(Boolean));
-  const instructorTotal = instructorShares.reduce((sum, row) => sum + Number(row.sharePercent || 0), 0);
 
   const rebalanceShares = (shares: Array<{ facultyId: string; sharePercent: number }>) => {
     const valid = shares
-      .map((row) => ({ facultyId: String(row.facultyId || "").trim(), sharePercent: Number(row.sharePercent || 0) }))
-      .filter((row) => row.facultyId && Number.isFinite(row.sharePercent) && row.sharePercent > 0);
-    const total = valid.reduce((sum, row) => sum + row.sharePercent, 0);
-    if (total <= 0) return valid;
+      .map((row) => ({ facultyId: String(row.facultyId || "").trim(), sharePercent: 100 }))
+      .filter((row) => row.facultyId);
+    if (valid.length <= 0) return [];
     return valid.map((row) => ({
       facultyId: row.facultyId,
-      sharePercent: Number(((row.sharePercent / total) * 100).toFixed(2)),
+      sharePercent: Number((100 / valid.length).toFixed(2)),
     }));
   };
 
@@ -1570,46 +1588,41 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, facultyOptions, onUp
     setLesson({ ...lesson, instructorShares: rebalanceShares(next) });
   };
 
-  const updateInstructorShare = (facultyId: string, nextValue: string) => {
-    const numeric = Number(nextValue || 0);
-    const current = Array.isArray(lesson.instructorShares) ? lesson.instructorShares : [];
-    const next = current.map((row) => String(row.facultyId || "") === facultyId ? { ...row, sharePercent: numeric } : row);
-    setLesson({ ...lesson, instructorShares: next });
-  };
-
   return (
-    <div className="space-y-4 px-6 py-5">
-      <div className="space-y-1.5">
+    <div className="space-y-4 bg-white px-6 py-5">
+      <div className="grid gap-4 sm:grid-cols-[1fr_160px]">
+        <div className="space-y-1.5">
         <FL2>Lesson Title *</FL2>
         <Input className={fCls} placeholder="e.g., Introduction to GST" value={lesson.title} onChange={(e) => setLesson({ ...lesson, title: e.target.value })} disabled={isSaving} autoFocus />
+        </div>
+        <div className="space-y-1.5">
+          <FL2>Lesson Type</FL2>
+          <div className="grid grid-cols-3 gap-1 rounded-xl border border-slate-200 bg-slate-50 p-1">
+            {(["video", "pdf", "quiz"] as const).map((t) => {
+              const Icon = TYPE_ICON[t];
+              return (
+                <button key={t} type="button" onClick={() => setLesson({ ...lesson, type: t })} disabled={isSaving}
+                  className={`flex h-8 items-center justify-center gap-1 rounded-lg text-[11px] font-bold transition-all ${lesson.type === t ? "bg-white text-slate-950 shadow-sm" : "text-slate-500 hover:text-slate-700"}`}>
+                  <Icon className="h-3.5 w-3.5" />{TYPE_LABEL[t]}
+                </button>
+              );
+            })}
+          </div>
+        </div>
       </div>
       <div className="space-y-1.5">
         <FL2>Description (optional)</FL2>
         <textarea className="h-16 w-full resize-none rounded-xl border border-slate-200 px-3 py-2 text-xs placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-primary/40"
           placeholder="Brief overview..." value={lesson.description} onChange={(e) => setLesson({ ...lesson, description: e.target.value })} rows={2} disabled={isSaving} />
       </div>
-      <div className="space-y-1.5">
-        <FL2>Lesson Type</FL2>
-        <div className="flex gap-2">
-          {(["video", "pdf", "quiz"] as const).map((t) => {
-            const Icon = TYPE_ICON[t];
-            return (
-              <button key={t} type="button" onClick={() => setLesson({ ...lesson, type: t })} disabled={isSaving}
-                className={`flex flex-1 items-center justify-center gap-1.5 rounded-xl border py-2.5 text-xs font-semibold transition-all ${lesson.type === t ? "border-primary bg-primary/5 text-primary" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>
-                <Icon className="h-3.5 w-3.5" />{TYPE_LABEL[t]}
-              </button>
-            );
-          })}
-        </div>
-      </div>
 
       {lesson.type === "video" && (
-        <div className="space-y-4 rounded-xl border border-slate-200 bg-slate-50/50 p-4">
+        <div className="space-y-4 rounded-2xl border border-slate-200 bg-slate-50 p-4">
           <div className="space-y-1.5">
             <FL2>Video Source</FL2>
-            <div className="flex gap-2">
+            <div className="grid grid-cols-3 gap-2">
               {(["direct", "youtube", "upload"] as const).map((s) => (
-                <label key={s} className={`flex flex-1 cursor-pointer items-center justify-center gap-1 rounded-xl border py-2 text-[11px] font-semibold transition-all ${lesson.videoSource === s ? "border-primary bg-primary/5 text-primary" : "border-slate-200 text-slate-500"}`}>
+                <label key={s} className={`flex cursor-pointer items-center justify-center gap-1 rounded-xl border py-2 text-[11px] font-bold transition-all ${lesson.videoSource === s ? "border-slate-900 bg-white text-slate-950 shadow-sm" : "border-slate-200 bg-white/70 text-slate-500 hover:border-slate-300"}`}>
                   <input type="radio" name="videoSrc" value={s} checked={lesson.videoSource === s} onChange={() => setLesson({ ...lesson, videoSource: s })} className="sr-only" />
                   {s === "direct" ? "Direct URL" : s === "youtube" ? "YouTube" : "CDN Upload"}
                 </label>
@@ -1632,19 +1645,14 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, facultyOptions, onUp
             <FL2>Duration (HH:MM:SS)</FL2>
             <Input className={fCls} placeholder="00:45:30" value={lesson.duration} onChange={(e) => setLesson({ ...lesson, duration: e.target.value })} disabled={isSaving} />
           </div>
-          <div className="space-y-2">
-            <div className="flex items-center justify-between">
-              <FL2>Instructor Hour Share (%)</FL2>
-              <span className={`text-[11px] font-semibold ${Math.abs(instructorTotal - 100) < 0.5 || instructorTotal === 0 ? "text-emerald-600" : "text-amber-600"}`}>
-                Total: {instructorTotal.toFixed(2)}%
-              </span>
-            </div>
-            <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 space-y-2">
+          {revenueShareEnabled && (
+            <div className="space-y-2">
+              <FL2>Video Professor Mapping</FL2>
+              <div className="max-h-44 overflow-y-auto rounded-xl border border-slate-200 bg-white p-2 space-y-2">
               {facultyOptions.length === 0 ? (
                 <p className="px-2 py-1 text-[11px] text-slate-500">No mapped faculty found for this course.</p>
               ) : facultyOptions.map((faculty) => {
                 const active = selectedInstructorIds.has(faculty.id);
-                const row = instructorShares.find((item) => String(item.facultyId || "") === faculty.id);
                 return (
                   <div key={faculty.id} className="flex items-center gap-2 rounded-lg border border-slate-100 px-2 py-1.5">
                     <input
@@ -1655,22 +1663,14 @@ function LessonForm({ lesson, setLesson, onSave, isEditing, facultyOptions, onUp
                       disabled={isSaving}
                     />
                     <span className="flex-1 truncate text-xs font-medium text-slate-700">{faculty.name}</span>
-                    <Input
-                      className="h-8 w-24 rounded-lg border-slate-200 text-xs"
-                      type="number"
-                      min="0"
-                      max="100"
-                      step="0.01"
-                      value={active ? String(Number(row?.sharePercent || 0).toFixed(2)) : ""}
-                      placeholder="0"
-                      onChange={(event) => updateInstructorShare(faculty.id, event.target.value)}
-                      disabled={!active || isSaving}
-                    />
+                    {active && <span className="rounded-full bg-emerald-50 px-2 py-0.5 text-[10px] font-bold text-emerald-700">Mapped</span>}
                   </div>
                 );
               })}
+              </div>
+              <p className="text-[11px] text-slate-500">Revenue percent comes from faculty profile. Selected professors are split equally for this video.</p>
             </div>
-          </div>
+          )}
           <div className="flex items-center justify-between">
             <div>
               <div className="flex items-center gap-2">

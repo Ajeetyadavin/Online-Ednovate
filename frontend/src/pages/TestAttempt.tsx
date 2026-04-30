@@ -227,6 +227,9 @@ const TestAttempt = () => {
   const [marked, setMarked] = useState<Record<string, boolean>>({});
   const [examEndAt, setExamEndAt] = useState<number>(() => Date.now() + Math.max(1, Number(paper?.totalTime || 60)) * 60 * 1000);
   const [remainingSeconds, setRemainingSeconds] = useState(Math.max(1, Number(paper?.totalTime || 60)) * 60);
+  const questionTimeLimitSeconds = Math.max(0, Number(paper?.questionTimeLimitSeconds || 0));
+  const [questionStartedAt, setQuestionStartedAt] = useState(Date.now());
+  const [questionRemainingSeconds, setQuestionRemainingSeconds] = useState(questionTimeLimitSeconds);
   const [submittedReport, setSubmittedReport] = useState<AttemptReport | null>(null);
   const [attemptLimitReached, setAttemptLimitReached] = useState(false);
 
@@ -332,6 +335,7 @@ const TestAttempt = () => {
           const saved = JSON.parse(localStorage.getItem(attemptStateKey) || "{}");
           if (saved && saved.paperId === id && !saved.submitted) {
             setActiveIndex(Math.min(Math.max(0, Number(saved.activeIndex || 0)), Math.max(0, nextQuestions.length - 1)));
+            setQuestionStartedAt(Number(saved.questionStartedAt || Date.now()));
             setAnswers(saved.answers && typeof saved.answers === "object" ? saved.answers : {});
             setMarked(saved.marked && typeof saved.marked === "object" ? saved.marked : {});
             const savedEndAt = Number(saved.examEndAt || 0);
@@ -361,12 +365,13 @@ const TestAttempt = () => {
     localStorage.setItem(attemptStateKey, JSON.stringify({
       paperId: id,
       activeIndex,
+      questionStartedAt,
       answers,
       marked,
       examEndAt,
       updatedAt: new Date().toISOString(),
     }));
-  }, [activeIndex, answers, attemptStateKey, examEndAt, id, isLoading, marked, submittedReport]);
+  }, [activeIndex, answers, attemptStateKey, examEndAt, id, isLoading, marked, questionStartedAt, submittedReport]);
 
   useEffect(() => {
     if (submittedReport) return;
@@ -393,6 +398,27 @@ const TestAttempt = () => {
     }, 1000);
     return () => window.clearInterval(timer);
   }, [examEndAt, remainingSeconds, submittedReport]);
+
+  useEffect(() => {
+    if (questionTimeLimitSeconds <= 0 || submittedReport || isLoading || questions.length === 0) return;
+    setQuestionStartedAt(Date.now());
+    setQuestionRemainingSeconds(questionTimeLimitSeconds);
+  }, [activeIndex, isLoading, questionTimeLimitSeconds, questions.length, submittedReport]);
+
+  useEffect(() => {
+    if (questionTimeLimitSeconds <= 0 || submittedReport || isLoading || questions.length === 0) return;
+    const timer = window.setInterval(() => {
+      const next = Math.max(0, questionTimeLimitSeconds - Math.floor((Date.now() - questionStartedAt) / 1000));
+      setQuestionRemainingSeconds(next);
+      if (next > 0) return;
+      if (activeIndex >= questions.length - 1) {
+        submitAttempt();
+      } else {
+        setActiveIndex((value) => Math.min(questions.length - 1, value + 1));
+      }
+    }, 300);
+    return () => window.clearInterval(timer);
+  }, [activeIndex, isLoading, questionStartedAt, questionTimeLimitSeconds, questions.length, submittedReport]);
 
   const submitAttempt = () => {
     const questionReports = questions.map((question, index) => {
@@ -552,6 +578,12 @@ const TestAttempt = () => {
             <p className="text-[9px] font-bold uppercase text-slate-400">Time Left</p>
             <p className={`font-mono text-sm font-black ${remainingSeconds < 300 ? "text-red-600" : "text-[#1e3a8a]"}`}>{formatDuration(remainingSeconds)}</p>
           </div>
+          {questionTimeLimitSeconds > 0 && (
+            <div className="rounded-xl border border-orange-100 bg-orange-50 px-3 py-1 text-center">
+              <p className="text-[9px] font-bold uppercase text-orange-400">Question</p>
+              <p className={`font-mono text-sm font-black ${questionRemainingSeconds <= 5 ? "text-red-600" : "text-orange-700"}`}>{questionRemainingSeconds}s</p>
+            </div>
+          )}
           <Button size="sm" className="h-9 rounded-xl bg-[#E74623] text-xs font-bold text-white hover:bg-[#d13a1a]" onClick={submitAttempt}>Submit</Button>
         </div>
       </div>

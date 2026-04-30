@@ -16,6 +16,7 @@ import { toast } from "sonner";
 import { useConfirm } from "@/context/ConfirmContext";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
@@ -37,7 +38,7 @@ const decodeDemoVideoValue = (value: unknown) => decodeVideoUrl(String(value || 
 type CourseForm = {
   id: string; title: string; category: string; subcategory: string; price: number; originalPrice: number; taxPercentage: number;
   subject: string; chapter: string; selectedChapters: string[];
-  language: string; professor: string; facultyIds: string[]; lectures: number; hours: number; thumbnail?: string;
+  language: string; professor: string; facultyIds: string[]; revenueShareEnabled: boolean; lectures: number; hours: number; thumbnail?: string;
   demoVideoTitle?: string; demoVideoDescription?: string; demoVideoSource?: "youtube" | "direct" | "upload";
   demoVideoUrl?: string; demoVideoThumbnailUrl?: string; demoVideoVisible?: boolean;
   webPlayEnabled?: boolean;
@@ -71,6 +72,7 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
     : (c.chapter ? [String(c.chapter)] : []),
   price: c.price, originalPrice: c.originalPrice, taxPercentage: Math.max(0, Number(c.taxPercentage || 0)), language: c.language, professor: c.professor,
   facultyIds: Array.isArray(c.facultyIds) ? c.facultyIds.map((item) => String(item || "").trim()).filter(Boolean) : [],
+  revenueShareEnabled: c.revenueShareEnabled === true,
   lectures: c.lectures, hours: c.hours, thumbnail: c.thumbnail,
   demoVideoTitle: c.demoVideoTitle, demoVideoDescription: c.demoVideoDescription,
   demoVideoSource: c.demoVideoSource, demoVideoUrl: decodeDemoVideoValue(c.demoVideoUrl),
@@ -137,7 +139,7 @@ const toCourseForm = (c: ManagedCourse): CourseForm => ({
 const BLANK_FORM: CourseForm = {
   id: "", title: "", category: "", subcategory: "", price: 0, originalPrice: 0, taxPercentage: 0,
   subject: "", chapter: "", selectedChapters: [],
-  language: "", professor: "", facultyIds: [], lectures: 0, hours: 0, thumbnail: "",
+  language: "", professor: "", facultyIds: [], revenueShareEnabled: false, lectures: 0, hours: 0, thumbnail: "",
   demoVideoTitle: "", demoVideoDescription: "", demoVideoSource: "youtube", demoVideoUrl: "",
   demoVideoThumbnailUrl: "", demoVideoVisible: false, webPlayEnabled: false, isSubcategoryCustom: false,
   viewPricingEnabled: false, unlimitedViewsEnabled: false, validityPricingEnabled: false,
@@ -1325,6 +1327,7 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
       image: "/placeholder.svg", thumbnail: form.thumbnail || "",
       professor: resolvedProfessor,
       facultyIds: normalizedFacultyIds,
+      revenueShareEnabled: form.revenueShareEnabled === true,
       isCombo: false, isMaterial: false, isVisible: editingId
         ? (courses.find((item) => item.id === editingId)?.isVisible ?? true)
         : true,
@@ -2856,6 +2859,13 @@ export default function AdminCourses({ mode = "courses" }: { mode?: AdminCourses
                                 {form.facultyIds.length === 0 && (
                                   <p className="pt-1 text-[10px] text-slate-400">No faculty selected</p>
                                 )}
+                                <div className="mt-2 flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                                  <div>
+                                    <p className="text-xs font-bold text-slate-800">Revenue Share</p>
+                                    <p className="text-[10px] text-slate-500">Enable only when this course should pay selected professors.</p>
+                                  </div>
+                                  <Switch checked={form.revenueShareEnabled} onCheckedChange={(v) => sf({ revenueShareEnabled: v })} />
+                                </div>
                               </div>
                               <div className="space-y-1.5">
                                 <Label>Language</Label>

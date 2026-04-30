@@ -1,5 +1,7 @@
 import { createContext, useContext, useState, useEffect, ReactNode } from "react";
 
+import { COMPANY_ADDRESS_TEXT, COMPANY_CONTACT } from "@/lib/companyContact";
+
 export type HeaderButtonStyle = "solid" | "outline" | "ghost";
 
 export interface HeaderNavLink {
@@ -370,8 +372,8 @@ const createDefaultSettings = (): SiteSettings => ({
   },
   header: {
     topBarVisible: true,
-    topBarPhone: "+91 98765 43210",
-    topBarEmail: "info@ednovate.in",
+    topBarPhone: COMPANY_CONTACT.callPhone,
+    topBarEmail: COMPANY_CONTACT.email,
     topBarPrimaryText: "Download App",
     topBarSecondaryText: "Demo Classes Available",
     showSearch: true,
@@ -547,13 +549,13 @@ const createDefaultSettings = (): SiteSettings => ({
     call: {
       label: "Call Us",
       color: "#2563EB",
-      value: "+91 98765 43210",
+      value: COMPANY_CONTACT.callPhone,
       visible: true,
     },
     whatsapp: {
       label: "WhatsApp",
       color: "#22C55E",
-      value: "+91 98765 43210",
+      value: COMPANY_CONTACT.whatsappPhone,
       visible: true,
     },
   },
@@ -695,7 +697,7 @@ const createDefaultSettings = (): SiteSettings => ({
   },
   footer: {
     tagline: "India's trusted online learning platform for CA, CS, CMA and professional courses. Structured programs, expert mentorship, and outcomes that matter.",
-    address: "Mumbai, Maharashtra",
+    address: COMPANY_ADDRESS_TEXT,
     copyrightText: "© 2026 Ednovate. All rights reserved.",
     privacyUrl: "#",
     termsUrl: "#",

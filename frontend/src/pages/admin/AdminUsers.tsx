@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/context/AuthContext";
 import { usePlatformData } from "@/context/PlatformDataContext";
+import { useSiteSettings } from "@/context/SiteSettingsContext";
+import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 import {
   adminApi,
   type AdminOrderGroup,
@@ -10,6 +12,7 @@ import {
   type CourseMasterViewMode,
   type StudentRecord,
   type StudentCourseAccess,
+  type StudentTestSeriesAccess,
   type StudentLoginLog,
   type StudentVideoActivity,
   type StudentNotification,
@@ -27,6 +30,7 @@ import {
   MessageSquare, RefreshCcw, GraduationCap, ToggleLeft, ToggleRight,
   ChevronRight, Phone, Calendar, Download, ChevronDown, ChevronUp,
   CheckCircle2, XCircle, Infinity as InfinityIcon, CreditCard, Settings2, Save,
+  FileText,
 } from "lucide-react";
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
@@ -41,6 +45,41 @@ const formatDateTime = (value?: string | null) => {
   const d = new Date(value);
   if (Number.isNaN(d.getTime())) return value;
   return d.toLocaleString("en-IN", { day: "2-digit", month: "short", year: "numeric", hour: "2-digit", minute: "2-digit" });
+};
+
+const escapeInvoiceText = (value: unknown) => String(value ?? "")
+  .replace(/&/g, "&amp;")
+  .replace(/</g, "&lt;")
+  .replace(/>/g, "&gt;")
+  .replace(/"/g, "&quot;")
+  .replace(/'/g, "&#039;");
+
+const buildOrderAddressText = (order: AdminOrderGroup) => [
+  order.shippingAddressLine1,
+  order.shippingAddressLine2,
+  order.shippingCity,
+  order.shippingState,
+  order.shippingPincode,
+  order.shippingCountry,
+].map((value) => String(value || "").trim()).filter(Boolean).join(", ");
+
+const formatAttemptLimit = (allowed?: number | null) => {
+  const count = Number(allowed || 0);
+  return count > 0 ? String(count) : "Not set";
+};
+
+const summarizeUserAgent = (value?: string | null) => {
+  const text = String(value || "").trim();
+  if (!text) return "—";
+  const browser = /Edg\//.test(text) ? "Edge" : /Chrome\//.test(text) ? "Chrome" : /Safari\//.test(text) ? "Safari" : /Firefox\//.test(text) ? "Firefox" : "Browser";
+  const os = /Android/i.test(text) ? "Android" : /iPhone|iPad/i.test(text) ? "iOS" : /Mac OS X/i.test(text) ? "macOS" : /Windows/i.test(text) ? "Windows" : /Linux/i.test(text) ? "Linux" : "Device";
+  return `${browser} on ${os}`;
+};
+
+const orderDayKey = (value?: string | null) => {
+  if (!value) return "";
+  const date = new Date(value);
+  return Number.isFinite(date.getTime()) ? date.toISOString().slice(0, 10) : String(value);
 };
 
 const formatDuration = (days: number) => `${days}d`;
@@ -83,7 +122,7 @@ const avatarColor = (name: string) => {
   return colors[i];
 };
 
-type DetailTab = "overview" | "courses" | "activity" | "message";
+type DetailTab = "overview" | "courses" | "testSeries" | "activity" | "message";
 type AssignableCourseOption = {
   id: string;
   title: string;
@@ -146,6 +185,7 @@ export default function AdminUsers() {
   const navigate = useNavigate();
   const { loginAsUser } = useAuth();
   const { confirm } = useConfirm();
+  const { settings } = useSiteSettings();
   const { courses } = usePlatformData();
   const [assignCourseOptions, setAssignCourseOptions] = useState<AssignableCourseOption[]>([]);
   const [masterViewModes, setMasterViewModes] = useState<CourseMasterViewMode[]>([]);
@@ -168,6 +208,7 @@ export default function AdminUsers() {
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState("");
   const [courseAccess, setCourseAccess] = useState<StudentCourseAccess[]>([]);
+  const [testSeriesAccess, setTestSeriesAccess] = useState<StudentTestSeriesAccess[]>([]);
   const [loginLogs, setLoginLogs] = useState<StudentLoginLog[]>([]);
   const [videoActivity, setVideoActivity] = useState<StudentVideoActivity[]>([]);
   const [notifications, setNotifications] = useState<StudentNotification[]>([]);
@@ -193,6 +234,9 @@ export default function AdminUsers() {
   const [videoActivityFromDate, setVideoActivityFromDate] = useState("");
   const [videoActivityToDate, setVideoActivityToDate] = useState("");
   const [showVideoActivityFilters, setShowVideoActivityFilters] = useState(false);
+  const [showCourseAssign, setShowCourseAssign] = useState(false);
+  const [showCourseExtend, setShowCourseExtend] = useState(false);
+  const [showAdminActions, setShowAdminActions] = useState(false);
 
   const [courseForm, setCourseForm] = useState({ courseId: "", purchaseDate: "", durationDays: 180, totalViews: 2, usedViews: 0, notes: "", isEnabled: true });
   const [extendForm, setExtendForm] = useState({ courseId: "", extraDays: 30, extraViews: 1 });
@@ -254,6 +298,7 @@ export default function AdminUsers() {
       ]);
       setSelectedStudent(data.student);
       setCourseAccess(data.courseAccess || []);
+      setTestSeriesAccess(data.testSeriesAccess || []);
       setLoginLogs(data.loginLogs || []);
       setVideoActivity(data.videoActivity || []);
       setNotifications(data.notifications || []);
@@ -266,7 +311,14 @@ export default function AdminUsers() {
   };
 
   useEffect(() => { loadStudents(); }, []);
-  useEffect(() => { if (selectedStudentId) { loadStudentDetails(selectedStudentId); setActiveTab("overview"); } }, [selectedStudentId]);
+  useEffect(() => {
+    if (selectedStudentId) {
+      loadStudentDetails(selectedStudentId);
+      setActiveTab("overview");
+      setShowAdminActions(false);
+      setSelectedAccessCourseId("");
+    }
+  }, [selectedStudentId]);
   useEffect(() => { void loadCurriculumMeta(); }, [courses.length, loadCurriculumMeta]);
   useEffect(() => {
     let cancelled = false;
@@ -399,6 +451,22 @@ export default function AdminUsers() {
       { total: 0, active: 0, disabled: 0, expired: 0, out_of_views: 0 },
     );
   }, [courseAccess]);
+
+  const orderRepeatCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    studentOrders.forEach((order) => {
+      order.items.forEach((item) => {
+        const key = [
+          String(item.itemType || "course").toLowerCase(),
+          String(item.title || "").toLowerCase(),
+          Number(item.price || 0).toFixed(2),
+          orderDayKey(order.date),
+        ].join("|");
+        counts.set(key, (counts.get(key) || 0) + 1);
+      });
+    });
+    return counts;
+  }, [studentOrders]);
 
   const assignableCourses = useMemo(() => {
     const source = assignCourseOptions.length > 0
@@ -540,7 +608,7 @@ export default function AdminUsers() {
       await adminApi.deleteStudent(id);
       setStudents((prev) => prev.filter((s) => s.id !== id));
       setSelectedIds((prev) => prev.filter((x) => x !== id));
-      if (selectedStudentId === id) { setSelectedStudentId(""); setSelectedStudent(null); setCourseAccess([]); setLoginLogs([]); setVideoActivity([]); setNotifications([]); setStudentOrders([]); setSelectedAccessCourseId(""); }
+      if (selectedStudentId === id) { setSelectedStudentId(""); setSelectedStudent(null); setCourseAccess([]); setTestSeriesAccess([]); setLoginLogs([]); setVideoActivity([]); setNotifications([]); setStudentOrders([]); setSelectedAccessCourseId(""); }
     } catch (error) {
       handleApiError(error, { fallbackMessage: "Failed to delete student" });
     }
@@ -868,6 +936,11 @@ export default function AdminUsers() {
       showErrorToast(messageError);
       return;
     }
+    const selectedChannel = messageChannels.find((channel) => channel.key === messageForm.channel);
+    if (!selectedChannel?.enabled) {
+      showErrorToast(selectedChannel?.note || "This message channel is not available");
+      return;
+    }
     
     try {
       await adminApi.sendStudentMessage(selectedStudentId, {
@@ -1015,11 +1088,154 @@ export default function AdminUsers() {
   const tabs: { key: DetailTab; label: string; icon: React.ElementType }[] = [
     { key: "overview", label: "Overview", icon: Shield },
     { key: "courses", label: "Courses", icon: BookOpen },
+    { key: "testSeries", label: "Test Series", icon: FileText },
     { key: "activity", label: "Activity", icon: Activity },
     { key: "message", label: "Message", icon: MessageSquare },
   ];
 
   const activeCount = students.filter((s) => s.status === "Active").length;
+  const messageChannels = useMemo(() => [
+    { key: "in_app", label: "In App", enabled: true, note: "Saved in notification history" },
+    { key: "email", label: "Email", enabled: Boolean(selectedStudent?.email), note: selectedStudent?.email ? "Uses user notification email template" : "Student email missing" },
+    { key: "sms", label: "SMS", enabled: false, note: "SMS provider not connected here" },
+    { key: "whatsapp", label: "WhatsApp", enabled: false, note: "WhatsApp provider not connected here" },
+  ], [selectedStudent?.email]);
+  useEffect(() => {
+    if (!messageChannels.some((channel) => channel.key === messageForm.channel && channel.enabled)) {
+      setMessageForm((prev) => ({ ...prev, channel: "in_app" }));
+    }
+  }, [messageChannels, messageForm.channel]);
+
+  const downloadOrderInvoice = (order: AdminOrderGroup) => {
+    if (!selectedStudent) return;
+    const invoiceNo = String(order.id || `INV-${selectedStudent.id}`);
+    const invoiceDate = order.date && Number.isFinite(new Date(order.date).getTime())
+      ? new Date(order.date).toLocaleDateString("en-IN")
+      : new Date().toLocaleDateString("en-IN");
+    const total = Number(order.total || 0);
+    const logoUrl = `${window.location.origin}${resolveUploadAssetUrl(settings.logo, "/ednovate-logo.png")}`;
+    const companyName = String(settings.header?.brandTitle || "Ednovate").trim() || "Ednovate";
+    const companyAddress = "4th floor, Ajanta Square Building, near Borivali court, Sundar Nagar, Borivali West, Mumbai, Maharashtra 400092";
+    const billingAddress = buildOrderAddressText(order) || [selectedStudent.city, selectedStudent.state, selectedStudent.country].map((v) => String(v || "").trim()).filter(Boolean).join(", ") || "Address unavailable";
+    const baseAmount = Number(order.baseAmount || order.items.reduce((sum, item) => sum + Number(item.baseAmount || 0), 0) || total);
+    const taxAmount = Number(order.taxAmount || order.items.reduce((sum, item) => sum + Number(item.taxAmount || 0), 0) || 0);
+    const studentName = String(order.studentName || order.customerName || selectedStudent.name || "Student");
+    const studentEmail = String(order.studentEmail || order.customerEmail || selectedStudent.email || "-");
+    const studentMobile = String(order.studentMobile || order.customerPhone || selectedStudent.mobile || "-");
+    const descriptionRows = order.items.map((item) => {
+      const details = [
+        item.itemType ? `Type: ${item.itemType}` : "",
+        item.modeLabel ? `Mode: ${item.modeLabel}` : "",
+        item.bookLabel ? `Book: ${item.bookLabel}` : "",
+      ].filter(Boolean).join(" | ");
+      return `
+          <tr>
+            <td style="padding:10px;border-right:1px solid #9ca3af;border-bottom:1px solid #e5e7eb;vertical-align:top;">
+              <div style="font-weight:700;">${escapeInvoiceText(item.title || "Course")}</div>
+              <div style="color:#4b5563;font-size:12px;margin-top:4px;">${escapeInvoiceText(details || "Course purchase")}</div>
+            </td>
+            <td style="padding:10px;border-bottom:1px solid #e5e7eb;text-align:right;font-weight:700;vertical-align:top;">
+              ₹${Number(item.price || 0).toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            </td>
+          </tr>`;
+    }).join("");
+    const html = `<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Invoice-${escapeInvoiceText(invoiceNo)}</title>
+  <style>
+    @page { size: A4; margin: 10mm; }
+    html, body { margin: 0; padding: 0; }
+  </style>
+</head>
+<body style="font-family:Arial,sans-serif;background:#e5e7eb;padding:24px;color:#111827;">
+  <div style="width:210mm;min-height:297mm;box-sizing:border-box;margin:0 auto;background:#ffffff;border:1px solid #9ca3af;box-shadow:0 4px 14px rgba(15,23,42,.08);padding:12mm;">
+    <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:24px;">
+      <div>
+        <img src="${logoUrl}" alt="${escapeInvoiceText(companyName)}" style="height:46px;object-fit:contain;display:block;margin-bottom:8px;" />
+        <div style="font-size:18px;font-weight:800;color:#1f3c88;letter-spacing:.06em;">${escapeInvoiceText(companyName)}</div>
+        <div style="font-size:12px;color:#4b5563;margin-top:4px;max-width:340px;line-height:1.4;">${escapeInvoiceText(companyAddress)}</div>
+      </div>
+      <div style="text-align:right;min-width:250px;">
+        <div style="font-size:34px;font-weight:800;color:#4f7dbd;letter-spacing:.04em;line-height:1;">TAX INVOICE</div>
+        <table style="margin-top:14px;width:100%;border-collapse:collapse;font-size:12px;">
+          <tr>
+            <th style="border:1px solid #9ca3af;background:#d1d5db;padding:6px 8px;text-align:center;">INVOICE #</th>
+            <th style="border:1px solid #9ca3af;background:#d1d5db;padding:6px 8px;text-align:center;">DATE</th>
+          </tr>
+          <tr>
+            <td style="border:1px solid #9ca3af;padding:6px 8px;text-align:center;font-weight:700;">${escapeInvoiceText(invoiceNo)}</td>
+            <td style="border:1px solid #9ca3af;padding:6px 8px;text-align:center;font-weight:700;">${escapeInvoiceText(invoiceDate)}</td>
+          </tr>
+        </table>
+      </div>
+    </div>
+
+    <div style="margin-top:22px;display:inline-block;min-width:340px;">
+      <div style="border:1px solid #9ca3af;background:#d1d5db;padding:4px 10px;font-size:12px;font-weight:700;">BILL TO</div>
+      <div style="padding:8px 2px 0 2px;font-size:13px;line-height:1.45;">
+        <div style="font-weight:700;">${escapeInvoiceText(studentName)}</div>
+        <div>${escapeInvoiceText(studentEmail)}</div>
+        <div>${escapeInvoiceText(studentMobile)}</div>
+        <div>${escapeInvoiceText(billingAddress)}</div>
+        <div style="margin-top:4px;"><strong>Payment:</strong> ${escapeInvoiceText(order.paymentMethod || "Online")}</div>
+      </div>
+    </div>
+
+    <div style="margin-top:20px;">
+      <table style="width:100%;border-collapse:collapse;font-size:13px;border:1px solid #9ca3af;">
+        <thead>
+          <tr style="background:#d1d5db;text-align:left;">
+            <th style="padding:9px 10px;border-right:1px solid #9ca3af;">DESCRIPTION</th>
+            <th style="padding:9px 10px;text-align:right;">AMOUNT</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${descriptionRows}
+          <tr>
+            <td style="height:140px;border-right:1px solid #9ca3af;"></td>
+            <td></td>
+          </tr>
+        </tbody>
+        <tfoot>
+          <tr>
+            <td style="padding:10px;border-right:1px solid #9ca3af;font-style:italic;font-size:14px;color:#1f3c88;">Thank you for your business!</td>
+            <td style="padding:10px;">
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+                <span style="color:#4b5563;">Base Price</span>
+                <strong>₹${baseAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </div>
+              <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:6px;">
+                <span style="color:#4b5563;">+ GST</span>
+                <strong>₹${taxAmount.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</strong>
+              </div>
+              <div style="border-top:1px solid #9ca3af;padding-top:8px;display:flex;justify-content:space-between;align-items:center;">
+                <span style="font-weight:800;color:#111827;">Grand Total</span>
+                <span style="font-weight:800;font-size:22px;">₹${total.toLocaleString("en-IN", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</span>
+              </div>
+            </td>
+          </tr>
+        </tfoot>
+      </table>
+    </div>
+
+    <div style="margin-top:24px;text-align:center;font-size:12px;color:#4b5563;line-height:1.45;">
+      This is a computer-generated invoice. Signature is not required.
+    </div>
+  </div>
+</body>
+</html>`;
+    const blob = new Blob([html], { type: "text/html;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement("a");
+    anchor.href = url;
+    anchor.download = `${invoiceNo}.html`;
+    document.body.appendChild(anchor);
+    anchor.click();
+    document.body.removeChild(anchor);
+    URL.revokeObjectURL(url);
+  };
 
   return (
     <div className="space-y-5 font-['Inter']">
@@ -1280,8 +1496,11 @@ export default function AdminUsers() {
                 {tab.key === "courses" && courseAccess.length > 0 && (
                   <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary/10 px-1 text-[10px] font-bold text-primary">{courseAccess.length}</span>
                 )}
+                {tab.key === "testSeries" && testSeriesAccess.length > 0 && (
+                  <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-primary/10 px-1 text-[10px] font-bold text-primary">{testSeriesAccess.length}</span>
+                )}
                 {tab.key === "activity" && (loginLogs.length > 0 || videoActivity.length > 0) && (
-                  <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-slate-100 px-1 text-[10px] font-bold text-slate-600">{loginLogs.length + videoActivity.length}</span>
+                  <span className="inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-slate-100 px-1 text-[10px] font-bold text-slate-600">{loginLogs.length}L/{videoActivity.length}V</span>
                 )}
               </button>
             ))}
@@ -1301,9 +1520,10 @@ export default function AdminUsers() {
               activeTab === "overview" ? (
                 <div className="space-y-5 p-6">
                   {/* Quick stats */}
-                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-5">
                     {[
                       { label: "Courses", value: courseAccess.length, color: "text-blue-700 bg-blue-50" },
+                      { label: "Test Series", value: testSeriesAccess.length, color: "text-indigo-700 bg-indigo-50" },
                       { label: "Orders", value: studentOrders.length, color: "text-amber-700 bg-amber-50" },
                       { label: "Videos Watched", value: videoActivity.length, color: "text-violet-700 bg-violet-50" },
                       { label: "Watch Time", value: `${(totalWatchedSeconds / 3600).toFixed(1)}h`, color: "text-emerald-700 bg-emerald-50" },
@@ -1332,25 +1552,112 @@ export default function AdminUsers() {
                     ))}
                   </div>
 
-                  {/* Reset Password */}
-                  <div className="rounded-xl border border-slate-200 p-4 space-y-2">
-                    <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5"><KeyRound className="h-4 w-4 text-slate-500" /> Reset Password</p>
-                    <div className="flex gap-2">
-                      <Input type="password" placeholder="Enter new password" value={passwordForm.password} onChange={(e) => setPasswordForm({ password: e.target.value })} className="h-9 rounded-xl border-slate-200 text-sm" />
-                      <Button size="sm" className="h-9 shrink-0 rounded-xl px-3 text-xs font-semibold" onClick={handleChangePassword}>Update</Button>
+                  <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                    <div className="mb-3 flex items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <CreditCard className="h-4 w-4 text-slate-500" />
+                        <p className="text-xs font-bold text-slate-900">Order / Purchase History</p>
+                      </div>
+                      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-[11px] font-semibold text-slate-600">{studentOrders.length} orders</span>
                     </div>
+                    {studentOrders.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">No purchase history found</div>
+                    ) : (
+                      <div className="space-y-2">
+                        {studentOrders.slice(0, 10).map((order) => (
+                          <div key={order.id} className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                            <div className="flex flex-wrap items-center justify-between gap-3">
+                              <div className="min-w-0">
+                                <p className="text-xs font-semibold text-slate-900">Order {order.id}</p>
+                                <p className="text-[11px] text-slate-500">{formatDateTime(order.date)} · {order.paymentMethod || "Payment recorded"}</p>
+                              </div>
+                              <div className="flex shrink-0 items-center gap-2">
+                                <div className="text-right">
+                                  <p className="text-xs font-semibold text-slate-900">₹{Number(order.total || 0).toLocaleString("en-IN")}</p>
+                                  <span className="inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">{order.dispatchStatus || order.status}</span>
+                                </div>
+                                <Button
+                                  type="button"
+                                  size="sm"
+                                  variant="outline"
+                                  className="h-8 rounded-lg border-slate-200 px-2.5 text-[11px]"
+                                  onClick={() => downloadOrderInvoice(order)}
+                                >
+                                  <Download className="mr-1 h-3.5 w-3.5" /> Invoice
+                                </Button>
+                              </div>
+                            </div>
+                            <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                              {order.items.map((item, index) => {
+                                const repeatKey = [
+                                  String(item.itemType || "course").toLowerCase(),
+                                  String(item.title || "").toLowerCase(),
+                                  Number(item.price || 0).toFixed(2),
+                                  orderDayKey(order.date),
+                                ].join("|");
+                                const repeatCount = orderRepeatCounts.get(repeatKey) || 0;
+                                return (
+                                  <div key={`${order.id}-${item.id || index}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs">
+                                    <div className="min-w-0">
+                                      <div className="flex min-w-0 flex-wrap items-center gap-1.5">
+                                        <p className="truncate font-medium text-slate-800">{item.title}</p>
+                                        {repeatCount > 1 ? (
+                                          <span className="rounded-full bg-amber-50 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">repeat x{repeatCount}</span>
+                                        ) : null}
+                                      </div>
+                                      <p className="text-[11px] text-slate-500">{item.itemType || "course"}{item.modeLabel ? ` · ${item.modeLabel}` : ""}{item.bookLabel ? ` · ${item.bookLabel}` : ""}</p>
+                                    </div>
+                                    <p className="shrink-0 font-semibold text-slate-700">₹{Number(item.price || 0).toLocaleString("en-IN")}</p>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Quick Login */}
-                  <div className="rounded-xl border border-blue-100 bg-blue-50/50 p-4 flex items-center justify-between">
-                    <div>
-                      <p className="text-xs font-bold text-blue-800">Quick Login as Student</p>
-                      <p className="text-[11px] text-blue-600 mt-0.5">Login to student account directly for support/debugging.</p>
-                    </div>
-                    <Button size="sm" className="h-9 gap-1.5 rounded-xl bg-blue-600 px-3 text-xs font-semibold hover:bg-blue-700" onClick={() => handleQuickLogin(selectedStudent.id)} disabled={loginTarget === selectedStudent.id}>
-                      {loginTarget === selectedStudent.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogIn className="h-3.5 w-3.5" />}
-                      Login as Student
-                    </Button>
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setShowAdminActions((prev) => !prev)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-rose-50 text-rose-700">
+                          <Shield className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Admin Actions</p>
+                          <p className="text-[11px] text-slate-500">Support tools hidden to avoid accidental use</p>
+                        </div>
+                      </div>
+                      {showAdminActions ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                    </button>
+                    {showAdminActions ? (
+                      <div className="grid gap-3 border-t border-slate-100 p-4 lg:grid-cols-2">
+                        <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3">
+                          <p className="text-xs font-bold text-slate-800 flex items-center gap-1.5"><KeyRound className="h-4 w-4 text-slate-500" /> Reset Password</p>
+                          <div className="mt-2 flex gap-2">
+                            <Input type="password" placeholder="Enter new password" value={passwordForm.password} onChange={(e) => setPasswordForm({ password: e.target.value })} className="h-9 rounded-xl border-slate-200 bg-white text-sm" />
+                            <Button size="sm" className="h-9 shrink-0 rounded-xl px-3 text-xs font-semibold" onClick={handleChangePassword}>Update</Button>
+                          </div>
+                        </div>
+                        <div className="rounded-xl border border-blue-100 bg-blue-50/60 p-3">
+                          <div className="flex items-center justify-between gap-3">
+                            <div>
+                              <p className="text-xs font-bold text-blue-800">Quick Login as Student</p>
+                              <p className="mt-0.5 text-[11px] text-blue-600">Use only for support/debugging.</p>
+                            </div>
+                            <Button size="sm" className="h-9 gap-1.5 rounded-xl bg-blue-600 px-3 text-xs font-semibold hover:bg-blue-700" onClick={() => handleQuickLogin(selectedStudent.id)} disabled={loginTarget === selectedStudent.id}>
+                              {loginTarget === selectedStudent.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <LogIn className="h-3.5 w-3.5" />}
+                              Login
+                            </Button>
+                          </div>
+                        </div>
+                      </div>
+                    ) : null}
                   </div>
                 </div>
 
@@ -1374,47 +1681,26 @@ export default function AdminUsers() {
                     ))}
                   </div>
 
-                  <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                    <div className="flex items-center justify-between gap-3">
-                      <p className="text-xs font-bold text-slate-800">Order / Purchase History</p>
-                      <span className="text-[11px] text-slate-500">{studentOrders.length} orders</span>
-                    </div>
-                    {studentOrders.length === 0 ? (
-                      <div className="rounded-xl border border-dashed border-slate-200 py-6 text-center text-sm text-slate-400">No purchase history found</div>
-                    ) : (
-                      <div className="space-y-3">
-                        {studentOrders.slice(0, 10).map((order) => (
-                          <div key={order.id} className="rounded-xl border border-slate-200 bg-slate-50/60 p-3">
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <div>
-                                <p className="text-xs font-semibold text-slate-900">Order {order.id}</p>
-                                <p className="text-[11px] text-slate-500">{formatDateTime(order.date)} · {order.paymentMethod || "Payment recorded"}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-xs font-semibold text-slate-900">₹{Number(order.total || 0).toLocaleString("en-IN")}</p>
-                                <span className="inline-flex rounded-full border border-slate-200 bg-white px-2 py-0.5 text-[10px] font-semibold text-slate-600">{order.dispatchStatus || order.status}</span>
-                              </div>
-                            </div>
-                            <div className="mt-3 space-y-2">
-                              {order.items.map((item, index) => (
-                                <div key={`${order.id}-${item.id || index}`} className="flex items-center justify-between gap-3 rounded-lg bg-white px-3 py-2 text-xs">
-                                  <div className="min-w-0">
-                                    <p className="truncate font-medium text-slate-800">{item.title}</p>
-                                    <p className="text-[11px] text-slate-500">{item.itemType || "course"}{item.modeLabel ? ` · ${item.modeLabel}` : ""}{item.bookLabel ? ` · ${item.bookLabel}` : ""}</p>
-                                  </div>
-                                  <p className="shrink-0 font-semibold text-slate-700">₹{Number(item.price || 0).toLocaleString("en-IN")}</p>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-
                   {/* Assign / Update */}
-                  <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                    <p className="text-xs font-bold text-slate-800">Assign / Update Course Access</p>
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setShowCourseAssign((prev) => !prev)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-blue-50 text-blue-700">
+                          <BookOpen className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Assign Course Access</p>
+                          <p className="text-[11px] text-slate-500">Add manual access with validity, views and notes</p>
+                        </div>
+                      </div>
+                      {showCourseAssign ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                    </button>
+                    {showCourseAssign ? (
+                    <div className="space-y-3 border-t border-slate-100 p-4">
                     <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                       <div className="space-y-1">
                         <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Course</label>
@@ -1453,11 +1739,30 @@ export default function AdminUsers() {
                       </div>
                     </div>
                     <Button size="sm" className="rounded-xl px-4 text-xs font-semibold" onClick={handleSaveCourseAccess}>Save Course Access</Button>
+                    </div>
+                    ) : null}
                   </div>
 
                   {/* Extend */}
-                  <div className="rounded-xl border border-slate-200 p-4 space-y-3">
-                    <p className="text-xs font-bold text-slate-800">Extend Duration / Views</p>
+                  <div className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
+                    <button
+                      type="button"
+                      onClick={() => setShowCourseExtend((prev) => !prev)}
+                      className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left transition-colors hover:bg-slate-50"
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-50 text-emerald-700">
+                          <Clock className="h-4 w-4" />
+                        </div>
+                        <div>
+                          <p className="text-xs font-bold text-slate-900">Extend Duration / Views</p>
+                          <p className="text-[11px] text-slate-500">Add validity days and extra views</p>
+                        </div>
+                      </div>
+                      {showCourseExtend ? <ChevronUp className="h-4 w-4 text-slate-400" /> : <ChevronDown className="h-4 w-4 text-slate-400" />}
+                    </button>
+                    {showCourseExtend ? (
+                    <div className="space-y-3 border-t border-slate-100 p-4">
                     <div className="grid grid-cols-3 gap-3">
                       <div className="space-y-1">
                         <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Course</label>
@@ -1476,6 +1781,8 @@ export default function AdminUsers() {
                       </div>
                     </div>
                     <Button size="sm" variant="outline" className="rounded-xl border-slate-200 px-4 text-xs font-semibold" onClick={handleExtendAccess}>Extend Access</Button>
+                    </div>
+                    ) : null}
                   </div>
 
                   {/* Purchased Courses List */}
@@ -1523,7 +1830,7 @@ export default function AdminUsers() {
                                 {access.isEnabled ? "Disable" : "Enable"}
                               </Button>
                               <Button size="sm" className="h-8 rounded-lg px-3 text-[11px] font-semibold" onClick={() => setSelectedAccessCourseId(access.courseId)}>
-                                Manage
+                                Access Details
                               </Button>
                             </div>
                           </div>
@@ -1533,12 +1840,93 @@ export default function AdminUsers() {
                   </div>
                 </div>
 
+              /* ── TEST SERIES TAB ── */
+              ) : activeTab === "testSeries" ? (
+                <div className="space-y-5 p-6">
+                  <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+                    {[
+                      { label: "Purchased", value: testSeriesAccess.length, color: "text-slate-700 bg-slate-50", icon: FileText },
+                      { label: "Active", value: testSeriesAccess.filter((item) => item.isEnabled).length, color: "text-emerald-700 bg-emerald-50", icon: CheckCircle2 },
+                      { label: "Locked", value: testSeriesAccess.filter((item) => !item.isEnabled).length, color: "text-red-700 bg-red-50", icon: XCircle },
+                      { label: "Attempts Used", value: testSeriesAccess.reduce((sum, item) => sum + Number(item.attemptsUsed || 0), 0), color: "text-amber-700 bg-amber-50", icon: Clock },
+                    ].map((stat) => (
+                      <div key={stat.label} className={`rounded-xl px-4 py-3 ${stat.color}`}>
+                        <div className="flex items-center justify-between gap-2">
+                          <p className="text-[11px] font-semibold uppercase tracking-wider opacity-70">{stat.label}</p>
+                          <stat.icon className="h-4 w-4 opacity-70" />
+                        </div>
+                        <p className="mt-0.5 text-lg font-bold">{stat.value}</p>
+                      </div>
+                    ))}
+                  </div>
+
+                  <div className="space-y-2">
+                    <p className="text-xs font-bold text-slate-800">Purchased Test Series ({testSeriesAccess.length})</p>
+                    {testSeriesAccess.length === 0 ? (
+                      <div className="rounded-xl border border-dashed border-slate-200 py-8 text-center text-sm text-slate-400">No test series purchased yet</div>
+                    ) : (
+                      testSeriesAccess.map((access) => {
+                        const thumbnail = resolveUploadAssetUrl(access.thumbnailUrl, "");
+                        const isExpired = access.expiresAt ? new Date(access.expiresAt).getTime() < Date.now() : false;
+                        return (
+                          <div key={`${access.studentId}-${access.paperId}`} className="rounded-xl border border-slate-200 bg-white p-3 shadow-sm">
+                            <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+                              <div className="h-24 w-full shrink-0 overflow-hidden rounded-xl border border-slate-100 bg-slate-50 sm:w-36">
+                                {thumbnail ? (
+                                  <img src={thumbnail} alt={access.title} className="h-full w-full object-cover" />
+                                ) : (
+                                  <div className="flex h-full w-full items-center justify-center text-slate-300">
+                                    <FileText className="h-8 w-8" />
+                                  </div>
+                                )}
+                              </div>
+                              <div className="min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-2">
+                                  <p className="text-sm font-semibold text-slate-900 line-clamp-1">{access.title}</p>
+                                  <span className={`rounded-full px-2 py-0.5 text-[10px] font-semibold ${access.isEnabled && !isExpired ? "border border-emerald-200 bg-emerald-50 text-emerald-700" : "border border-slate-200 bg-slate-100 text-slate-600"}`}>
+                                    {access.isEnabled && !isExpired ? "Active" : isExpired ? "Expired" : "Disabled"}
+                                  </span>
+                                  {access.paperCode ? (
+                                    <span className="rounded-full border border-slate-200 bg-slate-50 px-2 py-0.5 text-[10px] font-semibold text-slate-500">{access.paperCode}</span>
+                                  ) : null}
+                                </div>
+                                <p className="mt-1 line-clamp-2 text-[11px] text-slate-500">{access.description || "Test access assigned to this student."}</p>
+                                <div className="mt-3 grid grid-cols-2 gap-2 lg:grid-cols-4">
+                                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                    <p className="font-semibold text-slate-700">Purchased</p>
+                                    <p>{formatDateTime(access.purchasedAt)}</p>
+                                  </div>
+                                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                    <p className="font-semibold text-slate-700">Expires</p>
+                                    <p>{access.expiresAt ? formatDateTime(access.expiresAt) : "Unlimited"}</p>
+                                  </div>
+                                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                    <p className="font-semibold text-slate-700">Attempts</p>
+                                    <p>{access.attemptsUsed}/{formatAttemptLimit(access.attemptsAllowed)} used</p>
+                                  </div>
+                                  <div className="rounded-lg bg-slate-50 px-3 py-2 text-[11px] text-slate-600">
+                                    <p className="font-semibold text-slate-700">Duration</p>
+                                    <p>{access.totalTime || 0} min</p>
+                                  </div>
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+                </div>
+
               /* ── ACTIVITY TAB ── */
               ) : activeTab === "activity" ? (
                 <div className="space-y-5 p-6">
                   {/* Login History */}
                   <div>
-                    <p className="mb-2 text-xs font-bold text-slate-800">Login History ({loginLogs.length})</p>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold text-slate-800">Login History ({Math.min(loginLogs.length, 50)} shown / {loginLogs.length} total)</p>
+                      {loginLogs.length > 50 ? <span className="text-[11px] text-slate-400">Latest 50 entries</span> : null}
+                    </div>
                     <div className="overflow-hidden rounded-xl border border-slate-200">
                       <table className="w-full text-xs">
                         <thead><tr className="border-b border-slate-100 bg-slate-50"><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Time</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Source</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">IP</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Device</th></tr></thead>
@@ -1550,7 +1938,7 @@ export default function AdminUsers() {
                               <td className="px-4 py-2 text-slate-600">{formatDateTime(log.createdAt)}</td>
                               <td className="px-4 py-2 text-slate-600">{log.source || "student_login"}</td>
                               <td className="px-4 py-2 text-slate-500">{log.ipAddress || "—"}</td>
-                              <td className="max-w-[200px] truncate px-4 py-2 text-slate-500">{log.userAgent || "—"}</td>
+                              <td className="max-w-[200px] truncate px-4 py-2 text-slate-500" title={log.userAgent || ""}>{summarizeUserAgent(log.userAgent)}</td>
                             </tr>
                           ))}
                         </tbody>
@@ -1561,7 +1949,7 @@ export default function AdminUsers() {
                   {/* Video Activity */}
                   <div>
                     <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
-                      <p className="text-xs font-bold text-slate-800">Video Watch Activity ({filteredVideoActivity.length})</p>
+                      <p className="text-xs font-bold text-slate-800">Video Watch Activity ({Math.min(filteredVideoActivity.length, 200)} shown / {filteredVideoActivity.length} matched)</p>
                       <div className="flex items-center gap-2">
                         <Button
                           type="button"
@@ -1695,13 +2083,26 @@ export default function AdminUsers() {
                     <div className="space-y-1">
                       <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Channel</label>
                       <div className="flex flex-wrap gap-2">
-                        {["in_app", "email", "sms", "whatsapp"].map((ch) => (
-                          <button key={ch} type="button" onClick={() => setMessageForm((p) => ({ ...p, channel: ch }))}
-                            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${messageForm.channel === ch ? "border-primary/40 bg-primary/10 text-primary" : "border-slate-200 text-slate-500 hover:border-slate-300"}`}>
-                            {ch === "in_app" ? "In App" : ch.charAt(0).toUpperCase() + ch.slice(1)}
+                        {messageChannels.map((channel) => (
+                          <button
+                            key={channel.key}
+                            type="button"
+                            disabled={!channel.enabled}
+                            title={channel.note}
+                            onClick={() => channel.enabled && setMessageForm((p) => ({ ...p, channel: channel.key }))}
+                            className={`rounded-xl border px-3 py-1.5 text-xs font-semibold transition-all ${
+                              messageForm.channel === channel.key
+                                ? "border-primary/40 bg-primary/10 text-primary"
+                                : channel.enabled
+                                  ? "border-slate-200 text-slate-500 hover:border-slate-300"
+                                  : "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-300"
+                            }`}
+                          >
+                            {channel.label}
                           </button>
                         ))}
                       </div>
+                      <p className="text-[11px] text-slate-400">{messageChannels.find((channel) => channel.key === messageForm.channel)?.note}</p>
                     </div>
                     <div className="space-y-1">
                       <label className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Subject</label>
@@ -1718,14 +2119,17 @@ export default function AdminUsers() {
 
                   {/* Notification History */}
                   <div>
-                    <p className="mb-2 text-xs font-bold text-slate-800">Notification History ({notifications.length})</p>
+                    <div className="mb-2 flex items-center justify-between gap-2">
+                      <p className="text-xs font-bold text-slate-800">Notification History ({Math.min(notifications.length, 100)} shown / {notifications.length} total)</p>
+                      {notifications.length > 100 ? <span className="text-[11px] text-slate-400">Latest 100 entries</span> : null}
+                    </div>
                     <div className="overflow-hidden rounded-xl border border-slate-200">
                       <table className="w-full text-xs">
                         <thead><tr className="border-b border-slate-100 bg-slate-50"><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Time</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Channel</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Subject</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Message</th><th className="px-4 py-2 text-left text-[11px] font-semibold uppercase tracking-wider text-slate-500">Status</th><th className="px-4 py-2 text-right text-[11px] font-semibold uppercase tracking-wider text-slate-500">Action</th></tr></thead>
                         <tbody className="divide-y divide-slate-100">
                           {notifications.length === 0 ? (
                             <tr><td colSpan={6} className="py-8 text-center text-slate-400">No messages sent yet</td></tr>
-                          ) : notifications.map((n) => (
+                          ) : notifications.slice(0, 100).map((n) => (
                             <tr key={n.id} className="hover:bg-slate-50">
                               <td className="px-4 py-2 text-slate-500">{formatDateTime(n.createdAt)}</td>
                               <td className="px-4 py-2"><span className="rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-semibold text-slate-600">{n.channel}</span></td>
@@ -1737,6 +2141,7 @@ export default function AdminUsers() {
                                   size="sm"
                                   variant="ghost"
                                   className="h-7 w-7 p-0 text-slate-400 hover:text-red-600"
+                                  title="Delete notification"
                                   onClick={() => void handleDeleteNotification(n.id)}
                                 >
                                   <Trash2 className="h-3.5 w-3.5" />
@@ -1762,7 +2167,7 @@ export default function AdminUsers() {
               <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-primary/10">
                 <Settings2 className="h-4 w-4 text-primary" />
               </div>
-              Manage Course Access
+              Course Access Details
             </DialogTitle>
             {selectedManagedAccess ? (
               <div className="mt-1 text-xs text-slate-500">

@@ -9,6 +9,7 @@ import {
 
 export interface ManagedCourse extends Course {
   isVisible: boolean;
+  revenueShareEnabled?: boolean;
   webPlayEnabled?: boolean;
   demoVideoVisible?: boolean;
   demoVideoTitle?: string;
@@ -97,6 +98,7 @@ export interface ManagedTestPaper {
   remarkStudents: string;
   description: string;
   totalTime: number;
+  questionTimeLimitSeconds?: number;
   courseId: string;
   levelId: string;
   subjectId: string;
@@ -188,78 +190,7 @@ interface PlatformDataContextType extends PlatformDataState {
   resetPlatformData: () => void;
 }
 
-const createFallbackCurriculum = (courseName: string): Chapter[] => [
-  {
-    id: "ch1",
-    title: "Introduction & Basics",
-    lessons: [
-      {
-        id: "l1",
-        title: `Welcome to ${courseName}`,
-        duration: "5:30",
-        type: "video",
-        completed: false,
-        locked: false,
-        isPreview: true,
-        isHomepageDemo: true,
-        videoSource: "direct",
-        videoUrl: encodeVideoUrl("https://www.w3schools.com/html/mov_bbb.mp4"),
-      },
-      {
-        id: "l2",
-        title: "Course Overview",
-        duration: "12:45",
-        type: "video",
-        completed: false,
-        locked: false,
-        isHomepageDemo: false,
-        videoSource: "direct",
-        videoUrl: encodeVideoUrl("https://www.w3schools.com/html/mov_bbb.mp4"),
-      },
-      {
-        id: "l3",
-        title: "Study Material PDF",
-        duration: "PDF",
-        type: "pdf",
-        completed: false,
-        locked: false,
-      },
-    ],
-  },
-  {
-    id: "ch2",
-    title: "Core Concepts",
-    lessons: [
-      {
-        id: "l4",
-        title: "Fundamental Principles",
-        duration: "25:10",
-        type: "video",
-        completed: false,
-        locked: false,
-        isHomepageDemo: false,
-        videoSource: "direct",
-        videoUrl: encodeVideoUrl("https://www.w3schools.com/html/mov_bbb.mp4"),
-      },
-      {
-        id: "l5",
-        title: "Practice Problems",
-        duration: "PDF",
-        type: "pdf",
-        completed: false,
-        locked: false,
-      },
-      {
-        id: "l6",
-        title: "Chapter Quiz",
-        duration: "10 Qs",
-        type: "quiz",
-        completed: false,
-        locked: false,
-      },
-    ],
-  },
-];
+const createFallbackCurriculum = (): Chapter[] => [];
 
 const normalizeCourse = (course: Partial<ManagedCourse>, index: number): ManagedCourse => ({
   ...(function () {
@@ -303,6 +234,7 @@ const normalizeCourse = (course: Partial<ManagedCourse>, index: number): Managed
   facultyIds: Array.isArray(course.facultyIds)
     ? course.facultyIds.map((item) => String(item || "").trim()).filter(Boolean)
     : [],
+  revenueShareEnabled: course.revenueShareEnabled === true,
   viewPricingEnabled: Boolean(course.viewPricingEnabled),
   unlimitedViewsEnabled: Boolean(course.unlimitedViewsEnabled),
   validityPricingEnabled: Boolean(course.validityPricingEnabled),
@@ -723,7 +655,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
         nextCourses.forEach((c) => {
           const raw = data.curricula?.[c.id];
           const parsed = normalizeCurriculum(raw);
-          nextCurricula[c.id] = parsed.length > 0 ? parsed : (nextCurricula[c.id] || createFallbackCurriculum(c.title));
+          nextCurricula[c.id] = parsed.length > 0 ? parsed : (nextCurricula[c.id] || createFallbackCurriculum());
         });
 
         return {
@@ -744,6 +676,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
                 remarkStudents: String(row.remark_students || ""),
                 description: String(row.description || ""),
                 totalTime: Number(row.total_time || 0),
+                questionTimeLimitSeconds: Number(row.question_time_limit_seconds || row.questionTimeLimitSeconds || 0),
                 courseId: String(row.course_id || ""),
                 levelId: String(row.level_id || ""),
                 subjectId: String(row.subject_id || ""),
@@ -781,7 +714,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
 
         const nextCurricula = { ...prev.curricula };
         if (!nextCurricula[nextCourse.id] || nextCurricula[nextCourse.id].length === 0) {
-          nextCurricula[nextCourse.id] = createFallbackCurriculum(nextCourse.title);
+          nextCurricula[nextCourse.id] = createFallbackCurriculum();
         }
 
         return {
@@ -991,7 +924,7 @@ export const PlatformDataProvider = ({ children }: { children: ReactNode }) => {
       if (existing && existing.length > 0) {
         return existing;
       }
-      return createFallbackCurriculum(courseTitle || "Course");
+      return createFallbackCurriculum();
     };
 
     const setCurriculumForCourse = (courseId: string, curriculum: Chapter[]) => {

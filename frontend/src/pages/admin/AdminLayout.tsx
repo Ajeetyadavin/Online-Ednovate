@@ -190,7 +190,7 @@ const AdminLayout = () => {
   const canViewCurrentModule = hasPermission(currentModule, "read") && isCurrentFeatureEnabled;
 
   return (
-    <div className="flex h-screen bg-white">
+    <div className="flex h-screen bg-slate-50">
       {/* Sidebar */}
       <aside
         className={`${
@@ -467,7 +467,7 @@ const AdminLayout = () => {
       </aside>
 
       {/* Main Content */}
-      <div className={`flex-1 flex flex-col ${sidebarOpen ? "ml-64" : "ml-20"} transition-all duration-300`}>
+      <div className={`min-w-0 flex-1 flex flex-col ${sidebarOpen ? "ml-64" : "ml-20"} transition-all duration-300`}>
         {/* Top Header */}
         <header className="bg-white border-b border-orange-100 sticky top-0 z-30 shadow-sm">
           <div className="flex items-center justify-between h-16 px-6">
@@ -529,8 +529,8 @@ const AdminLayout = () => {
         </header>
 
         {/* Page Content */}
-        <main className="flex-1 overflow-auto">
-          <div className="">
+        <main className="flex-1 overflow-auto bg-slate-50">
+          <div className="mx-auto w-full max-w-[1800px] px-4 py-5 sm:px-6 lg:px-8">
             {canViewCurrentModule ? (
               <Outlet />
             ) : (

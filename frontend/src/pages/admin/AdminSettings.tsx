@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { CheckCircle, Mail, Save, Globe, Sparkles, CreditCard, Zap, GripVertical, ArrowUp, ArrowDown, Eye, EyeOff, SlidersHorizontal, MessageSquare, Share2, PanelBottom, Upload, Loader2 } from "lucide-react";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
 import { adminApi, fileToBase64 } from "@/services/adminApi";
+import { COMPANY_ADDRESS_TEXT } from "@/lib/companyContact";
 import { resolveUploadAssetUrl } from "@/lib/runtimeUrls";
 import {
   ADMIN_SIDEBAR_STORAGE_KEY,
@@ -271,7 +272,7 @@ export default function AdminSettings() {
     },
     footer: {
       tagline: "India's trusted online learning platform for CA, CS, CMA and professional courses. Structured programs, expert mentorship, and outcomes that matter.",
-      address: "Mumbai, Maharashtra",
+      address: COMPANY_ADDRESS_TEXT,
       copyrightText: "© 2026 Ednovate. All rights reserved.",
       privacyUrl: "#",
       termsUrl: "#",
@@ -500,7 +501,7 @@ export default function AdminSettings() {
             const ft = (site.footer && typeof site.footer === "object" ? site.footer : {}) as Record<string, unknown>;
             return {
               tagline: String(ft.tagline || "India's trusted online learning platform for CA, CS, CMA and professional courses. Structured programs, expert mentorship, and outcomes that matter."),
-              address: String(ft.address || "Mumbai, Maharashtra"),
+              address: String(ft.address || COMPANY_ADDRESS_TEXT),
               copyrightText: String(ft.copyrightText || "\u00a9 2026 Ednovate. All rights reserved."),
               privacyUrl: String(ft.privacyUrl || "#"),
               termsUrl: String(ft.termsUrl || "#"),

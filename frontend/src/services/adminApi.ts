@@ -39,6 +39,28 @@ export interface StudentCourseAccess {
   updatedAt?: string;
 }
 
+export interface StudentTestSeriesAccess {
+  id: number;
+  studentId: string;
+  paperId: string;
+  paperCode?: string;
+  title: string;
+  description?: string;
+  totalTime: number;
+  questionTimeLimitSeconds?: number;
+  thumbnailUrl?: string;
+  price: number;
+  attemptsAllowed: number;
+  attemptsUsed: number;
+  remainingAttempts: number;
+  purchasedAt?: string;
+  expiresAt?: string;
+  isEnabled: boolean;
+  isVisible: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface StudentLoginLog {
   id: number;
   studentId: string;
@@ -412,12 +434,28 @@ export interface AdminOrderGroup {
   trackingId?: string;
   dispatchNote?: string;
   paymentMethod?: string;
+  customerName?: string;
+  customerEmail?: string;
+  customerPhone?: string;
+  studentName?: string;
+  studentEmail?: string;
+  studentMobile?: string;
+  shippingAddressLine1?: string;
+  shippingAddressLine2?: string;
+  shippingCity?: string;
+  shippingState?: string;
+  shippingCountry?: string;
+  shippingPincode?: string;
+  baseAmount?: number;
+  taxAmount?: number;
   total: number;
   items: Array<{
     id?: number;
     courseId?: string;
     title: string;
     price: number;
+    baseAmount?: number;
+    taxAmount?: number;
     itemType?: string;
     modeLabel?: string;
     bookLabel?: string;
@@ -815,6 +853,7 @@ export const adminApi = {
     return parseResponse<{
       student: StudentRecord;
       courseAccess: StudentCourseAccess[];
+      testSeriesAccess: StudentTestSeriesAccess[];
       loginLogs: StudentLoginLog[];
       videoActivity: StudentVideoActivity[];
       notifications: StudentNotification[];

@@ -3,8 +3,10 @@ import { ArrowRight, CheckCircle, Mail, MapPin, PhoneCall, QrCode, Send } from "
 import { toast } from "sonner";
 
 import { normalizePhoneDigits } from "@/lib/contactTools";
-import { adminApi } from "@/services/adminApi";
+import { COMPANY_ADDRESS_TEXT, COMPANY_CONTACT, toIndiaDialDigits } from "@/lib/companyContact";
 import { useSiteSettings } from "@/context/SiteSettingsContext";
+import { adminApi } from "@/services/adminApi";
+import { BrandSocialIcon } from "@/components/BrandSocialIcon";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -28,24 +30,26 @@ const BRAND_ORANGE = "#e74723";
 
 const isValidEmail = (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value.trim());
 
-const WhatsAppIcon = ({ className }: { className?: string }) => (
-  <svg viewBox="0 0 24 24" aria-hidden="true" className={className} fill="currentColor">
-    <path d="M12.04 2.003a9.93 9.93 0 0 0-8.46 15.13L2 22l5.03-1.54A9.93 9.93 0 1 0 12.04 2.003Zm0 18.06a8.03 8.03 0 0 1-4.1-1.12l-.29-.17-2.98.91.92-2.9-.19-.3a8.03 8.03 0 1 1 6.64 3.58Zm4.62-6.5c-.25-.12-1.48-.73-1.7-.81-.23-.08-.39-.12-.55.12-.16.25-.64.8-.78.97-.14.16-.28.18-.53.06-.25-.13-1.06-.39-2.01-1.24-.74-.66-1.24-1.47-1.38-1.72-.14-.25-.01-.39.11-.52.11-.11.25-.29.37-.43.12-.15.16-.25.25-.41.08-.17.04-.31-.02-.43-.06-.12-.55-1.33-.76-1.82-.2-.47-.4-.4-.55-.41h-.47c-.16 0-.42.06-.63.31-.21.25-.8.77-.8 1.87 0 1.1.81 2.16.92 2.31.11.16 1.58 2.41 3.83 3.38.54.23.96.37 1.3.48.54.17 1.03.15 1.41.09.43-.06 1.32-.54 1.51-1.07.19-.53.19-.99.13-1.08-.05-.09-.21-.15-.46-.27Z" />
-  </svg>
-);
-
 const ContactUs = () => {
   const { settings } = useSiteSettings();
   const [form, setForm] = useState<ContactFormState>(INITIAL_FORM_STATE);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  const callValue = settings.floatingContact.call.value || settings.header.topBarPhone;
-  const whatsappValue = settings.floatingContact.whatsapp.value || settings.floatingContact.call.value || settings.header.topBarPhone;
+  const callValue = COMPANY_CONTACT.callPhone;
+  const whatsappValue = COMPANY_CONTACT.whatsappPhone;
   const callDigits = normalizePhoneDigits(callValue);
   const whatsappDigits = normalizePhoneDigits(whatsappValue);
-  const telLink = callDigits ? `tel:+${callDigits}` : "";
-  const whatsappLink = whatsappDigits ? `https://wa.me/${whatsappDigits}` : "";
-  const emailLink = `mailto:${settings.header.topBarEmail}`;
+  const telLink = callDigits ? `tel:+${toIndiaDialDigits(callValue)}` : "";
+  const whatsappLink = whatsappDigits ? `https://wa.me/${toIndiaDialDigits(whatsappValue)}` : "";
+  const emailLink = `mailto:${COMPANY_CONTACT.email}`;
+  const mapsQuery = encodeURIComponent(COMPANY_ADDRESS_TEXT);
+  const socialIconLinks = [
+    { brand: "facebook" as const, label: "Facebook", url: settings.socialLinks.facebook },
+    { brand: "instagram" as const, label: "Instagram", url: settings.socialLinks.instagram },
+    { brand: "youtube" as const, label: "YouTube", url: settings.socialLinks.youtube },
+    { brand: "linkedin" as const, label: "LinkedIn", url: settings.socialLinks.linkedin },
+    { brand: "whatsapp" as const, label: "WhatsApp", url: settings.socialLinks.whatsapp || whatsappLink },
+  ];
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -195,7 +199,6 @@ const ContactUs = () => {
                   <PhoneCall className="h-6 w-6" style={{ color: BRAND_BLUE }} />
                 </div>
                 <h3 className="text-lg font-bold text-slate-900">Call Us</h3>
-                <p className="text-sm text-slate-500 mt-1">Mon-Sat, 9AM-8PM</p>
                 <p className="mt-2 font-bold text-slate-800">{callValue}</p>
               </a>
 
@@ -205,8 +208,8 @@ const ContactUs = () => {
                 rel="noreferrer"
                 className="group rounded-xl border border-slate-200 bg-white p-6 shadow-sm transition-all hover:border-[#25D366]/30"
               >
-                <div className="mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-[#25D366]/10 transition-colors group-hover:bg-[#25D366]">
-                  <WhatsAppIcon className="h-6 w-6 text-[#25D366] transition-colors group-hover:text-white" />
+                <div className="mb-4 flex h-12 w-12 items-center justify-center">
+                  <BrandSocialIcon brand="whatsapp" className="h-12 w-12" />
                 </div>
                 <h3 className="text-lg font-bold text-slate-900">WhatsApp</h3>
                 <p className="text-sm text-slate-500 mt-1">Quick chat, quick reply</p>
@@ -228,8 +231,18 @@ const ContactUs = () => {
                     <PhoneCall className="w-5 h-5" style={{ color: BRAND_ORANGE }} />
                   </div>
                   <div>
-                    <p className="text-xs font-semibold text-slate-400 uppercase">Phone</p>
+                    <p className="text-xs font-semibold text-slate-400 uppercase">Call</p>
                     <p className="font-bold text-slate-900">{callValue}</p>
+                  </div>
+                </div>
+
+                <div className="flex items-start gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+                    <BrandSocialIcon brand="whatsapp" className="h-10 w-10" />
+                  </div>
+                  <div>
+                    <p className="text-xs font-semibold text-slate-400 uppercase">WhatsApp</p>
+                    <p className="font-bold text-slate-900">{whatsappValue}</p>
                   </div>
                 </div>
 
@@ -239,7 +252,7 @@ const ContactUs = () => {
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-slate-400 uppercase">Email</p>
-                    <p className="font-bold text-slate-900">{settings.header.topBarEmail}</p>
+                    <a href={emailLink} className="font-bold text-slate-900 hover:underline">{COMPANY_CONTACT.email}</a>
                   </div>
                 </div>
 
@@ -249,8 +262,31 @@ const ContactUs = () => {
                   </div>
                   <div>
                     <p className="text-xs font-semibold text-slate-400 uppercase">Address</p>
-                    <p className="font-bold text-slate-900">Mumbai, Maharashtra</p>
+                    <p className="font-bold leading-relaxed text-slate-900">
+                      {COMPANY_CONTACT.addressLines.map((line) => (
+                        <span key={line} className="block">{line}</span>
+                      ))}
+                    </p>
                   </div>
+                </div>
+              </div>
+
+              <div className="mt-6 border-t border-slate-100 pt-5">
+                <p className="text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">Follow Us</p>
+                <div className="mt-3 flex flex-wrap items-center gap-3">
+                  {socialIconLinks.map((item) => {
+                    const icon = <BrandSocialIcon brand={item.brand} className="h-10 w-10" />;
+
+                    if (!item.url) {
+                      return <span key={item.brand} aria-label={item.label}>{icon}</span>;
+                    }
+
+                    return (
+                      <a key={item.brand} href={item.url} target="_blank" rel="noreferrer noopener" aria-label={item.label} className="transition-opacity hover:opacity-85">
+                        {icon}
+                      </a>
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -260,7 +296,7 @@ const ContactUs = () => {
               <div className="h-48">
                 <iframe
                   title="Ednovate Location"
-                  src="https://maps.google.com/maps?q=Mumbai,Maharashtra&z=12&output=embed"
+                  src={`https://maps.google.com/maps?q=${mapsQuery}&z=16&output=embed`}
                   className="w-full h-full"
                   loading="lazy"
                   referrerPolicy="no-referrer-when-downgrade"
@@ -269,7 +305,7 @@ const ContactUs = () => {
               <div className="p-5">
                 <h4 className="font-bold text-slate-900">Find Us</h4>
                 <a
-                  href="https://maps.google.com/?q=Mumbai,Maharashtra"
+                  href={`https://maps.google.com/?q=${mapsQuery}`}
                   target="_blank"
                   rel="noreferrer"
                   className="mt-1 flex items-center gap-1 text-sm font-semibold text-slate-800 hover:underline"
@@ -286,14 +322,20 @@ const ContactUs = () => {
                 <h3 className="text-lg font-bold">Bank Details</h3>
               </div>
               
-              <div className="flex flex-col sm:flex-row gap-4">
-                <div className="h-28 w-28 shrink-0 rounded-xl border border-slate-200 bg-slate-50 flex flex-col items-center justify-center">
-                  <QrCode className="w-10 h-10 text-slate-500" />
-                  <p className="text-xs font-semibold mt-2">Scan to Pay</p>
+              <div className="flex flex-col gap-4 sm:flex-row">
+                <div className="shrink-0 rounded-xl border border-slate-200 bg-white p-2 shadow-sm">
+                  <img
+                    src="/payment-qr.jpg"
+                    alt="Ednovate payment QR code"
+                    className="h-32 w-32 rounded-lg object-contain"
+                    loading="lazy"
+                  />
+                  <p className="mt-2 text-center text-xs font-semibold text-slate-600">Scan &amp; Pay</p>
                 </div>
                 
                 <div className="space-y-2 text-sm">
-                  <p><span className="font-bold">A/C Name:</span> Ednovate Learning Pvt. Ltd.</p>
+                  <p><span className="font-bold">A/C Name:</span> Ednovate Edtech Pvt Ltd</p>
+                  <p><span className="font-bold">TID:</span> 62459033</p>
                   <p><span className="font-bold">Bank:</span> Update Your Bank</p>
                   <p><span className="font-bold">A/C No:</span> XXXX XXXX XXXX</p>
                   <p><span className="font-bold">IFSC:</span> XXXXX000000</p>

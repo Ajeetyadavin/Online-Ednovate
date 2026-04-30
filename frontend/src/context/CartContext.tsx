@@ -237,6 +237,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
               remarkStudents: String(row.remark_students || row.remarkStudents || ""),
               description: String(row.description || ""),
               totalTime: Number(row.total_time || row.totalTime || 0),
+              questionTimeLimitSeconds: Number(row.question_time_limit_seconds || row.questionTimeLimitSeconds || 0),
               courseId: String(row.course_id || row.courseId || ""),
               levelId: String(row.level_id || row.levelId || ""),
               subjectId: String(row.subject_id || row.subjectId || ""),
